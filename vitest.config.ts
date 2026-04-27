@@ -1,31 +1,20 @@
 import { defineConfig } from 'vitest/config';
 
+// One config, two test surfaces. Unit and integration are split by directory
+// path in the package.json scripts (test:unit / test:integration). This is
+// simpler than Vitest's `projects` feature and avoids version-coupling.
 export default defineConfig({
   resolve: {
     alias: { '@': new URL('./', import.meta.url).pathname },
   },
   test: {
     globals: false,
-    // @ts-expect-error projects is supported but TypeScript doesn't recognize it in InlineConfig
-    projects: [
-      {
-        name: 'unit',
-        test: {
-          include: ['tests/unit/**/*.test.ts', 'lib/**/*.test.ts'],
-          globals: false,
-          environment: 'node',
-        },
-      },
-      {
-        name: 'integration',
-        test: {
-          include: ['tests/integration/**/*.test.ts'],
-          globals: false,
-          environment: 'node',
-          testTimeout: 60_000,
-          hookTimeout: 120_000,
-        },
-      },
-    ],
+    environment: 'node',
+    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts', 'lib/**/*.test.ts'],
+    // Integration suites need long timeouts for Testcontainers cold start.
+    // The unit-only run uses --testTimeout via the script, but defaults are
+    // generous enough not to hurt.
+    testTimeout: 60_000,
+    hookTimeout: 120_000,
   },
 });
