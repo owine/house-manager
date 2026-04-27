@@ -1947,6 +1947,8 @@ git commit -m "docs: add project orientation README"
 
 This branch was developed with `commit.gpgsign=false` set locally for the repo, because the implementer subagents commit non-interactively and the user's `op-ssh-sign` (1Password) signing program requires interactive approval that doesn't surface in the agent shell. Each agent-attempted signed commit silently produced an unsigned commit. We disabled signing for the duration of Plan 1 and resign in one batch at the end.
 
+(Authors were already normalized to the global config `owine <owine@users.noreply.github.com>` mid-development via a `--reset-author` rebase, so this task only needs to add signatures.)
+
 **Files:** none modified — this is a git history operation.
 
 - [ ] **Step 1: Re-enable signing for the repo**
