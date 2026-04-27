@@ -1,0 +1,42 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  // Populated post-sign-in by an Auth.js createUser event (see Task 7).
+  // Nullable because the Prisma adapter creates the user row before the
+  // event fires; unique once set.
+  oidcSub       String?   @unique
+  email         String    @unique
+  // Auth.js adapter writes these; must be present and nullable for it to work.
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role      @default(MEMBER)
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime  @default(now())
+
+  @@map("users")
+}
+
+model HouseProfile {
+  id           String   @id @default(cuid())
+  location     String?
+  climateZone  String?
+  propertyType String?
+  updatedAt    DateTime @updatedAt
+
+  @@map("house_profile")
+}
