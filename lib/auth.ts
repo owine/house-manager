@@ -1,8 +1,9 @@
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import NextAuth from 'next-auth';
+
 import { authConfig } from '@/auth.config';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
-import { PrismaAdapter } from '@auth/prisma-adapter';
-import NextAuth from 'next-auth';
 
 const env = getEnv();
 
