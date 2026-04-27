@@ -1943,6 +1943,67 @@ git commit -m "docs: add project orientation README"
 
 ---
 
+## Task 16: Re-sign all commits and re-enable signing
+
+This branch was developed with `commit.gpgsign=false` set locally for the repo, because the implementer subagents commit non-interactively and the user's `op-ssh-sign` (1Password) signing program requires interactive approval that doesn't surface in the agent shell. Each agent-attempted signed commit silently produced an unsigned commit. We disabled signing for the duration of Plan 1 and resign in one batch at the end.
+
+**Files:** none modified — this is a git history operation.
+
+- [ ] **Step 1: Re-enable signing for the repo**
+
+```bash
+git config commit.gpgsign true
+git config --get commit.gpgsign  # should print: true
+```
+
+- [ ] **Step 2: Pre-approve in 1Password (optional, makes the rebase smoother)**
+
+Open 1Password → Settings → Developer → SSH Agent and toggle "Allow signing without authorization for 5 minutes" (or use Touch ID approval per commit; the rebase will pause for each).
+
+- [ ] **Step 3: Rebase plan-1-foundation from the root, signing each commit**
+
+```bash
+git checkout plan-1-foundation
+git rebase --root --exec 'git commit --amend --no-edit -S --no-verify'
+```
+
+This rewrites every commit on the branch (~16 commits including main's 2 docs commits) with a signature. 1Password may prompt you 16 times unless you pre-approved in Step 2.
+
+- [ ] **Step 4: Re-point `main` at the rewritten equivalent of its old HEAD**
+
+The original `main` had 2 commits (spec + plan). Those are now the first two commits on `plan-1-foundation`. Move main forward:
+
+```bash
+# Count of task commits on plan-1-foundation past main = 14 (Tasks 1–15 minus the
+# tasks that didn't produce a commit, plus this resign task itself which produces 0).
+# Just look at the log and pick the new SHA of the "docs: add Plan 1" commit.
+git log plan-1-foundation --oneline | head -20
+# Find the SHA of "docs: add Plan 1 (foundation) implementation plan" — let's call it $PLAN_SHA
+git branch -f main $PLAN_SHA
+```
+
+Or, equivalently if the math holds (one commit per task plus the spec + plan docs):
+```bash
+# 14 commits past main: 11 task commits + 3 fixups (Task 2 amend, Task 6 amend, Task 9 amend) — adjust based on actual git log.
+git log plan-1-foundation --oneline | wc -l   # total commits
+git log main --oneline | wc -l                # original main count (2 before resign)
+# main should point at HEAD~(total - 2) after resign
+```
+
+The "look at the log and pick the SHA" approach is the safest.
+
+- [ ] **Step 5: Verify all commits are signed**
+
+```bash
+git log --show-signature --oneline | head -20
+```
+
+Every line that previously said "No signature" should now show a signature. The `error: gpg.ssh.allowedSignersFile needs to be configured` message is harmless — it's a verification config, not a signing one. (If you want to silence it, configure `gpg.ssh.allowedSignersFile` per Git docs.)
+
+- [ ] **Step 6: Commit the resign — wait, no, there's nothing to commit**
+
+The rebase already rewrote history. No new commit needed for this task.
+
 ## Done criteria
 
 - [ ] `pnpm install && pnpm verify` passes from a fresh clone.
