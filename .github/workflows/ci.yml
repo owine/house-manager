@@ -133,7 +133,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       meilisearch:
-        image: getmeili/meilisearch:v1.10
+        image: getmeili/meilisearch:v1.42
         env:
           MEILI_MASTER_KEY: test
           MEILI_ENV: development
