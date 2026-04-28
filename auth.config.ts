@@ -1,5 +1,5 @@
-import { getEnv } from '@/lib/env';
 import type { NextAuthConfig } from 'next-auth';
+import { getEnv } from '@/lib/env';
 
 const env = getEnv();
 

@@ -1,5 +1,5 @@
-import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
 
 // SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
 // avoid an Auth.js v5 JWE-vs-database-session incompatibility, so authenticated

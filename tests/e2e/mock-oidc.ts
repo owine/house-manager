@@ -1,5 +1,5 @@
 import { createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
-import { type Server, createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 
 export async function startMockOidc(port: number): Promise<{ server: Server; issuer: string }> {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

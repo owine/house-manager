@@ -1,6 +1,6 @@
-import { isReady } from '@/lib/health';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type TestStack, startStack, stopStack } from './setup';
+import { isReady } from '@/lib/health';
+import { startStack, stopStack, type TestStack } from './setup';
 
 let stack: TestStack;
 
