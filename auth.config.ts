@@ -4,7 +4,9 @@ import type { NextAuthConfig } from 'next-auth';
 const env = getEnv();
 
 // Edge-compatible auth config — no Prisma/Node.js-only imports.
-// Used by middleware.ts (runs in Edge Runtime).
+// Currently used only by lib/auth.ts (which adds the Prisma adapter and
+// callbacks). Kept separate so middleware.ts can be re-added in the future
+// without re-extracting the provider config.
 export const authConfig = {
   secret: env.AUTH_SECRET,
   trustHost: true,
