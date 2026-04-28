@@ -29,12 +29,18 @@ importers:
       pg-boss:
         specifier: ~12.18.1
         version: 12.18.1
+      prisma:
+        specifier: ~7.8.0
+        version: 7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(magicast@0.3.5)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
       react:
         specifier: ~19.2.5
         version: 19.2.5
       react-dom:
         specifier: ~19.2.5
         version: 19.2.5(react@19.2.5)
+      tsx:
+        specifier: ~4.21.0
+        version: 4.21.0
       zod:
         specifier: ~4.3.6
         version: 4.3.6
@@ -60,15 +66,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ~2.1.9
         version: 2.1.9(vitest@2.1.9(@types/node@25.6.0))
-      prisma:
-        specifier: ~7.8.0
-        version: 7.8.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(magicast@0.3.5)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
       testcontainers:
         specifier: ~11.14.0
         version: 11.14.0
-      tsx:
-        specifier: ~4.21.0
-        version: 4.21.0
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
