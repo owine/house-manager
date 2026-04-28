@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1.23
+# syntax=docker/dockerfile:1.23@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
 
-FROM node:24.15.0-alpine AS base
+FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS base
 RUN corepack enable
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
 RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
-FROM node:24.15.0-alpine AS runtime
+FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
 RUN corepack enable && apk add --no-cache curl
 WORKDIR /app
 ENV NODE_ENV=production
