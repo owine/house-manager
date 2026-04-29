@@ -10,7 +10,7 @@
   "schedule": ["* * * * 1"],
   "automergeSchedule": ["at any time"],
   "rangeStrategy": "bump",
-  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm"],
+  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm", "pre-commit"],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["* * * * 1"]
@@ -94,6 +94,11 @@
         "docker/setup-qemu-action"
       ],
       "groupName": "docker-actions"
+    },
+    {
+      "description": "Group GitGuardian (action + ggshield CLI) so secret-scanning stays consistent",
+      "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
+      "groupName": "gitguardian"
     },
     {
       "description": "Pin Docker image digests in Dockerfile and GitHub Actions service images (compose is excluded via enabledManagers)",
