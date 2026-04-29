@@ -311,7 +311,57 @@ export default async function ItemDetailPage({
         </div>
       )}
 
-      {tab === 'notes' && <p>Notes tab is wired up in a later task.</p>}
+      {tab === 'notes' && (
+        <div>
+          <header
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Notes</h2>
+            <Link href={`/notes/new?itemId=${item.id}`}>+ Add note</Link>
+          </header>
+          {item.itemNotes.length === 0 ? (
+            <p>No notes yet.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {item.itemNotes.map((note) => (
+                <li key={note.id} style={{ borderBottom: '1px solid #eee', padding: '0.5rem 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Link href={`/notes/${note.id}`} style={{ fontWeight: 500 }}>
+                      {note.title}
+                    </Link>
+                    <span style={{ color: '#666', fontSize: '0.85rem' }}>
+                      {note.updatedAt.toISOString().slice(0, 10)}
+                    </span>
+                  </div>
+                  {note.tags.length > 0 && (
+                    <div style={{ marginTop: '0.25rem' }}>
+                      {note.tags.map((t) => (
+                        <span
+                          key={t}
+                          style={{
+                            padding: '0.1rem 0.4rem',
+                            background: '#eee',
+                            borderRadius: '4px',
+                            marginRight: '0.25rem',
+                            fontSize: '0.8rem',
+                          }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
