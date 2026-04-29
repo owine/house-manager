@@ -49,7 +49,7 @@ export function HouseProfileForm({ defaultValues }: Props) {
     register,
     handleSubmit,
     setError,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(houseProfileSchema),
     defaultValues,
@@ -118,10 +118,6 @@ export function HouseProfileForm({ defaultValues }: Props) {
       >
         {pending ? 'Saving…' : 'Save'}
       </button>
-
-      {!isDirty && !pending && (
-        <span style={{ marginLeft: '0.75rem', color: '#080', fontSize: '0.875rem' }}>Saved</span>
-      )}
     </form>
   );
 }
