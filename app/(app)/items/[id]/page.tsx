@@ -77,7 +77,7 @@ export default async function ItemDetailPage({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0 }}>{item.name}</h1>
-            <span className="badge" style={{ whiteSpace: 'nowrap' }}>
+            <span className="badge-sm" style={{ whiteSpace: 'nowrap' }}>
               {item.category.icon ? `${item.category.icon} ` : ''}
               {item.category.name}
             </span>
@@ -269,7 +269,7 @@ export default async function ItemDetailPage({
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                <tr className="table-header">
                   <th className="table-cell">Date</th>
                   <th className="table-cell">Summary</th>
                   <th className="table-cell">Vendor</th>
@@ -278,7 +278,7 @@ export default async function ItemDetailPage({
               </thead>
               <tbody>
                 {item.serviceRecords.map((sr) => (
-                  <tr key={sr.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <tr key={sr.id} className="table-row">
                     <td className="table-cell">
                       <Link href={`/service/${sr.id}`}>
                         {sr.performedOn.toISOString().slice(0, 10)}
@@ -336,7 +336,7 @@ export default async function ItemDetailPage({
                   {note.tags.length > 0 && (
                     <div style={{ marginTop: '0.25rem' }}>
                       {note.tags.map((t) => (
-                        <span key={t} className="badge" style={{ marginRight: '0.25rem' }}>
+                        <span key={t} className="badge-sm" style={{ marginRight: '0.25rem' }}>
                           {t}
                         </span>
                       ))}

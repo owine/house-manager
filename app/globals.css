@@ -90,6 +90,23 @@ blockquote {
   font-size: 0.85rem;
 }
 
+/* Smaller variant for chips inside denser layouts (cards, headers, tag clouds) */
+.badge-sm {
+  padding: 0.1rem 0.35rem;
+  background: var(--badge-bg);
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.table-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.table-header {
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
 .table-cell {
   padding: 0.5rem;
 }
