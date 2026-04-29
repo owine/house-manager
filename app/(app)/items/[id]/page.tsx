@@ -80,7 +80,7 @@ export default async function ItemDetailPage({
             <span
               style={{
                 padding: '0.1rem 0.4rem',
-                background: '#eee',
+                background: 'var(--badge-bg)',
                 borderRadius: '4px',
                 fontSize: '0.8rem',
                 whiteSpace: 'nowrap',
@@ -93,8 +93,8 @@ export default async function ItemDetailPage({
               <span
                 style={{
                   padding: '0.1rem 0.5rem',
-                  background: '#fde8e8',
-                  color: '#c00',
+                  background: 'var(--danger-bg)',
+                  color: 'var(--danger)',
                   borderRadius: '4px',
                   fontSize: '0.8rem',
                   whiteSpace: 'nowrap',
@@ -134,7 +134,7 @@ export default async function ItemDetailPage({
                   border: 'none',
                   padding: 0,
                   cursor: 'pointer',
-                  color: '#c00',
+                  color: 'var(--danger)',
                   font: 'inherit',
                 }}
               >
@@ -277,7 +277,7 @@ export default async function ItemDetailPage({
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
                   <th style={{ padding: '0.5rem' }}>Date</th>
                   <th style={{ padding: '0.5rem' }}>Summary</th>
                   <th style={{ padding: '0.5rem' }}>Vendor</th>
@@ -286,7 +286,7 @@ export default async function ItemDetailPage({
               </thead>
               <tbody>
                 {item.serviceRecords.map((sr) => (
-                  <tr key={sr.id} style={{ borderBottom: '1px solid #eee' }}>
+                  <tr key={sr.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '0.5rem' }}>
                       <Link href={`/service/${sr.id}`}>
                         {sr.performedOn.toISOString().slice(0, 10)}
@@ -329,12 +329,15 @@ export default async function ItemDetailPage({
           ) : (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {item.itemNotes.map((note) => (
-                <li key={note.id} style={{ borderBottom: '1px solid #eee', padding: '0.5rem 0' }}>
+                <li
+                  key={note.id}
+                  style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem 0' }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Link href={`/notes/${note.id}`} style={{ fontWeight: 500 }}>
                       {note.title}
                     </Link>
-                    <span style={{ color: '#666', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--fg-muted)', fontSize: '0.85rem' }}>
                       {note.updatedAt.toISOString().slice(0, 10)}
                     </span>
                   </div>
@@ -345,7 +348,7 @@ export default async function ItemDetailPage({
                           key={t}
                           style={{
                             padding: '0.1rem 0.4rem',
-                            background: '#eee',
+                            background: 'var(--badge-bg)',
                             borderRadius: '4px',
                             marginRight: '0.25rem',
                             fontSize: '0.8rem',

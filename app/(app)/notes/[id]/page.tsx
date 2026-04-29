@@ -30,7 +30,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
         }}
       >
         <div>
-          <p style={{ margin: '0 0 0.25rem', fontSize: '0.85rem', color: '#666' }}>
+          <p style={{ margin: '0 0 0.25rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
             <Link href="/notes">Notes</Link>
           </p>
           <h1 style={{ margin: 0 }}>{note.title}</h1>
@@ -46,7 +46,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
                 border: 'none',
                 padding: 0,
                 cursor: 'pointer',
-                color: '#c00',
+                color: 'var(--danger)',
                 font: 'inherit',
               }}
             >
@@ -70,7 +70,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
           <Link
             href={`/items/${note.item.id}`}
             style={{
-              background: '#eef',
+              background: 'var(--badge-bg)',
               padding: '0.1rem 0.4rem',
               borderRadius: '4px',
               fontSize: '0.85rem',
@@ -87,7 +87,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
               <span
                 key={tag}
                 style={{
-                  background: '#f0f0f0',
+                  background: 'var(--badge-bg)',
                   padding: '0.1rem 0.35rem',
                   borderRadius: '3px',
                   fontSize: '0.8rem',

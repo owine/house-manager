@@ -57,7 +57,11 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
             name="q"
             defaultValue={params.q ?? ''}
             placeholder="Search summary…"
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           />
         </label>
 
@@ -68,7 +72,11 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
           <select
             name="itemId"
             defaultValue={params.filters.itemId?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           >
             <option value="">All items</option>
             {items.map((item) => (
@@ -86,7 +94,11 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
           <select
             name="vendorId"
             defaultValue={params.filters.vendorId?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           >
             <option value="">All vendors</option>
             {vendors.map((vendor) => (
@@ -105,7 +117,11 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
             type="date"
             name="from"
             defaultValue={params.filters.from?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           />
         </label>
 
@@ -117,7 +133,11 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
             type="date"
             name="to"
             defaultValue={params.filters.to?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           />
         </label>
 
@@ -126,7 +146,7 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
           style={{
             padding: '0.3rem 0.75rem',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--border-strong)',
             cursor: 'pointer',
           }}
         >

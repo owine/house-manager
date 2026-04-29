@@ -80,7 +80,7 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
             style={{
               width: '100%',
               padding: '0.3rem 0.5rem',
-              border: '1px solid #ccc',
+              border: '1px solid var(--border-strong)',
               borderRadius: '4px',
             }}
           />
@@ -113,7 +113,7 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
                 style={{
                   width: '100%',
                   padding: '0.3rem 0.5rem',
-                  border: '1px solid #ccc',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: '4px',
                 }}
               />

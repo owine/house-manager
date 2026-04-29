@@ -5,8 +5,8 @@ export function ErrorBanner({ message }: { message?: string }) {
       role="alert"
       style={{
         padding: '0.75rem 1rem',
-        background: '#fee',
-        border: '1px solid #fbb',
+        background: 'var(--danger-bg)',
+        border: '1px solid var(--danger)',
         borderRadius: '4px',
         marginBottom: '1rem',
       }}

@@ -54,7 +54,11 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
             name="q"
             defaultValue={params.q ?? ''}
             placeholder="Search title or body…"
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           />
         </label>
 
@@ -65,7 +69,11 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
           <select
             name="itemId"
             defaultValue={params.filters.itemId?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           >
             <option value="">All items</option>
             {items.map((item) => (
@@ -81,7 +89,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
           style={{
             padding: '0.3rem 0.75rem',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--border-strong)',
             cursor: 'pointer',
           }}
         >

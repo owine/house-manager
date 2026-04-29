@@ -46,9 +46,12 @@ A new `app/globals.css` defines a light palette under `:root` and dark overrides
   --accent: #0066cc;
   --accent-fg: #ffffff;
   --danger: #b00020;
+  --danger-bg: #fde8e8;
   --focus: #0066cc;
   --badge-bg: #eeeeee;
   --badge-fg: #333333;
+  --success: #008800;
+  --warning: #cc8800;
 }
 
 :root[data-theme="dark"] {
@@ -61,9 +64,12 @@ A new `app/globals.css` defines a light palette under `:root` and dark overrides
   --accent: #4d9fff;
   --accent-fg: #0e0e10;
   --danger: #ff6b6b;
+  --danger-bg: #3a1818;
   --focus: #4d9fff;
   --badge-bg: #2a2a2d;
   --badge-fg: #d0d0d0;
+  --success: #66cc66;
+  --warning: #e5a050;
 }
 
 @media (prefers-color-scheme: dark) {

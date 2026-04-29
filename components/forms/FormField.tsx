@@ -17,9 +17,13 @@ export function FormField({ label, htmlFor, error, hint, children }: Props) {
       </label>
       {children}
       {hint && !error && (
-        <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.25rem' }}>{hint}</p>
+        <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)', marginTop: '0.25rem' }}>
+          {hint}
+        </p>
       )}
-      {error && <p style={{ fontSize: '0.85rem', color: '#c00', marginTop: '0.25rem' }}>{error}</p>}
+      {error && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '0.25rem' }}>{error}</p>
+      )}
     </div>
   );
 }

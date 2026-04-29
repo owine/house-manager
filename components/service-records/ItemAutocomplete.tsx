@@ -50,7 +50,7 @@ export function ItemAutocomplete({ name, label, options }: Props) {
         autoComplete="off"
         style={{
           padding: '0.3rem 0.5rem',
-          border: '1px solid #ccc',
+          border: '1px solid var(--border-strong)',
           borderRadius: '4px',
           width: '100%',
         }}
@@ -62,7 +62,9 @@ export function ItemAutocomplete({ name, label, options }: Props) {
         ))}
       </datalist>
       {error?.message && (
-        <p style={{ fontSize: '0.85rem', color: '#c00', marginTop: '0.25rem' }}>{error.message}</p>
+        <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
+          {error.message}
+        </p>
       )}
     </div>
   );

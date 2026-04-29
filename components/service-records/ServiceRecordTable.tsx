@@ -24,7 +24,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
           <th style={{ padding: '0.5rem' }}>Date</th>
           <th style={{ padding: '0.5rem' }}>Summary</th>
           <th style={{ padding: '0.5rem' }}>Item</th>
@@ -34,7 +34,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
       </thead>
       <tbody>
         {records.map((record) => (
-          <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
+          <tr key={record.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
             <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
               <Link href={`/service/${record.id}`}>
                 {record.performedOn.toISOString().slice(0, 10)}

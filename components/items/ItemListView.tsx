@@ -70,11 +70,11 @@ export function ItemListView({ initialView, table, cards }: Props) {
           style={{
             padding: '0.25rem 0.75rem',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--border-strong)',
             cursor: 'pointer',
             fontWeight: view === 'table' ? 700 : 400,
-            background: view === 'table' ? '#222' : '#fff',
-            color: view === 'table' ? '#fff' : '#222',
+            background: view === 'table' ? 'var(--fg)' : 'var(--bg)',
+            color: view === 'table' ? 'var(--bg)' : 'var(--fg)',
           }}
         >
           Table
@@ -86,11 +86,11 @@ export function ItemListView({ initialView, table, cards }: Props) {
           style={{
             padding: '0.25rem 0.75rem',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--border-strong)',
             cursor: 'pointer',
             fontWeight: view === 'cards' ? 700 : 400,
-            background: view === 'cards' ? '#222' : '#fff',
-            color: view === 'cards' ? '#fff' : '#222',
+            background: view === 'cards' ? 'var(--fg)' : 'var(--bg)',
+            color: view === 'cards' ? 'var(--bg)' : 'var(--fg)',
           }}
         >
           Cards

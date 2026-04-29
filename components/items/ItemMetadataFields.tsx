@@ -40,7 +40,12 @@ export function ItemMetadataFields({ slug }: Props) {
 
     return (
       <fieldset
-        style={{ border: '1px solid #ccc', borderRadius: 4, padding: '1rem', marginBottom: '1rem' }}
+        style={{
+          border: '1px solid var(--border-strong)',
+          borderRadius: 4,
+          padding: '1rem',
+          marginBottom: '1rem',
+        }}
       >
         <legend style={{ fontWeight: 600, padding: '0 0.5rem' }}>Metadata</legend>
         {Object.entries(shape).map(([key, rawNode]) => {
@@ -120,7 +125,12 @@ export function ItemMetadataFields({ slug }: Props) {
 
   return (
     <fieldset
-      style={{ border: '1px solid #ccc', borderRadius: 4, padding: '1rem', marginBottom: '1rem' }}
+      style={{
+        border: '1px solid var(--border-strong)',
+        borderRadius: 4,
+        padding: '1rem',
+        marginBottom: '1rem',
+      }}
     >
       <legend style={{ fontWeight: 600, padding: '0 0.5rem' }}>Metadata</legend>
       <FormField label="Metadata (JSON)" htmlFor="metadata" error={metaError}>

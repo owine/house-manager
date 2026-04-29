@@ -9,9 +9,12 @@
   --accent: #0066cc;
   --accent-fg: #ffffff;
   --danger: #b00020;
+  --danger-bg: #fde8e8;
   --focus: #0066cc;
   --badge-bg: #eeeeee;
   --badge-fg: #333333;
+  --success: #008800;
+  --warning: #cc8800;
 }
 
 /* Manual dark override — beats system preference */
@@ -25,9 +28,12 @@
   --accent: #4d9fff;
   --accent-fg: #0e0e10;
   --danger: #ff6b6b;
+  --danger-bg: #3a1818;
   --focus: #4d9fff;
   --badge-bg: #2a2a2d;
   --badge-fg: #d0d0d0;
+  --success: #66cc66;
+  --warning: #e5a050;
 }
 
 /* System dark, only when the user hasn't picked Light explicitly */
@@ -42,10 +48,24 @@
     --accent: #4d9fff;
     --accent-fg: #0e0e10;
     --danger: #ff6b6b;
+    --danger-bg: #3a1818;
     --focus: #4d9fff;
     --badge-bg: #2a2a2d;
     --badge-fg: #d0d0d0;
+    --success: #66cc66;
+    --warning: #e5a050;
   }
+}
+
+/* Native form controls adapt to dark mode */
+html {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -62,4 +82,30 @@ body {
 /* Default link color — saves per-component edits in Task 2 */
 a {
   color: var(--accent);
+}
+
+/* Markdown code/pre/blockquote adapt to theme */
+code {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+pre {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+pre code {
+  background: none;
+  padding: 0;
+}
+blockquote {
+  border-left: 3px solid var(--border-strong);
+  margin-left: 0;
+  padding-left: 1rem;
+  color: var(--fg-muted);
 }
