@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
+import { WarrantyTable } from '@/components/warranties/WarrantyTable';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
 import { getItem } from '@/lib/items/queries';
 import { Markdown } from '@/lib/markdown';
@@ -237,7 +238,26 @@ export default async function ItemDetailPage({
         </div>
       )}
 
-      {tab === 'warranties' && <p>Warranties tab is wired up in a later task.</p>}
+      {tab === 'warranties' && (
+        <div>
+          <header
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Warranties</h2>
+            <Link href={`/items/${item.id}/warranties/new`}>+ Add warranty</Link>
+          </header>
+          {item.warranties.length === 0 ? (
+            <p>No warranties yet.</p>
+          ) : (
+            <WarrantyTable warranties={item.warranties} />
+          )}
+        </div>
+      )}
 
       {tab === 'service' && (
         <div>
