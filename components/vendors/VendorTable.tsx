@@ -8,36 +8,27 @@ export function VendorTable({ vendors }: { vendors: VendorWithCount[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-          <th style={{ padding: '0.5rem' }}>Name</th>
-          <th style={{ padding: '0.5rem' }}>Kind</th>
-          <th style={{ padding: '0.5rem' }}>Tags</th>
-          <th style={{ padding: '0.5rem' }}>Service records</th>
+          <th className="table-cell">Name</th>
+          <th className="table-cell">Kind</th>
+          <th className="table-cell">Tags</th>
+          <th className="table-cell">Service records</th>
         </tr>
       </thead>
       <tbody>
         {vendors.map((v) => (
           <tr key={v.id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               <Link href={`/vendors/${v.id}`}>{v.name}</Link>
             </td>
-            <td style={{ padding: '0.5rem' }}>{v.kind ?? '—'}</td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">{v.kind ?? '—'}</td>
+            <td className="table-cell">
               {v.tags.map((t) => (
-                <span
-                  key={t}
-                  style={{
-                    padding: '0.1rem 0.4rem',
-                    background: 'var(--badge-bg)',
-                    borderRadius: '4px',
-                    marginRight: '0.25rem',
-                    fontSize: '0.85rem',
-                  }}
-                >
+                <span key={t} className="badge" style={{ marginRight: '0.25rem' }}>
                   {t}
                 </span>
               ))}
             </td>
-            <td style={{ padding: '0.5rem' }}>{v._count.serviceRecords}</td>
+            <td className="table-cell">{v._count.serviceRecords}</td>
           </tr>
         ))}
       </tbody>

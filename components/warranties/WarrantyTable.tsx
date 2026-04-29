@@ -55,33 +55,33 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-          <th style={{ padding: '0.5rem' }}>Provider</th>
-          <th style={{ padding: '0.5rem' }}>Policy #</th>
-          <th style={{ padding: '0.5rem' }}>Starts on</th>
-          <th style={{ padding: '0.5rem' }}>Ends on</th>
-          <th style={{ padding: '0.5rem' }}>Status</th>
-          <th style={{ padding: '0.5rem' }}>Cost</th>
-          <th style={{ padding: '0.5rem' }}></th>
+          <th className="table-cell">Provider</th>
+          <th className="table-cell">Policy #</th>
+          <th className="table-cell">Starts on</th>
+          <th className="table-cell">Ends on</th>
+          <th className="table-cell">Status</th>
+          <th className="table-cell">Cost</th>
+          <th className="table-cell"></th>
         </tr>
       </thead>
       <tbody>
         {warranties.map((warranty) => (
           <tr key={warranty.id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td style={{ padding: '0.5rem' }}>{warranty.provider}</td>
-            <td style={{ padding: '0.5rem' }}>{warranty.policyNumber ?? '—'}</td>
-            <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+            <td className="table-cell">{warranty.provider}</td>
+            <td className="table-cell">{warranty.policyNumber ?? '—'}</td>
+            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               {warranty.startsOn.toISOString().slice(0, 10)}
             </td>
-            <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               {warranty.endsOn.toISOString().slice(0, 10)}
             </td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               <WarrantyStatusBadge endsOn={warranty.endsOn} />
             </td>
-            <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               {warranty.cost != null ? currencyFmt.format(warranty.cost.toNumber()) : '—'}
             </td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               <WarrantyDeleteForm warrantyId={warranty.id} />
             </td>
           </tr>

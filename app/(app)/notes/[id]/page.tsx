@@ -69,13 +69,8 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
         {note.item && (
           <Link
             href={`/items/${note.item.id}`}
-            style={{
-              background: 'var(--badge-bg)',
-              padding: '0.1rem 0.4rem',
-              borderRadius: '4px',
-              fontSize: '0.85rem',
-              textDecoration: 'none',
-            }}
+            className="badge"
+            style={{ textDecoration: 'none' }}
           >
             📎 {note.item.name}
           </Link>
@@ -84,15 +79,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
         {note.tags.length > 0 && (
           <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
             {note.tags.map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  background: 'var(--badge-bg)',
-                  padding: '0.1rem 0.35rem',
-                  borderRadius: '3px',
-                  fontSize: '0.8rem',
-                }}
-              >
+              <span key={tag} className="badge">
                 {tag}
               </span>
             ))}

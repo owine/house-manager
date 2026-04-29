@@ -77,15 +77,7 @@ export default async function ItemDetailPage({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0 }}>{item.name}</h1>
-            <span
-              style={{
-                padding: '0.1rem 0.4rem',
-                background: 'var(--badge-bg)',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                whiteSpace: 'nowrap',
-              }}
-            >
+            <span className="badge" style={{ whiteSpace: 'nowrap' }}>
               {item.category.icon ? `${item.category.icon} ` : ''}
               {item.category.name}
             </span>
@@ -278,29 +270,29 @@ export default async function ItemDetailPage({
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                  <th style={{ padding: '0.5rem' }}>Date</th>
-                  <th style={{ padding: '0.5rem' }}>Summary</th>
-                  <th style={{ padding: '0.5rem' }}>Vendor</th>
-                  <th style={{ padding: '0.5rem' }}>Cost</th>
+                  <th className="table-cell">Date</th>
+                  <th className="table-cell">Summary</th>
+                  <th className="table-cell">Vendor</th>
+                  <th className="table-cell">Cost</th>
                 </tr>
               </thead>
               <tbody>
                 {item.serviceRecords.map((sr) => (
                   <tr key={sr.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '0.5rem' }}>
+                    <td className="table-cell">
                       <Link href={`/service/${sr.id}`}>
                         {sr.performedOn.toISOString().slice(0, 10)}
                       </Link>
                     </td>
-                    <td style={{ padding: '0.5rem' }}>{sr.summary}</td>
-                    <td style={{ padding: '0.5rem' }}>
+                    <td className="table-cell">{sr.summary}</td>
+                    <td className="table-cell">
                       {sr.vendor ? (
                         <Link href={`/vendors/${sr.vendor.id}`}>{sr.vendor.name}</Link>
                       ) : (
                         '—'
                       )}
                     </td>
-                    <td style={{ padding: '0.5rem' }}>
+                    <td className="table-cell">
                       {sr.cost ? currencyFmt.format(sr.cost.toNumber()) : '—'}
                     </td>
                   </tr>
@@ -344,16 +336,7 @@ export default async function ItemDetailPage({
                   {note.tags.length > 0 && (
                     <div style={{ marginTop: '0.25rem' }}>
                       {note.tags.map((t) => (
-                        <span
-                          key={t}
-                          style={{
-                            padding: '0.1rem 0.4rem',
-                            background: 'var(--badge-bg)',
-                            borderRadius: '4px',
-                            marginRight: '0.25rem',
-                            fontSize: '0.8rem',
-                          }}
-                        >
+                        <span key={t} className="badge" style={{ marginRight: '0.25rem' }}>
                           {t}
                         </span>
                       ))}

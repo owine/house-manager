@@ -33,16 +33,7 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
           >
             {item.name}
           </Link>
-          <span
-            style={{
-              padding: '0.1rem 0.4rem',
-              background: 'var(--badge-bg)',
-              borderRadius: '4px',
-              fontSize: '0.8rem',
-              alignSelf: 'flex-start',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <span className="badge" style={{ alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
             {item.category.icon ? `${item.category.icon} ` : ''}
             {item.category.name}
           </span>
