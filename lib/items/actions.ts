@@ -1,0 +1,115 @@
+'use server';
+import { revalidatePath } from 'next/cache';
+import { auth } from '@/lib/auth';
+import { metadataSchemaFor } from '@/lib/categories';
+import { prisma } from '@/lib/db';
+import type { ActionResult } from '@/lib/result';
+import { createItemSchema, updateItemSchema } from './schema';
+
+export async function createItem(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = createItemSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const metadataResult = metadataSchemaFor(parsed.data.categorySlug).safeParse(
+    parsed.data.metadata ?? {},
+  );
+  if (!metadataResult.success) {
+    return {
+      ok: false,
+      fieldErrors: { metadata: metadataResult.error.issues.map((i) => i.message) },
+    };
+  }
+
+  const category = await prisma.category.findUnique({ where: { slug: parsed.data.categorySlug } });
+  if (!category) return { ok: false, formError: 'Unknown category' };
+
+  const { categorySlug, metadata, ...rest } = parsed.data;
+  const item = await prisma.item.create({
+    data: { ...rest, categoryId: category.id, metadata: metadataResult.data as object },
+  });
+
+  revalidatePath('/items');
+  revalidatePath('/dashboard');
+  return { ok: true, data: { id: item.id } };
+}
+
+export async function updateItem(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = updateItemSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const { id, categorySlug, metadata, ...rest } = parsed.data;
+
+  const data: Record<string, unknown> = { ...rest };
+  if (categorySlug !== undefined) {
+    const category = await prisma.category.findUnique({ where: { slug: categorySlug } });
+    if (!category) return { ok: false, formError: 'Unknown category' };
+    data.categoryId = category.id;
+  }
+  if (metadata !== undefined) {
+    const slug =
+      categorySlug ??
+      (
+        await prisma.item.findUnique({
+          where: { id },
+          select: { category: { select: { slug: true } } },
+        })
+      )?.category.slug;
+    if (slug) {
+      const metadataResult = metadataSchemaFor(slug).safeParse(metadata);
+      if (!metadataResult.success) {
+        return {
+          ok: false,
+          fieldErrors: { metadata: metadataResult.error.issues.map((i) => i.message) },
+        };
+      }
+      data.metadata = metadataResult.data as object;
+    }
+  }
+
+  await prisma.item.update({ where: { id }, data });
+
+  revalidatePath('/items');
+  revalidatePath(`/items/${id}`);
+  revalidatePath('/dashboard');
+  return { ok: true, data: { id } };
+}
+
+export async function archiveItem(id: string): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  await prisma.item.update({ where: { id }, data: { archivedAt: new Date() } });
+
+  revalidatePath('/items');
+  revalidatePath(`/items/${id}`);
+  revalidatePath('/dashboard');
+  return { ok: true, data: undefined };
+}
+
+export async function restoreItem(id: string): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  await prisma.item.update({ where: { id }, data: { archivedAt: null } });
+
+  revalidatePath('/items');
+  revalidatePath(`/items/${id}`);
+  revalidatePath('/dashboard');
+  return { ok: true, data: undefined };
+}
