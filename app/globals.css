@@ -1,66 +1,33 @@
-/* Light palette */
+/*
+ * Theme tokens defined once via the CSS light-dark() function. The active
+ * value depends on the element's color-scheme: light, dark, or matching the
+ * user's system preference (the default for `light dark`).
+ *
+ * Manual override via [data-theme] sets color-scheme accordingly, so the
+ * same var(--token) reference resolves correctly in all three states
+ * (system, manual light, manual dark) without duplicating values.
+ */
 :root {
-  --bg: #ffffff;
-  --bg-elevated: #f7f7f7;
-  --fg: #111111;
-  --fg-muted: #666666;
-  --border: #dddddd;
-  --border-strong: #999999;
-  --accent: #0066cc;
-  --accent-fg: #ffffff;
-  --danger: #b00020;
-  --danger-bg: #fde8e8;
-  --focus: #0066cc;
-  --badge-bg: #eeeeee;
-  --badge-fg: #333333;
-  --success: #008800;
-  --warning: #cc8800;
-}
-
-/* Manual dark override — beats system preference */
-:root[data-theme="dark"] {
-  --bg: #0e0e10;
-  --bg-elevated: #1a1a1d;
-  --fg: #f0f0f0;
-  --fg-muted: #9a9a9a;
-  --border: #2a2a2d;
-  --border-strong: #444448;
-  --accent: #4d9fff;
-  --accent-fg: #0e0e10;
-  --danger: #ff6b6b;
-  --danger-bg: #3a1818;
-  --focus: #4d9fff;
-  --badge-bg: #2a2a2d;
-  --badge-fg: #d0d0d0;
-  --success: #66cc66;
-  --warning: #e5a050;
-}
-
-/* System dark, only when the user hasn't picked Light explicitly */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0e0e10;
-    --bg-elevated: #1a1a1d;
-    --fg: #f0f0f0;
-    --fg-muted: #9a9a9a;
-    --border: #2a2a2d;
-    --border-strong: #444448;
-    --accent: #4d9fff;
-    --accent-fg: #0e0e10;
-    --danger: #ff6b6b;
-    --danger-bg: #3a1818;
-    --focus: #4d9fff;
-    --badge-bg: #2a2a2d;
-    --badge-fg: #d0d0d0;
-    --success: #66cc66;
-    --warning: #e5a050;
-  }
-}
-
-/* Native form controls adapt to dark mode */
-html {
   color-scheme: light dark;
+
+  --bg: light-dark(#ffffff, #0e0e10);
+  --bg-elevated: light-dark(#f7f7f7, #1a1a1d);
+  --fg: light-dark(#111111, #f0f0f0);
+  --fg-muted: light-dark(#666666, #9a9a9a);
+  --border: light-dark(#dddddd, #2a2a2d);
+  --border-strong: light-dark(#999999, #444448);
+  --accent: light-dark(#0066cc, #4d9fff);
+  --accent-fg: light-dark(#ffffff, #0e0e10);
+  --danger: light-dark(#b00020, #ff6b6b);
+  --danger-bg: light-dark(#fde8e8, #3a1818);
+  --focus: light-dark(#0066cc, #4d9fff);
+  --badge-bg: light-dark(#eeeeee, #2a2a2d);
+  --badge-fg: light-dark(#333333, #d0d0d0);
+  --success: light-dark(#008800, #66cc66);
+  --warning: light-dark(#cc8800, #e5a050);
 }
+
+/* Manual override forces color-scheme; light-dark() picks the matching value. */
 :root[data-theme="light"] {
   color-scheme: light;
 }
@@ -79,7 +46,7 @@ body {
   outline-offset: 2px;
 }
 
-/* Default link color — saves per-component edits in Task 2 */
+/* Default link color */
 a {
   color: var(--accent);
 }
