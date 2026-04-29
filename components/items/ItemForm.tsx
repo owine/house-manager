@@ -121,7 +121,13 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
           htmlFor="purchaseDate"
           error={errors.purchaseDate?.message}
         >
-          <input id="purchaseDate" type="date" {...register('purchaseDate')} />
+          <input
+            id="purchaseDate"
+            type="date"
+            {...register('purchaseDate', {
+              setValueAs: (v) => (v === '' ? undefined : v),
+            })}
+          />
         </FormField>
 
         <FormField
@@ -134,7 +140,9 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
             type="number"
             step="0.01"
             min="0"
-            {...register('purchasePrice', { valueAsNumber: true })}
+            {...register('purchasePrice', {
+              setValueAs: (v) => (v === '' || v === null ? undefined : Number(v)),
+            })}
           />
         </FormField>
 
