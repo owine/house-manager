@@ -84,7 +84,8 @@
         "docker/build-push-action",
         "docker/login-action",
         "docker/metadata-action",
-        "docker/setup-buildx-action"
+        "docker/setup-buildx-action",
+        "docker/setup-qemu-action"
       ],
       "groupName": "docker-actions"
     },
