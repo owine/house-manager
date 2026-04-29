@@ -21,7 +21,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
       </thead>
       <tbody>
         {notes.map((note) => (
-          <tr key={note.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
+          <tr key={note.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '0.5rem' }}>
               <Link href={`/notes/${note.id}`}>{note.title}</Link>
             </td>

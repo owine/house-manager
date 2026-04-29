@@ -66,7 +66,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
       </thead>
       <tbody>
         {warranties.map((warranty) => (
-          <tr key={warranty.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
+          <tr key={warranty.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '0.5rem' }}>{warranty.provider}</td>
             <td style={{ padding: '0.5rem' }}>{warranty.policyNumber ?? '—'}</td>
             <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>

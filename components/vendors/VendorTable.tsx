@@ -16,7 +16,7 @@ export function VendorTable({ vendors }: { vendors: VendorWithCount[] }) {
       </thead>
       <tbody>
         {vendors.map((v) => (
-          <tr key={v.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
+          <tr key={v.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '0.5rem' }}>
               <Link href={`/vendors/${v.id}`}>{v.name}</Link>
             </td>
