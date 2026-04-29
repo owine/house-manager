@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './auth';
+import { resetAuth, signIn } from './auth';
+
+test.beforeEach(async () => {
+  await resetAuth();
+});
 
 test('signs in, adds an item, logs service, sees activity on dashboard', async ({
   page,
