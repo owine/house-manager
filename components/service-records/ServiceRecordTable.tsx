@@ -25,39 +25,39 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-          <th style={{ padding: '0.5rem' }}>Date</th>
-          <th style={{ padding: '0.5rem' }}>Summary</th>
-          <th style={{ padding: '0.5rem' }}>Item</th>
-          <th style={{ padding: '0.5rem' }}>Vendor</th>
-          <th style={{ padding: '0.5rem' }}>Cost</th>
+          <th className="table-cell">Date</th>
+          <th className="table-cell">Summary</th>
+          <th className="table-cell">Item</th>
+          <th className="table-cell">Vendor</th>
+          <th className="table-cell">Cost</th>
         </tr>
       </thead>
       <tbody>
         {records.map((record) => (
           <tr key={record.id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               <Link href={`/service/${record.id}`}>
                 {record.performedOn.toISOString().slice(0, 10)}
               </Link>
             </td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               <Link href={`/service/${record.id}`}>{record.summary}</Link>
             </td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               {record.item ? (
                 <Link href={`/items/${record.item.id}`}>{record.item.name}</Link>
               ) : (
                 '—'
               )}
             </td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               {record.vendor ? (
                 <Link href={`/vendors/${record.vendor.id}`}>{record.vendor.name}</Link>
               ) : (
                 '—'
               )}
             </td>
-            <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               {record.cost != null ? currencyFmt.format(record.cost.toNumber()) : '—'}
             </td>
           </tr>

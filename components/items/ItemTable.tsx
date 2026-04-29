@@ -11,40 +11,32 @@ export function ItemTable({ items }: { items: ItemWithRelations[] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-          <th style={{ padding: '0.5rem' }}>Name</th>
-          <th style={{ padding: '0.5rem' }}>Category</th>
-          <th style={{ padding: '0.5rem' }}>Location</th>
-          <th style={{ padding: '0.5rem' }}>Manufacturer / Model</th>
-          <th style={{ padding: '0.5rem' }}>Warranties</th>
-          <th style={{ padding: '0.5rem' }}>Service</th>
+          <th className="table-cell">Name</th>
+          <th className="table-cell">Category</th>
+          <th className="table-cell">Location</th>
+          <th className="table-cell">Manufacturer / Model</th>
+          <th className="table-cell">Warranties</th>
+          <th className="table-cell">Service</th>
         </tr>
       </thead>
       <tbody>
         {items.map((item) => (
           <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">
               <Link href={`/items/${item.id}`}>{item.name}</Link>
             </td>
-            <td style={{ padding: '0.5rem' }}>
-              <span
-                style={{
-                  padding: '0.1rem 0.4rem',
-                  background: 'var(--badge-bg)',
-                  borderRadius: '4px',
-                  fontSize: '0.85rem',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+            <td className="table-cell">
+              <span className="badge" style={{ whiteSpace: 'nowrap' }}>
                 {item.category.icon ? `${item.category.icon} ` : ''}
                 {item.category.name}
               </span>
             </td>
-            <td style={{ padding: '0.5rem' }}>{item.location ?? '—'}</td>
-            <td style={{ padding: '0.5rem' }}>
+            <td className="table-cell">{item.location ?? '—'}</td>
+            <td className="table-cell">
               {[item.manufacturer, item.model].filter(Boolean).join(' / ') || '—'}
             </td>
-            <td style={{ padding: '0.5rem' }}>{item._count.warranties}</td>
-            <td style={{ padding: '0.5rem' }}>{item._count.serviceRecords}</td>
+            <td className="table-cell">{item._count.warranties}</td>
+            <td className="table-cell">{item._count.serviceRecords}</td>
           </tr>
         ))}
       </tbody>
