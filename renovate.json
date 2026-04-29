@@ -78,6 +78,12 @@
       "groupName": "github-actions-setup"
     },
     {
+      "description": "Group artifact actions (upload + download) so versions stay paired",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["actions/upload-artifact", "actions/download-artifact"],
+      "groupName": "github-actions-artifact"
+    },
+    {
       "description": "Group all Docker actions (build/login/metadata/buildx/push)",
       "matchManagers": ["github-actions"],
       "matchPackageNames": [
