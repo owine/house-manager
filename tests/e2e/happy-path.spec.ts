@@ -19,8 +19,8 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   await page.getByLabel('Category').selectOption('hvac');
   await page.getByRole('button', { name: 'Create item' }).click();
 
-  // After submit we land on the item detail page
-  await expect(page).toHaveURL(/\/items\/[^/]+$/);
+  // After submit we land on the item detail page (cuid id, not "new")
+  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
   await expect(page.locator('h1')).toContainText('Furnace');
 
   // Switch to the Service tab
@@ -34,8 +34,8 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   // submitLabel on /service/new is "Save record"
   await page.getByRole('button', { name: 'Save record' }).click();
 
-  // After submit we land on the service record detail page
-  await expect(page).toHaveURL(/\/service\/[^/]+$/);
+  // After submit we land on the service record detail page (cuid id, not "new")
+  await expect(page).toHaveURL(/\/service\/c[a-z0-9]+$/);
 
   // Navigate to dashboard and confirm the activity entry is visible.
   // The label format is "Logged service for Furnace: Annual tune-up"
