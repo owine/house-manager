@@ -7,6 +7,16 @@ pre-commit:
     typecheck:
       glob: '*.{ts,tsx}'
       run: pnpm typecheck
+    ggshield:
+      # GitGuardian secret scan on staged content. Skipped when GITGUARDIAN_API_KEY
+      # is unset so contributors without a GG account aren't blocked. CI runs the
+      # full scan via GitGuardian/ggshield-action.
+      run: |
+        if [ -n "$GITGUARDIAN_API_KEY" ] && command -v ggshield >/dev/null 2>&1; then
+          ggshield secret scan pre-commit
+        else
+          echo "ggshield: skipped (GITGUARDIAN_API_KEY unset or ggshield not installed)"
+        fi
 
 pre-push:
   commands:
