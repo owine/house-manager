@@ -34,7 +34,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
       </thead>
       <tbody>
         {records.map((record) => (
-          <tr key={record.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
+          <tr key={record.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
               <Link href={`/service/${record.id}`}>
                 {record.performedOn.toISOString().slice(0, 10)}

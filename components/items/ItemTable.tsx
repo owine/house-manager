@@ -21,7 +21,7 @@ export function ItemTable({ items }: { items: ItemWithRelations[] }) {
       </thead>
       <tbody>
         {items.map((item) => (
-          <tr key={item.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
+          <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '0.5rem' }}>
               <Link href={`/items/${item.id}`}>{item.name}</Link>
             </td>
