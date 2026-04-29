@@ -7,7 +7,7 @@ export function VendorTable({ vendors }: { vendors: VendorWithCount[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+        <tr className="table-header">
           <th className="table-cell">Name</th>
           <th className="table-cell">Kind</th>
           <th className="table-cell">Tags</th>
@@ -16,7 +16,7 @@ export function VendorTable({ vendors }: { vendors: VendorWithCount[] }) {
       </thead>
       <tbody>
         {vendors.map((v) => (
-          <tr key={v.id} style={{ borderBottom: '1px solid var(--border)' }}>
+          <tr key={v.id} className="table-row">
             <td className="table-cell">
               <Link href={`/vendors/${v.id}`}>{v.name}</Link>
             </td>

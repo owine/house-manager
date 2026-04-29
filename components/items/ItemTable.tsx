@@ -10,7 +10,7 @@ export function ItemTable({ items }: { items: ItemWithRelations[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+        <tr className="table-header">
           <th className="table-cell">Name</th>
           <th className="table-cell">Category</th>
           <th className="table-cell">Location</th>
@@ -21,7 +21,7 @@ export function ItemTable({ items }: { items: ItemWithRelations[] }) {
       </thead>
       <tbody>
         {items.map((item) => (
-          <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
+          <tr key={item.id} className="table-row">
             <td className="table-cell">
               <Link href={`/items/${item.id}`}>{item.name}</Link>
             </td>

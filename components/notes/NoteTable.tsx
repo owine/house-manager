@@ -12,7 +12,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+        <tr className="table-header">
           <th className="table-cell">Title</th>
           <th className="table-cell">Attached to</th>
           <th className="table-cell">Tags</th>
@@ -21,7 +21,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
       </thead>
       <tbody>
         {notes.map((note) => (
-          <tr key={note.id} style={{ borderBottom: '1px solid var(--border)' }}>
+          <tr key={note.id} className="table-row">
             <td className="table-cell">
               <Link href={`/notes/${note.id}`}>{note.title}</Link>
             </td>

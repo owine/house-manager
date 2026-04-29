@@ -79,7 +79,7 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
         {note.tags.length > 0 && (
           <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
             {note.tags.map((tag) => (
-              <span key={tag} className="badge">
+              <span key={tag} className="badge-sm">
                 {tag}
               </span>
             ))}

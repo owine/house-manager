@@ -54,7 +54,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+        <tr className="table-header">
           <th className="table-cell">Provider</th>
           <th className="table-cell">Policy #</th>
           <th className="table-cell">Starts on</th>
@@ -66,7 +66,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
       </thead>
       <tbody>
         {warranties.map((warranty) => (
-          <tr key={warranty.id} style={{ borderBottom: '1px solid var(--border)' }}>
+          <tr key={warranty.id} className="table-row">
             <td className="table-cell">{warranty.provider}</td>
             <td className="table-cell">{warranty.policyNumber ?? '—'}</td>
             <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
