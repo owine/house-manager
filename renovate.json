@@ -7,11 +7,13 @@
     "group:allNonMajor"
   ],
   "timezone": "America/Chicago",
-  "schedule": ["before 6am on monday"],
+  "schedule": ["* * * * 1"],
+  "automergeSchedule": ["at any time"],
   "rangeStrategy": "bump",
+  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm"],
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 6am on monday"]
+    "schedule": ["* * * * 1"]
   },
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
@@ -27,13 +29,19 @@
       "automergeType": "pr"
     },
     {
-      "description": "Major updates require manual review",
+      "description": "Auto-merge minor updates too (within group:allNonMajor consolidated PR)",
+      "matchUpdateTypes": ["minor"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Major updates: separate PR per package, manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["major-update"]
     },
     {
-      "description": "Group Prisma packages so adapter + client + CLI bump together",
+      "description": "Group Prisma packages so client + adapter + CLI bump together (any update type)",
       "matchPackageNames": ["@prisma/client", "@prisma/adapter-pg", "prisma"],
       "groupName": "prisma"
     },
@@ -43,12 +51,13 @@
       "groupName": "auth.js"
     },
     {
-      "description": "Group testing packages (vitest + testcontainers families)",
+      "description": "Group testing packages (vitest + testcontainers families + vite peer)",
       "matchPackageNames": [
         "vitest",
         "@vitest/coverage-v8",
         "testcontainers",
-        "@testcontainers/postgresql"
+        "@testcontainers/postgresql",
+        "vite"
       ],
       "groupName": "testing"
     },
@@ -63,8 +72,25 @@
       "groupName": "pg"
     },
     {
-      "description": "Pin Docker image digests so updates surface as Renovate PRs",
-      "matchManagers": ["docker-compose", "dockerfile"],
+      "description": "Group GitHub Actions checkout/setup-node/pnpm-setup as a unit",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["actions/checkout", "actions/setup-node", "pnpm/action-setup"],
+      "groupName": "github-actions-setup"
+    },
+    {
+      "description": "Group all Docker actions (build/login/metadata/buildx/push)",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": [
+        "docker/build-push-action",
+        "docker/login-action",
+        "docker/metadata-action",
+        "docker/setup-buildx-action"
+      ],
+      "groupName": "docker-actions"
+    },
+    {
+      "description": "Pin Docker image digests in Dockerfile and GitHub Actions service images (compose is excluded via enabledManagers)",
+      "matchManagers": ["dockerfile", "github-actions"],
       "pinDigests": true
     }
   ]
