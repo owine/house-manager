@@ -53,7 +53,9 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
     ...services.map((s) => ({
       kind: 'service-logged' as const,
       occurredAt: s.createdAt,
-      label: s.item ? `Logged service for ${s.item.name}` : `Logged service: ${s.summary}`,
+      label: s.item
+        ? `Logged service for ${s.item.name}: ${s.summary}`
+        : `Logged service: ${s.summary}`,
       href: `/service/${s.id}`,
       icon: '🔧',
     })),
