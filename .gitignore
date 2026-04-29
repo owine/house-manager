@@ -5,6 +5,7 @@ next-env.d.ts
 .env.local
 *.tsbuildinfo
 playwright-report
+.playwright-mcp
 test-results
 coverage
 /data
