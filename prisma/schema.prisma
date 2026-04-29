@@ -81,3 +81,110 @@ model HouseProfile {
 
   @@map("house_profile")
 }
+
+model Category {
+  id           String  @id @default(cuid())
+  slug         String  @unique
+  name         String
+  icon         String?
+  sortOrder    Int     @default(0)
+
+  items        Item[]
+
+  @@map("categories")
+}
+
+model Item {
+  id              String     @id @default(cuid())
+  name            String
+  categoryId      String
+  category        Category   @relation(fields: [categoryId], references: [id])
+  location        String?
+  manufacturer    String?
+  model           String?
+  serialNumber    String?
+  purchaseDate    DateTime?
+  purchasePrice   Decimal?   @db.Decimal(10, 2)
+  metadata        Json       @default("{}")
+  notes           String?    @db.Text
+  archivedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  warranties      Warranty[]
+  serviceRecords  ServiceRecord[]
+  itemNotes       Note[]     @relation("ItemNotes")
+
+  @@index([categoryId])
+  @@index([archivedAt])
+  @@map("items")
+}
+
+model Vendor {
+  id              String     @id @default(cuid())
+  name            String
+  kind            String?
+  phone           String?
+  email           String?
+  website         String?
+  address         String?
+  notes           String?    @db.Text
+  tags            String[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  serviceRecords  ServiceRecord[]
+
+  @@map("vendors")
+}
+
+model Warranty {
+  id              String     @id @default(cuid())
+  itemId          String
+  item            Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  provider        String
+  policyNumber    String?
+  startsOn        DateTime
+  endsOn          DateTime
+  coverage        String?    @db.Text
+  cost            Decimal?   @db.Decimal(10, 2)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([itemId])
+  @@index([endsOn])
+  @@map("warranties")
+}
+
+model ServiceRecord {
+  id              String     @id @default(cuid())
+  itemId          String?
+  item            Item?      @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  vendorId        String?
+  vendor          Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  performedOn     DateTime
+  cost            Decimal?   @db.Decimal(10, 2)
+  summary         String
+  notes           String?    @db.Text
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([itemId])
+  @@index([vendorId])
+  @@index([performedOn])
+  @@map("service_records")
+}
+
+model Note {
+  id          String     @id @default(cuid())
+  title       String
+  body        String     @db.Text
+  itemId      String?
+  item        Item?      @relation("ItemNotes", fields: [itemId], references: [id], onDelete: SetNull)
+  tags        String[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([itemId])
+  @@map("notes")
+}
