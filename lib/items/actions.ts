@@ -22,10 +22,13 @@ export async function createItem(input: unknown): Promise<ActionResult<{ id: str
     parsed.data.metadata ?? {},
   );
   if (!metadataResult.success) {
-    return {
-      ok: false,
-      fieldErrors: { metadata: metadataResult.error.issues.map((i) => i.message) },
-    };
+    const fieldErrors: Record<string, string[]> = {};
+    for (const issue of metadataResult.error.issues) {
+      const key = ['metadata', ...issue.path].join('.');
+      if (!fieldErrors[key]) fieldErrors[key] = [];
+      fieldErrors[key].push(issue.message);
+    }
+    return { ok: false, fieldErrors };
   }
 
   const category = await prisma.category.findUnique({ where: { slug: parsed.data.categorySlug } });
@@ -73,10 +76,13 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
     if (slug) {
       const metadataResult = metadataSchemaFor(slug).safeParse(metadata);
       if (!metadataResult.success) {
-        return {
-          ok: false,
-          fieldErrors: { metadata: metadataResult.error.issues.map((i) => i.message) },
-        };
+        const fieldErrors: Record<string, string[]> = {};
+        for (const issue of metadataResult.error.issues) {
+          const key = ['metadata', ...issue.path].join('.');
+          if (!fieldErrors[key]) fieldErrors[key] = [];
+          fieldErrors[key].push(issue.message);
+        }
+        return { ok: false, fieldErrors };
       }
       data.metadata = metadataResult.data as object;
     }

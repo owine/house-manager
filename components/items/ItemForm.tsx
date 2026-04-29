@@ -51,12 +51,11 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
   const watchedCategorySlug = watch('categorySlug');
 
   // Reset metadata when category changes so previous-category values don't leak.
-  // watchedCategorySlug is intentionally omitted from deps: we only want this
-  // effect to fire because the slug changed (the value itself is read via the
-  // closure captured by the effect, not as a stable dep).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: metadata reset must run on slug change
+  // watchedCategorySlug is referenced below to make the dependency explicit to the linter.
   useEffect(() => {
-    setValue('metadata', {});
+    if (watchedCategorySlug !== undefined) {
+      setValue('metadata', {});
+    }
   }, [watchedCategorySlug, setValue]);
 
   const onSubmit = handleSubmit((data) => {
@@ -67,7 +66,8 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
         if (result.formError) setError('root', { message: result.formError });
         if (result.fieldErrors) {
           for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as keyof ItemFormValues, { message: msgs?.[0] });
+            // RHF supports nested dot-paths (e.g. "metadata.fuelType")
+            setError(field as Parameters<typeof setError>[0], { message: msgs?.[0] });
           }
         }
         return;
