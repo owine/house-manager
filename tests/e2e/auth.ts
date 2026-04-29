@@ -1,6 +1,22 @@
 import type { Page } from '@playwright/test';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 
-export async function signIn(page: Page) {
+// Each spec runs in the same Postgres container; without a reset, the second
+// spec's sign-in flow hits "Unique constraint failed on email" because the
+// User row from the first spec is still around.
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
+
+export async function resetAuth(): Promise<void> {
+  // Delete in FK-safe order: Session and Account reference User.
+  await prisma.session.deleteMany();
+  await prisma.account.deleteMany();
+  await prisma.verificationToken.deleteMany();
+  await prisma.user.deleteMany();
+}
+
+export async function signIn(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByRole('link', { name: 'Sign in' }).click();
   await Promise.all([
