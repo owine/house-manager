@@ -62,7 +62,11 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
             name="q"
             defaultValue={params.q ?? ''}
             placeholder="Name, manufacturer, model…"
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           />
         </label>
 
@@ -73,7 +77,11 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           <select
             name="category"
             defaultValue={params.filters.category?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -92,7 +100,11 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           <select
             name="location"
             defaultValue={params.filters.location?.[0] ?? ''}
-            style={{ padding: '0.3rem 0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+            style={{
+              padding: '0.3rem 0.5rem',
+              border: '1px solid var(--border-strong)',
+              borderRadius: '4px',
+            }}
           >
             <option value="">All locations</option>
             {locations.map((loc) => (
@@ -126,7 +138,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           style={{
             padding: '0.3rem 0.75rem',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--border-strong)',
             cursor: 'pointer',
           }}
         >

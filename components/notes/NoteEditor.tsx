@@ -28,7 +28,7 @@ export function NoteEditor() {
             style={{
               width: '100%',
               padding: '0.4rem 0.5rem',
-              border: '1px solid #ccc',
+              border: '1px solid var(--border-strong)',
               borderRadius: '4px',
               fontFamily: 'monospace',
               fontSize: '0.875rem',
@@ -37,7 +37,7 @@ export function NoteEditor() {
             }}
           />
           {errors.body?.message && (
-            <p style={{ fontSize: '0.85rem', color: '#c00', marginTop: '0.25rem' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
               {String(errors.body.message)}
             </p>
           )}
@@ -48,10 +48,10 @@ export function NoteEditor() {
           style={{
             flex: '1 1 300px',
             minWidth: 0,
-            border: '1px solid #ddd',
+            border: '1px solid var(--border)',
             borderRadius: '4px',
             padding: '0.5rem 0.75rem',
-            background: '#fafafa',
+            background: 'var(--bg-elevated)',
             overflow: 'auto',
           }}
         >
@@ -59,7 +59,7 @@ export function NoteEditor() {
           {body ? (
             <Markdown>{body}</Markdown>
           ) : (
-            <p style={{ color: '#999', fontSize: '0.875rem', fontStyle: 'italic' }}>
+            <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem', fontStyle: 'italic' }}>
               Nothing to preview yet.
             </p>
           )}

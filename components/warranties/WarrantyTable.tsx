@@ -36,7 +36,7 @@ function WarrantyDeleteForm({ warrantyId }: { warrantyId: string }) {
           border: 'none',
           padding: 0,
           cursor: 'pointer',
-          color: '#c00',
+          color: 'var(--danger)',
           font: 'inherit',
         }}
       >
@@ -48,13 +48,13 @@ function WarrantyDeleteForm({ warrantyId }: { warrantyId: string }) {
 
 export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
   if (warranties.length === 0) {
-    return <p style={{ color: '#666' }}>No warranties recorded.</p>;
+    return <p style={{ color: 'var(--fg-muted)' }}>No warranties recorded.</p>;
   }
 
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
           <th style={{ padding: '0.5rem' }}>Provider</th>
           <th style={{ padding: '0.5rem' }}>Policy #</th>
           <th style={{ padding: '0.5rem' }}>Starts on</th>
@@ -66,7 +66,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
       </thead>
       <tbody>
         {warranties.map((warranty) => (
-          <tr key={warranty.id} style={{ borderBottom: '1px solid #eee' }}>
+          <tr key={warranty.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
             <td style={{ padding: '0.5rem' }}>{warranty.provider}</td>
             <td style={{ padding: '0.5rem' }}>{warranty.policyNumber ?? '—'}</td>
             <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>

@@ -19,7 +19,7 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
         <div
           key={item.id}
           style={{
-            border: '1px solid #ddd',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '1rem',
             display: 'flex',
@@ -36,7 +36,7 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
           <span
             style={{
               padding: '0.1rem 0.4rem',
-              background: '#eee',
+              background: 'var(--badge-bg)',
               borderRadius: '4px',
               fontSize: '0.8rem',
               alignSelf: 'flex-start',
@@ -47,10 +47,10 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
             {item.category.name}
           </span>
           {item.location && (
-            <span style={{ fontSize: '0.85rem', color: '#555' }}>{item.location}</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>{item.location}</span>
           )}
           {item.purchaseDate && (
-            <span style={{ fontSize: '0.8rem', color: '#888' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--fg-muted)' }}>
               Purchased: {new Date(item.purchaseDate).toLocaleDateString()}
             </span>
           )}
@@ -60,7 +60,7 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
               display: 'flex',
               gap: '0.75rem',
               fontSize: '0.8rem',
-              color: '#666',
+              color: 'var(--fg-muted)',
             }}
           >
             <span>{item._count.warranties} warranties</span>

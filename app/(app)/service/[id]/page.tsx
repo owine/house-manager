@@ -36,7 +36,7 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
         }}
       >
         <div>
-          <p style={{ margin: '0 0 0.25rem', fontSize: '0.85rem', color: '#666' }}>
+          <p style={{ margin: '0 0 0.25rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
             <Link href="/service">Service records</Link>
           </p>
           <h1 style={{ margin: 0 }}>{record.summary}</h1>
@@ -52,7 +52,7 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
                 border: 'none',
                 padding: 0,
                 cursor: 'pointer',
-                color: '#c00',
+                color: 'var(--danger)',
                 font: 'inherit',
               }}
             >

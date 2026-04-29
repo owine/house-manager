@@ -20,7 +20,7 @@ export function ItemTabs({ active, itemId }: Props) {
       style={{
         display: 'flex',
         gap: '0',
-        borderBottom: '1px solid #ddd',
+        borderBottom: '1px solid var(--border)',
         marginBottom: '1.5rem',
       }}
     >
@@ -34,9 +34,9 @@ export function ItemTabs({ active, itemId }: Props) {
               padding: '0.5rem 1rem',
               textDecoration: 'none',
               fontSize: '0.9rem',
-              color: isActive ? '#000' : '#555',
+              color: isActive ? 'var(--fg)' : 'var(--fg-muted)',
               fontWeight: isActive ? 600 : 400,
-              borderBottom: isActive ? '2px solid #000' : '2px solid transparent',
+              borderBottom: isActive ? '2px solid var(--fg)' : '2px solid transparent',
               marginBottom: '-1px',
             }}
           >

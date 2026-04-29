@@ -12,7 +12,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
           <th style={{ padding: '0.5rem' }}>Title</th>
           <th style={{ padding: '0.5rem' }}>Attached to</th>
           <th style={{ padding: '0.5rem' }}>Tags</th>
@@ -21,7 +21,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
       </thead>
       <tbody>
         {notes.map((note) => (
-          <tr key={note.id} style={{ borderBottom: '1px solid #eee' }}>
+          <tr key={note.id} style={{ borderBottom: '1px solid var(--bg-elevated)' }}>
             <td style={{ padding: '0.5rem' }}>
               <Link href={`/notes/${note.id}`}>{note.title}</Link>
             </td>
@@ -30,7 +30,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
                 <Link
                   href={`/items/${note.item.id}`}
                   style={{
-                    background: '#eef',
+                    background: 'var(--badge-bg)',
                     padding: '0.1rem 0.4rem',
                     borderRadius: '4px',
                     fontSize: '0.85rem',
@@ -50,7 +50,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
                     <span
                       key={tag}
                       style={{
-                        background: '#f0f0f0',
+                        background: 'var(--badge-bg)',
                         padding: '0.1rem 0.35rem',
                         borderRadius: '3px',
                         fontSize: '0.8rem',
@@ -69,7 +69,7 @@ export function NoteTable({ notes }: { notes: NoteRow[] }) {
                 padding: '0.5rem',
                 whiteSpace: 'nowrap',
                 fontSize: '0.85rem',
-                color: '#666',
+                color: 'var(--fg-muted)',
               }}
             >
               {note.updatedAt.toISOString().slice(0, 10)}

@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect('/api/auth/signin');
   return (
     <div>
-      <header style={{ padding: '1rem', borderBottom: '1px solid #ddd' }}>
+      <header style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
         <strong>House Manager</strong>
         <span style={{ marginLeft: '1rem' }}>Signed in as {session.user.name}</span>
       </header>

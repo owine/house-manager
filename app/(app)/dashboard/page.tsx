@@ -34,7 +34,7 @@ export default async function Dashboard() {
               style={{
                 flex: '1 1 120px',
                 padding: '1rem',
-                border: '1px solid #eee',
+                border: '1px solid var(--border)',
                 borderRadius: '6px',
                 textAlign: 'center',
               }}
@@ -42,7 +42,7 @@ export default async function Dashboard() {
               <div style={{ fontSize: '2rem', fontWeight: 600, lineHeight: 1.1 }}>
                 {stats.activeItems}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--fg-muted)', marginTop: '0.25rem' }}>
                 active items
               </div>
             </div>
@@ -50,7 +50,7 @@ export default async function Dashboard() {
               style={{
                 flex: '1 1 120px',
                 padding: '1rem',
-                border: '1px solid #eee',
+                border: '1px solid var(--border)',
                 borderRadius: '6px',
                 textAlign: 'center',
               }}
@@ -58,13 +58,15 @@ export default async function Dashboard() {
               <div style={{ fontSize: '2rem', fontWeight: 600, lineHeight: 1.1 }}>
                 {stats.vendors}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>vendors</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--fg-muted)', marginTop: '0.25rem' }}>
+                vendors
+              </div>
             </div>
             <div
               style={{
                 flex: '1 1 120px',
                 padding: '1rem',
-                border: '1px solid #eee',
+                border: '1px solid var(--border)',
                 borderRadius: '6px',
                 textAlign: 'center',
               }}
@@ -72,7 +74,7 @@ export default async function Dashboard() {
               <div style={{ fontSize: '2rem', fontWeight: 600, lineHeight: 1.1 }}>
                 {stats.serviceThisYear}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--fg-muted)', marginTop: '0.25rem' }}>
                 service this year
               </div>
             </div>
@@ -88,7 +90,7 @@ export default async function Dashboard() {
               style={{
                 display: 'inline-block',
                 padding: '0.5rem 1rem',
-                border: '1px solid #ccc',
+                border: '1px solid var(--border-strong)',
                 borderRadius: '4px',
                 textDecoration: 'none',
                 fontSize: '0.9rem',
@@ -101,7 +103,7 @@ export default async function Dashboard() {
               style={{
                 display: 'inline-block',
                 padding: '0.5rem 1rem',
-                border: '1px solid #ccc',
+                border: '1px solid var(--border-strong)',
                 borderRadius: '4px',
                 textDecoration: 'none',
                 fontSize: '0.9rem',
@@ -114,7 +116,7 @@ export default async function Dashboard() {
               style={{
                 display: 'inline-block',
                 padding: '0.5rem 1rem',
-                border: '1px solid #ccc',
+                border: '1px solid var(--border-strong)',
                 borderRadius: '4px',
                 textDecoration: 'none',
                 fontSize: '0.9rem',
@@ -127,7 +129,7 @@ export default async function Dashboard() {
               style={{
                 display: 'inline-block',
                 padding: '0.5rem 1rem',
-                border: '1px solid #ccc',
+                border: '1px solid var(--border-strong)',
                 borderRadius: '4px',
                 textDecoration: 'none',
                 fontSize: '0.9rem',
@@ -142,7 +144,7 @@ export default async function Dashboard() {
         <section style={{ flex: '1 1 280px' }}>
           <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Recent activity</h2>
           {activity.length === 0 ? (
-            <p style={{ color: '#666', fontSize: '0.9rem' }}>
+            <p style={{ color: 'var(--fg-muted)', fontSize: '0.9rem' }}>
               No activity yet — <Link href="/items/new">add an item to get started</Link>.
             </p>
           ) : (
@@ -155,7 +157,7 @@ export default async function Dashboard() {
                     alignItems: 'baseline',
                     gap: '0.5rem',
                     padding: '0.4rem 0',
-                    borderBottom: '1px solid #eee',
+                    borderBottom: '1px solid var(--border)',
                     fontSize: '0.9rem',
                   }}
                 >
@@ -165,7 +167,7 @@ export default async function Dashboard() {
                   </Link>
                   <span
                     style={{
-                      color: '#999',
+                      color: 'var(--fg-muted)',
                       fontSize: '0.8rem',
                       flexShrink: 0,
                       whiteSpace: 'nowrap',
