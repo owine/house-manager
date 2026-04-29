@@ -239,7 +239,57 @@ export default async function ItemDetailPage({
 
       {tab === 'warranties' && <p>Warranties tab is wired up in a later task.</p>}
 
-      {tab === 'service' && <p>Service tab is wired up in a later task.</p>}
+      {tab === 'service' && (
+        <div>
+          <header
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Service history</h2>
+            <Link href={`/service/new?itemId=${item.id}`}>+ Log service</Link>
+          </header>
+          {item.serviceRecords.length === 0 ? (
+            <p>No service records yet.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>
+                  <th style={{ padding: '0.5rem' }}>Date</th>
+                  <th style={{ padding: '0.5rem' }}>Summary</th>
+                  <th style={{ padding: '0.5rem' }}>Vendor</th>
+                  <th style={{ padding: '0.5rem' }}>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.serviceRecords.map((sr) => (
+                  <tr key={sr.id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.5rem' }}>
+                      <Link href={`/service/${sr.id}`}>
+                        {sr.performedOn.toISOString().slice(0, 10)}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '0.5rem' }}>{sr.summary}</td>
+                    <td style={{ padding: '0.5rem' }}>
+                      {sr.vendor ? (
+                        <Link href={`/vendors/${sr.vendor.id}`}>{sr.vendor.name}</Link>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td style={{ padding: '0.5rem' }}>
+                      {sr.cost ? currencyFmt.format(sr.cost.toNumber()) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {tab === 'notes' && <p>Notes tab is wired up in a later task.</p>}
     </div>
