@@ -4,6 +4,9 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   retries: process.env.CI ? 2 : 0,
+  // Serialize specs: they share auth tables in one DB, so concurrent OAuth
+  // callbacks race on the User row's unique email constraint.
+  workers: 1,
   globalSetup: './tests/e2e/global-setup.ts',
   globalTeardown: './tests/e2e/global-teardown.ts',
   use: {
