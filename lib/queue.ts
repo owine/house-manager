@@ -2,11 +2,16 @@ import { PgBoss } from 'pg-boss';
 
 import { getEnv } from '@/lib/env';
 
-// Every queue used by `boss.send()` or `boss.work()` must be registered.
-// pg-boss 10+ no longer auto-creates queues on first use; calling send/work
-// against an unregistered queue throws "Queue X does not exist". `createQueue`
-// is idempotent, so we call it for the full set during `getBoss()` startup.
-const QUEUES = ['thumbnail'] as const;
+// Single source of truth for queue names. Producers (boss.send) and consumers
+// (boss.work) import `Queue.X` instead of repeating string literals — adding a
+// new queue is exactly one line here and the registration loop below picks it
+// up automatically. pg-boss 10+ requires explicit createQueue() before any
+// send/work; createQueue is idempotent.
+export const Queue = {
+  Thumbnail: 'thumbnail',
+} as const;
+export type QueueName = (typeof Queue)[keyof typeof Queue];
+const QUEUES = Object.values(Queue) as readonly QueueName[];
 
 let bossInstance: PgBoss | null = null;
 

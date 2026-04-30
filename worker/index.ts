@@ -1,10 +1,10 @@
-import { getBoss } from '@/lib/queue';
+import { getBoss, Queue } from '@/lib/queue';
 import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
 
 async function main() {
   const boss = await getBoss();
 
-  await boss.work<ThumbnailJob>('thumbnail', { batchSize: 2 }, async (jobs) => {
+  await boss.work<ThumbnailJob>(Queue.Thumbnail, { batchSize: 2 }, async (jobs) => {
     for (const job of jobs) {
       await handleThumbnail(job.data);
     }
