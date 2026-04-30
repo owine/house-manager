@@ -46,6 +46,8 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       select: {
         id: true,
         filename: true,
+        externalUrl: true,
+        displayLabel: true,
         createdAt: true,
         item: { select: { id: true, name: true } },
         warranty: { select: { id: true, provider: true } },
@@ -54,6 +56,23 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       },
     }),
   ]);
+
+  function attachmentLabelText(a: {
+    filename: string | null;
+    externalUrl: string | null;
+    displayLabel: string | null;
+  }): { verb: string; name: string; icon: string } {
+    if (a.externalUrl) {
+      let hostname: string;
+      try {
+        hostname = new URL(a.externalUrl).hostname;
+      } catch {
+        hostname = a.externalUrl;
+      }
+      return { verb: 'Linked', name: a.displayLabel || hostname, icon: '🔗' };
+    }
+    return { verb: 'Added', name: a.filename ?? '(file)', icon: '📎' };
+  }
 
   const events: ActivityEvent[] = [
     ...items.map((i) => ({
@@ -94,46 +113,50 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
     ),
     ...attachments.flatMap((a) => {
       if (a.item) {
+        const { verb, name, icon } = attachmentLabelText(a);
         return [
           {
             kind: 'attachment-added' as const,
             occurredAt: a.createdAt,
-            label: `Added ${a.filename} to ${a.item.name}`,
+            label: `${verb} ${name} to ${a.item.name}`,
             href: `/items/${a.item.id}?tab=files`,
-            icon: '📎',
+            icon,
           },
         ];
       }
       if (a.warranty) {
+        const { verb, name, icon } = attachmentLabelText(a);
         return [
           {
             kind: 'attachment-added' as const,
             occurredAt: a.createdAt,
-            label: `Added ${a.filename} to warranty (${a.warranty.provider})`,
+            label: `${verb} ${name} to warranty (${a.warranty.provider})`,
             href: `/warranties/${a.warranty.id}`,
-            icon: '📎',
+            icon,
           },
         ];
       }
       if (a.serviceRecord) {
+        const { verb, name, icon } = attachmentLabelText(a);
         return [
           {
             kind: 'attachment-added' as const,
             occurredAt: a.createdAt,
-            label: `Added ${a.filename} to service: ${a.serviceRecord.summary}`,
+            label: `${verb} ${name} to service: ${a.serviceRecord.summary}`,
             href: `/service/${a.serviceRecord.id}`,
-            icon: '📎',
+            icon,
           },
         ];
       }
       if (a.note) {
+        const { verb, name, icon } = attachmentLabelText(a);
         return [
           {
             kind: 'attachment-added' as const,
             occurredAt: a.createdAt,
-            label: `Added ${a.filename} to note: ${a.note.title}`,
+            label: `${verb} ${name} to note: ${a.note.title}`,
             href: `/notes/${a.note.id}`,
-            icon: '📎',
+            icon,
           },
         ];
       }
