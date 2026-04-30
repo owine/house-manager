@@ -23,6 +23,10 @@ export const authConfig = {
       // sufficient entropy (`invalid_state`). Auth.js v5's default checks for
       // inline OIDC providers omit state, so opt in explicitly.
       checks: ['pkce', 'state'],
+      // Auth.js's default sign-in page derives the provider logo from
+      // https://authjs.dev/img/providers/<id>.svg, which 404s for non-built-in
+      // providers like Authelia. Point at the bundled asset in /public.
+      style: { logo: '/authelia.svg' },
     },
   ],
   callbacks: {
