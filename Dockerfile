@@ -27,7 +27,7 @@ RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
-RUN corepack enable && apk add --no-cache curl
+RUN corepack enable && apk add --no-cache curl vips vips-heif
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
