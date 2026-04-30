@@ -7,6 +7,16 @@ export async function getWarranty(id: string) {
     where: { id },
     include: {
       item: { select: { id: true, name: true } },
+      attachments: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+          thumbnailPath: true,
+        },
+      },
     },
   });
 }
