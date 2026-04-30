@@ -1,8 +1,15 @@
 import { getBoss } from '@/lib/queue';
+import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
 
 async function main() {
   const boss = await getBoss();
-  console.log('worker: pg-boss started; no jobs registered yet (Plan 1 placeholder)');
+
+  await boss.work<ThumbnailJob>('thumbnail', { batchSize: 2 }, async (jobs) => {
+    for (const job of jobs) {
+      await handleThumbnail(job.data);
+    }
+  });
+  console.log('worker: registered thumbnail job');
 
   const shutdown = async (signal: string) => {
     console.log(`worker: received ${signal}, shutting down...`);
