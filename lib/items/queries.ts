@@ -53,6 +53,16 @@ export async function getItem(id: string) {
         include: { vendor: { select: { id: true, name: true } } },
       },
       itemNotes: { orderBy: { updatedAt: 'desc' } },
+      attachments: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+          thumbnailPath: true,
+        },
+      },
     },
   });
 }

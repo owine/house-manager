@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AttachmentList } from '@/components/attachments/AttachmentList';
+import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
 import { WarrantyTable } from '@/components/warranties/WarrantyTable';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
@@ -9,7 +11,7 @@ import { Markdown } from '@/lib/markdown';
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
 
-const VALID_TABS: TabSlug[] = ['overview', 'warranties', 'service', 'notes'];
+const VALID_TABS: TabSlug[] = ['overview', 'warranties', 'service', 'notes', 'files'];
 
 function parseTab(raw: string | undefined): TabSlug {
   if (raw && (VALID_TABS as string[]).includes(raw)) return raw as TabSlug;
@@ -346,6 +348,23 @@ export default async function ItemDetailPage({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {tab === 'files' && (
+        <div>
+          <header
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Files</h2>
+          </header>
+          <AttachmentList attachments={item.attachments} />
+          <AttachmentUploader parentType="item" parentId={item.id} />
         </div>
       )}
     </div>
