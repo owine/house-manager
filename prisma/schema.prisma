@@ -30,6 +30,12 @@ model User {
   accounts      Account[]
   sessions      Session[]
   attachmentsUploaded Attachment[]
+  notificationPrefs Json?
+  icsToken      String?   @unique
+
+  pushSubscriptions PushSubscription[]
+  reminderCompletions ReminderCompletion[]
+  notificationLogs NotificationLog[]
 
   @@map("users")
 }
@@ -116,6 +122,7 @@ model Item {
   serviceRecords  ServiceRecord[]
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
+  reminders       Reminder[]
 
   @@index([categoryId])
   @@index([archivedAt])
@@ -174,6 +181,7 @@ model ServiceRecord {
   updatedAt       DateTime   @updatedAt
 
   attachments     Attachment[]
+  completionFromReminder ReminderCompletion? @relation("ReminderCompletionServiceRecord")
 
   @@index([itemId])
   @@index([vendorId])
@@ -234,4 +242,77 @@ model Attachment {
   @@index([serviceRecordId])
   @@index([noteId])
   @@map("attachments")
+}
+
+model Reminder {
+  id                      String              @id @default(cuid())
+  itemId                  String?
+  item                    Item?               @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  title                   String
+  description             String?             @db.Text
+  recurrence              Json
+  lastCompletedOn         DateTime?
+  nextDueOn               DateTime
+  leadTimeDays            Int                 @default(3)
+  notifyUserIds           String[]
+  autoCreateServiceRecord Boolean             @default(false)
+  active                  Boolean             @default(true)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  completions             ReminderCompletion[]
+  notificationLogs        NotificationLog[]
+
+  @@index([nextDueOn])
+  @@index([active, nextDueOn])
+  @@index([itemId])
+  @@map("reminders")
+}
+
+model ReminderCompletion {
+  id                      String         @id @default(cuid())
+  reminderId              String
+  reminder                Reminder       @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  completedById           String
+  completedBy             User           @relation(fields: [completedById], references: [id])
+  completedOn             DateTime
+  notes                   String?        @db.Text
+  createdServiceRecordId  String?        @unique
+  createdServiceRecord    ServiceRecord? @relation("ReminderCompletionServiceRecord", fields: [createdServiceRecordId], references: [id], onDelete: SetNull)
+  createdAt               DateTime       @default(now())
+
+  @@index([reminderId, completedOn])
+  @@map("reminder_completions")
+}
+
+model NotificationLog {
+  id          String   @id @default(cuid())
+  reminderId  String
+  reminder    Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel     String
+  cycle       String
+  sentAt      DateTime @default(now())
+  status      String
+  errorReason String?
+
+  @@unique([reminderId, userId, channel, cycle])
+  @@index([reminderId])
+  @@map("notification_logs")
+}
+
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
