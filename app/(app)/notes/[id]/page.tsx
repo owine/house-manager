@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { AttachmentList } from '@/components/attachments/AttachmentList';
+import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { Markdown } from '@/lib/markdown';
 import { deleteNote } from '@/lib/notes/actions';
 import { getNote } from '@/lib/notes/queries';
@@ -90,6 +92,12 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
       {/* Body */}
       <section>
         <Markdown>{note.body}</Markdown>
+      </section>
+
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Files</h2>
+        <AttachmentList attachments={note.attachments} />
+        <AttachmentUploader parentType="note" parentId={note.id} />
       </section>
     </div>
   );
