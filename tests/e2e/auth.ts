@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
@@ -17,8 +17,13 @@ export async function resetAuth(): Promise<void> {
 }
 
 export async function signIn(page: Page): Promise<void> {
+  // `/` redirects unauthenticated users straight to Auth.js's sign-in page,
+  // which renders the "Sign in with Authelia" provider button.
   await page.goto('/');
-  await page.getByRole('link', { name: 'Sign in' }).click();
+  // Guard against a regression where `/` stops redirecting to sign-in.
+  // Without this, a regression would surface as a confusing "button not
+  // found" failure on the next line instead of a clear URL mismatch.
+  await expect(page).toHaveURL(/\/api\/auth\/signin/);
   await Promise.all([
     page.waitForNavigation({ timeout: 30_000 }),
     page.getByRole('button', { name: 'Sign in with Authelia' }).click(),
