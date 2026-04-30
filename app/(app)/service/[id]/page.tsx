@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { AttachmentList } from '@/components/attachments/AttachmentList';
+import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { Markdown } from '@/lib/markdown';
 import { deleteServiceRecord } from '@/lib/service-records/actions';
 import { getServiceRecord } from '@/lib/service-records/queries';
@@ -105,6 +107,12 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
           <Markdown>{record.notes}</Markdown>
         </section>
       )}
+
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Files</h2>
+        <AttachmentList attachments={record.attachments} />
+        <AttachmentUploader parentType="serviceRecord" parentId={record.id} />
+      </section>
     </div>
   );
 }
