@@ -23,6 +23,7 @@ export async function handleThumbnail(
   });
   if (!row) return;
   if (row.thumbnailPath) return; // idempotent
+  if (!row.mimeType || !row.storagePath) return;
   if (!row.mimeType.startsWith('image/')) return;
 
   let buffer: Buffer;

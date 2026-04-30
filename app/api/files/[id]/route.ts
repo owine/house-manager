@@ -39,10 +39,13 @@ export async function GET(req: Request, { params }: { params: Params }) {
   const stream = openReadStream(absPath);
   const body = Readable.toWeb(stream) as ReadableStream;
   const headers = new Headers();
-  headers.set('Content-Type', wantThumb ? 'image/webp' : row.mimeType);
+  headers.set(
+    'Content-Type',
+    wantThumb ? 'image/webp' : (row.mimeType ?? 'application/octet-stream'),
+  );
   headers.set('Content-Length', String(size));
   // Percent-encode the user-supplied filename to prevent header injection.
-  const safeName = encodeURIComponent(row.filename);
+  const safeName = row.filename ? encodeURIComponent(row.filename) : 'download';
   headers.set('Content-Disposition', `inline; filename="${safeName}"`);
   headers.set('Cache-Control', 'private, max-age=300');
 
