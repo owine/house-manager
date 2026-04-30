@@ -7,7 +7,7 @@ import { getEnv } from '@/lib/env';
 import { getBoss } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
 import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
-import { type ParentType, uploadAttachmentSchema } from './schema';
+import { addAttachmentLinkSchema, type ParentType, uploadAttachmentSchema } from './schema';
 import { atomicWrite, removeDir } from './storage';
 
 const MAX_BYTES = 25_000_000;
@@ -138,4 +138,52 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   revalidatePath('/dashboard');
 
   return { ok: true, data: undefined };
+}
+
+export async function addAttachmentLink(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+  const uploadedById = session.user.id;
+  if (!uploadedById) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = addAttachmentLinkSchema.safeParse({
+    parentType: formData.get('parentType'),
+    parentId: formData.get('parentId'),
+    externalUrl: formData.get('externalUrl'),
+    displayLabel: formData.get('displayLabel') ?? undefined,
+    externalProvider: formData.get('externalProvider') ?? undefined,
+    externalProviderId: formData.get('externalProviderId') ?? undefined,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { parentType, parentId, externalUrl, displayLabel, externalProvider, externalProviderId } =
+    parsed.data;
+
+  if (!(await parentExists(parentType, parentId))) {
+    return { ok: false, formError: 'Parent not found' };
+  }
+
+  const id = createId();
+  try {
+    const created = await prisma.attachment.create({
+      data: {
+        id,
+        externalUrl,
+        displayLabel: displayLabel || null,
+        externalProvider: externalProvider || null,
+        externalProviderId: externalProviderId || null,
+        uploadedById,
+        [FK_FIELD[parentType]]: parentId,
+      },
+      select: { id: true },
+    });
+    for (const p of REVALIDATE_PATH[parentType](parentId)) revalidatePath(p);
+    return { ok: true, data: { id: created.id } };
+  } catch (e) {
+    return { ok: false, formError: `Database error: ${(e as Error).message}` };
+  }
 }
