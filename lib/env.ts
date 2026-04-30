@@ -10,6 +10,17 @@ const EnvSchema = z.object({
   MEILI_KEY: z.string().min(1),
   FILES_DIR: z.string().min(1),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(1),
+  WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(1),
+  WEB_PUSH_CONTACT_EMAIL: z
+    .string()
+    .startsWith('mailto:')
+    .refine(
+      (val) => z.string().email().safeParse(val.slice(7)).success,
+      'Invalid email after mailto:',
+    ),
+  FORWARDEMAIL_API_KEY: z.string().min(1),
+  FORWARDEMAIL_FROM_ADDRESS: z.string().min(1),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
