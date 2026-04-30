@@ -29,6 +29,7 @@ model User {
   lastLoginAt   DateTime  @default(now())
   accounts      Account[]
   sessions      Session[]
+  attachmentsUploaded Attachment[]
 
   @@map("users")
 }
@@ -114,6 +115,7 @@ model Item {
   warranties      Warranty[]
   serviceRecords  ServiceRecord[]
   itemNotes       Note[]     @relation("ItemNotes")
+  attachments     Attachment[]
 
   @@index([categoryId])
   @@index([archivedAt])
@@ -151,6 +153,8 @@ model Warranty {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  attachments     Attachment[]
+
   @@index([itemId])
   @@index([endsOn])
   @@map("warranties")
@@ -169,6 +173,8 @@ model ServiceRecord {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  attachments     Attachment[]
+
   @@index([itemId])
   @@index([vendorId])
   @@index([performedOn])
@@ -185,6 +191,43 @@ model Note {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  attachments Attachment[]
+
   @@index([itemId])
   @@map("notes")
+}
+
+model Attachment {
+  id              String         @id @default(cuid())
+  filename        String
+  mimeType        String
+  sizeBytes       Int
+  storagePath     String         // relative to FILES_DIR; e.g. "<id>/original.pdf"
+
+  // Exactly one of these four FKs is set; enforced by a DB CHECK constraint
+  // added via raw SQL in the migration. See `Attachment_exactly_one_parent`.
+  itemId          String?
+  warrantyId      String?
+  serviceRecordId String?
+  noteId          String?
+  item            Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warranty        Warranty?      @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
+  serviceRecord   ServiceRecord? @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
+  note            Note?          @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  uploadedById    String
+  uploadedBy      User           @relation(fields: [uploadedById], references: [id])
+
+  thumbnailPath   String?
+  extractedText   String?        @db.Text
+  indexedAt       DateTime?
+  aiIndexable     Boolean        @default(true)
+
+  createdAt       DateTime       @default(now())
+
+  @@index([itemId])
+  @@index([warrantyId])
+  @@index([serviceRecordId])
+  @@index([noteId])
+  @@map("attachments")
 }
