@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import type React from 'react';
 import { deleteAttachment } from '@/lib/attachments/actions';
 
 export type AttachmentRow = {
@@ -7,6 +8,9 @@ export type AttachmentRow = {
   filename: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
+  storagePath: string | null;
+  externalUrl: string | null;
+  displayLabel: string | null;
   thumbnailPath: string | null;
 };
 
@@ -42,22 +46,75 @@ function formatSize(bytes: number): string {
 }
 
 export function AttachmentCard({ a }: { a: AttachmentRow }) {
-  const isImage = a.mimeType?.startsWith('image/') ?? false;
+  const isLink = a.externalUrl != null;
+  const isImage = !isLink && (a.mimeType ?? '').startsWith('image/');
+  const cardStyle: React.CSSProperties = {
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    padding: '0.5rem',
+    background: 'var(--bg-elevated)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  };
+
+  if (isLink) {
+    // externalUrl is non-null when isLink is true; assign to a local string to avoid non-null assertions
+    const externalUrl = a.externalUrl ?? '';
+    let hostname: string;
+    try {
+      hostname = new URL(externalUrl).hostname;
+    } catch {
+      hostname = externalUrl;
+    }
+    return (
+      <div style={cardStyle}>
+        <a
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            textDecoration: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.25rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.5rem' }}>🔗</span>
+            <span style={{ wordBreak: 'break-word' }}>{a.displayLabel || hostname}</span>
+          </div>
+          <span
+            style={{
+              fontSize: '0.75rem',
+              color: 'var(--fg-muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {externalUrl}
+          </span>
+        </a>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            fontSize: '0.8rem',
+            color: 'var(--fg-muted)',
+          }}
+        >
+          <AttachmentDeleteForm id={a.id} />
+        </div>
+      </div>
+    );
+  }
+
   const href = `/api/files/${a.id}`;
   const thumbHref = a.thumbnailPath ? `/api/files/${a.id}?thumb=1` : href;
 
   return (
-    <div
-      style={{
-        border: '1px solid var(--border)',
-        borderRadius: '4px',
-        padding: '0.5rem',
-        background: 'var(--bg-elevated)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.4rem',
-      }}
-    >
+    <div style={cardStyle}>
       {isImage ? (
         <Link href={href} target="_blank">
           <Image
