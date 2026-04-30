@@ -120,3 +120,87 @@ describe('Attachment cascade', () => {
     expect(orphan).toBeNull();
   });
 });
+
+describe('Attachment storage xor link CHECK', () => {
+  it('rejects an INSERT with neither storagePath nor externalUrl', async () => {
+    await expect(
+      ctx.prisma.$executeRaw`
+        INSERT INTO "attachments"
+          (id, "uploadedById", "itemId", "createdAt", "aiIndexable")
+        VALUES
+          ('xor-1', 'test-user', ${itemId}, NOW(), true);
+      `,
+    ).rejects.toThrow(/Attachment_storage_xor_link/);
+  });
+
+  it('rejects an INSERT with both storagePath AND externalUrl', async () => {
+    await expect(
+      ctx.prisma.$executeRaw`
+        INSERT INTO "attachments"
+          (id, filename, "mimeType", "sizeBytes", "storagePath", "externalUrl",
+           "uploadedById", "itemId", "createdAt", "aiIndexable")
+        VALUES
+          ('xor-2', 'x.pdf', 'application/pdf', 1, 'xor-2/original.pdf',
+           'https://example.com/x', 'test-user', ${itemId}, NOW(), true);
+      `,
+    ).rejects.toThrow(/Attachment_storage_xor_link/);
+  });
+
+  it('accepts an INSERT with only externalUrl set (link row)', async () => {
+    const a = await ctx.prisma.attachment.create({
+      data: {
+        externalUrl: 'https://example.com/manual.pdf',
+        displayLabel: 'Manual',
+        uploadedById: 'test-user',
+        itemId,
+      },
+    });
+    expect(a.externalUrl).toBe('https://example.com/manual.pdf');
+    expect(a.storagePath).toBeNull();
+  });
+});
+
+describe('Attachment file metadata required CHECK', () => {
+  it('rejects an INSERT with storagePath set but filename NULL', async () => {
+    await expect(
+      ctx.prisma.$executeRaw`
+        INSERT INTO "attachments"
+          (id, "mimeType", "sizeBytes", "storagePath", "uploadedById",
+           "itemId", "createdAt", "aiIndexable")
+        VALUES
+          ('meta-1', 'application/pdf', 1, 'meta-1/original.pdf',
+           'test-user', ${itemId}, NOW(), true);
+      `,
+    ).rejects.toThrow(/Attachment_file_metadata_required/);
+  });
+
+  it('accepts a link row with filename populated (future Drive picker)', async () => {
+    const a = await ctx.prisma.attachment.create({
+      data: {
+        externalUrl: 'https://drive.example/x',
+        filename: 'Future Drive File.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 12345,
+        uploadedById: 'test-user',
+        itemId,
+      },
+    });
+    expect(a.filename).toBe('Future Drive File.pdf');
+    expect(a.storagePath).toBeNull();
+  });
+});
+
+describe('Link row cascade', () => {
+  it('cascade-deletes a link row when its parent Item is hard-deleted', async () => {
+    const a = await ctx.prisma.attachment.create({
+      data: {
+        externalUrl: 'https://example.com/x',
+        uploadedById: 'test-user',
+        itemId,
+      },
+    });
+    await ctx.prisma.item.delete({ where: { id: itemId } });
+    const orphan = await ctx.prisma.attachment.findUnique({ where: { id: a.id } });
+    expect(orphan).toBeNull();
+  });
+});

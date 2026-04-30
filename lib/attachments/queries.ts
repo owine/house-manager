@@ -10,6 +10,8 @@ export async function getAttachment(id: string) {
       sizeBytes: true,
       storagePath: true,
       thumbnailPath: true,
+      externalUrl: true,
+      displayLabel: true,
     },
   });
 }
