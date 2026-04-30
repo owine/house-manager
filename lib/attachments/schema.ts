@@ -9,3 +9,19 @@ export const uploadAttachmentSchema = z.object({
 });
 
 export type UploadAttachmentInput = z.infer<typeof uploadAttachmentSchema>;
+
+const httpUrl = z
+  .string()
+  .url()
+  .refine((s) => /^https?:\/\//i.test(s), 'URL must use http:// or https://');
+
+export const addAttachmentLinkSchema = z.object({
+  parentType: z.enum(PARENT_TYPES),
+  parentId: z.string().min(1),
+  externalUrl: httpUrl,
+  displayLabel: z.string().max(200).optional().or(z.literal('')),
+  externalProvider: z.string().max(50).optional(),
+  externalProviderId: z.string().max(200).optional(),
+});
+
+export type AddAttachmentLinkInput = z.infer<typeof addAttachmentLinkSchema>;
