@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 // Plan 3 reminders/notifications work may introduce one; add the 5th event type then.
 
 export type ActivityEvent = {
-  kind: 'item-created' | 'service-logged' | 'note-added' | 'item-archived';
+  kind: 'item-created' | 'service-logged' | 'note-added' | 'item-archived' | 'attachment-added';
   occurredAt: Date;
   label: string;
   href: string;
@@ -12,7 +12,7 @@ export type ActivityEvent = {
 };
 
 export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
-  const [items, services, notes, archived] = await Promise.all([
+  const [items, services, notes, archived, attachments] = await Promise.all([
     prisma.item.findMany({
       where: { archivedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -39,6 +39,19 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       orderBy: { archivedAt: 'desc' },
       take: limit,
       select: { id: true, name: true, archivedAt: true },
+    }),
+    prisma.attachment.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        filename: true,
+        createdAt: true,
+        item: { select: { id: true, name: true } },
+        warranty: { select: { id: true, provider: true } },
+        serviceRecord: { select: { id: true, summary: true } },
+        note: { select: { id: true, title: true } },
+      },
     }),
   ]);
 
@@ -79,6 +92,53 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
           ]
         : [],
     ),
+    ...attachments.flatMap((a) => {
+      if (a.item) {
+        return [
+          {
+            kind: 'attachment-added' as const,
+            occurredAt: a.createdAt,
+            label: `Added ${a.filename} to ${a.item.name}`,
+            href: `/items/${a.item.id}?tab=files`,
+            icon: '📎',
+          },
+        ];
+      }
+      if (a.warranty) {
+        return [
+          {
+            kind: 'attachment-added' as const,
+            occurredAt: a.createdAt,
+            label: `Added ${a.filename} to warranty (${a.warranty.provider})`,
+            href: `/warranties/${a.warranty.id}`,
+            icon: '📎',
+          },
+        ];
+      }
+      if (a.serviceRecord) {
+        return [
+          {
+            kind: 'attachment-added' as const,
+            occurredAt: a.createdAt,
+            label: `Added ${a.filename} to service: ${a.serviceRecord.summary}`,
+            href: `/service/${a.serviceRecord.id}`,
+            icon: '📎',
+          },
+        ];
+      }
+      if (a.note) {
+        return [
+          {
+            kind: 'attachment-added' as const,
+            occurredAt: a.createdAt,
+            label: `Added ${a.filename} to note: ${a.note.title}`,
+            href: `/notes/${a.note.id}`,
+            icon: '📎',
+          },
+        ];
+      }
+      return [];
+    }),
   ];
 
   return events.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime()).slice(0, limit);
