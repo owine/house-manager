@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { deleteWarranty } from '@/lib/warranties/actions';
 import { WarrantyStatusBadge } from './WarrantyStatusBadge';
 
@@ -67,7 +68,9 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
       <tbody>
         {warranties.map((warranty) => (
           <tr key={warranty.id} className="table-row">
-            <td className="table-cell">{warranty.provider}</td>
+            <td className="table-cell">
+              <Link href={`/warranties/${warranty.id}`}>{warranty.provider}</Link>
+            </td>
             <td className="table-cell">{warranty.policyNumber ?? '—'}</td>
             <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
               {warranty.startsOn.toISOString().slice(0, 10)}
