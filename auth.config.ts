@@ -19,6 +19,10 @@ export const authConfig = {
       clientId: env.AUTH_OIDC_CLIENT_ID,
       clientSecret: env.AUTH_OIDC_CLIENT_SECRET,
       authorization: { params: { scope: 'openid profile email groups' } },
+      // Authelia (4.38+) rejects auth requests without a `state` parameter of
+      // sufficient entropy (`invalid_state`). Auth.js v5's default checks for
+      // inline OIDC providers omit state, so opt in explicitly.
+      checks: ['pkce', 'state'],
     },
   ],
   callbacks: {

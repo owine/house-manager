@@ -45,6 +45,17 @@ export async function startMockOidc(port: number): Promise<{ server: Server; iss
       const url = new URL(req.url, issuer);
       const redirect = url.searchParams.get('redirect_uri');
       const state = url.searchParams.get('state');
+      // Authelia (4.38+) rejects auth requests without `state`. Mirror that
+      // strictness so the e2e suite catches any regression where Auth.js
+      // stops sending state (the `checks: ['pkce', 'state']` opt-in).
+      // 8 chars matches Authelia's default `minimum_parameter_entropy`.
+      if (!state || state.length < 8) {
+        res.writeHead(302, {
+          location: `${redirect}?error=invalid_state&error_description=missing+or+too+short`,
+        });
+        res.end();
+        return;
+      }
       res.writeHead(302, { location: `${redirect}?code=${code}&state=${state}` });
       res.end();
       return;
