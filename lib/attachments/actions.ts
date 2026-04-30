@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
-import { getBoss } from '@/lib/queue';
+import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
 import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
 import { addAttachmentLinkSchema, type ParentType, uploadAttachmentSchema } from './schema';
@@ -99,7 +99,7 @@ export async function uploadAttachment(formData: FormData): Promise<ActionResult
     if (file.type.startsWith('image/')) {
       try {
         const boss = await getBoss();
-        await boss.send('thumbnail', { attachmentId: id });
+        await boss.send(Queue.Thumbnail, { attachmentId: id });
       } catch (e) {
         // Queue failure is logged-but-not-fatal — the upload still succeeded.
         console.error('[attachments] failed to enqueue thumbnail job', e);
