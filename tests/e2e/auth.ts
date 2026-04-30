@@ -17,8 +17,9 @@ export async function resetAuth(): Promise<void> {
 }
 
 export async function signIn(page: Page): Promise<void> {
+  // `/` redirects unauthenticated users straight to Auth.js's sign-in page,
+  // which renders the "Sign in with Authelia" provider button.
   await page.goto('/');
-  await page.getByRole('link', { name: 'Sign in' }).click();
   await Promise.all([
     page.waitForNavigation({ timeout: 30_000 }),
     page.getByRole('button', { name: 'Sign in with Authelia' }).click(),
