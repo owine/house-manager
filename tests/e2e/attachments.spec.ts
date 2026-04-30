@@ -34,4 +34,14 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   // Delete the attachment.
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('text=No files yet')).toBeVisible();
+
+  // Add an external link via the form below the file picker.
+  await page.getByLabel('Label (optional)').fill('Furnace manual on Proton');
+  await page.getByLabel('URL (https or http)').fill('https://drive.proton.me/urls/EXAMPLE');
+  await page.getByRole('button', { name: 'Add link' }).click();
+  await expect(page.locator('text=Furnace manual on Proton')).toBeVisible({ timeout: 10_000 });
+
+  // Delete the link.
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.locator('text=No files yet')).toBeVisible();
 });
