@@ -1,12 +1,13 @@
 import Link from 'next/link';
 
-export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes';
+export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files';
 
 const TABS: { slug: TabSlug; label: string }[] = [
   { slug: 'overview', label: 'Overview' },
   { slug: 'warranties', label: 'Warranties' },
   { slug: 'service', label: 'Service' },
   { slug: 'notes', label: 'Notes' },
+  { slug: 'files', label: 'Files' },
 ];
 
 type Props = {
