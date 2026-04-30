@@ -4,9 +4,9 @@ import { deleteAttachment } from '@/lib/attachments/actions';
 
 export type AttachmentRow = {
   id: string;
-  filename: string;
-  mimeType: string;
-  sizeBytes: number;
+  filename: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
   thumbnailPath: string | null;
 };
 
@@ -42,7 +42,7 @@ function formatSize(bytes: number): string {
 }
 
 export function AttachmentCard({ a }: { a: AttachmentRow }) {
-  const isImage = a.mimeType.startsWith('image/');
+  const isImage = a.mimeType?.startsWith('image/') ?? false;
   const href = `/api/files/${a.id}`;
   const thumbHref = a.thumbnailPath ? `/api/files/${a.id}?thumb=1` : href;
 
@@ -62,7 +62,7 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
         <Link href={href} target="_blank">
           <Image
             src={thumbHref}
-            alt={a.filename}
+            alt={a.filename ?? 'attachment'}
             width={400}
             height={300}
             unoptimized
@@ -80,7 +80,7 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
             }}
           >
             <span style={{ fontSize: '1.5rem' }}>📄</span>
-            <span style={{ wordBreak: 'break-word' }}>{a.filename}</span>
+            <span style={{ wordBreak: 'break-word' }}>{a.filename ?? '(no filename)'}</span>
           </div>
         </Link>
       )}
@@ -93,7 +93,7 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
           color: 'var(--fg-muted)',
         }}
       >
-        <span>{formatSize(a.sizeBytes)}</span>
+        <span>{a.sizeBytes !== null ? formatSize(a.sizeBytes) : '–'}</span>
         <AttachmentDeleteForm id={a.id} />
       </div>
     </div>

@@ -199,13 +199,17 @@ model Note {
 
 model Attachment {
   id              String         @id @default(cuid())
-  filename        String
-  mimeType        String
-  sizeBytes       Int
-  storagePath     String         // relative to FILES_DIR; e.g. "<id>/original.pdf"
 
-  // Exactly one of these four FKs is set; enforced by a DB CHECK constraint
-  // added via raw SQL in the migration. See `Attachment_exactly_one_parent`.
+  filename        String?
+  mimeType        String?
+  sizeBytes       Int?
+  storagePath     String?
+
+  externalUrl        String?
+  externalProvider   String?
+  externalProviderId String?
+  displayLabel       String?
+
   itemId          String?
   warrantyId      String?
   serviceRecordId String?
