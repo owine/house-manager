@@ -45,6 +45,16 @@ export async function getServiceRecord(id: string) {
     include: {
       item: true,
       vendor: true,
+      attachments: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+          thumbnailPath: true,
+        },
+      },
     },
   });
 }
