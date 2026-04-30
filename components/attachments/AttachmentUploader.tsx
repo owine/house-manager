@@ -3,6 +3,7 @@ import type React from 'react';
 import { useRef, useState, useTransition } from 'react';
 import { uploadAttachment } from '@/lib/attachments/actions';
 import type { ParentType } from '@/lib/attachments/schema';
+import { AttachmentLinkForm } from './AttachmentLinkForm';
 
 type Status = { name: string; state: 'pending' | 'ok' | 'error'; error?: string };
 
@@ -73,6 +74,7 @@ export function AttachmentUploader({ parentType, parentId }: Props) {
           ))}
         </ul>
       )}
+      <AttachmentLinkForm parentType={parentType} parentId={parentId} />
     </div>
   );
 }
