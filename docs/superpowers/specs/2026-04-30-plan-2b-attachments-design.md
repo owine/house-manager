@@ -62,7 +62,7 @@ model Attachment {
   noteId          String?
   item            Item?            @relation(fields: [itemId], references: [id], onDelete: Cascade)
   warranty        Warranty?        @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
-  serviceRecord   ServiceRecord?   @relation(fields: [serviceRecordId], references: [id], onDelete: SetNull)
+  serviceRecord   ServiceRecord?   @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
   note            Note?            @relation(fields: [noteId], references: [id], onDelete: Cascade)
 
   uploadedById    String
@@ -96,11 +96,9 @@ ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_exactly_one_parent"
   );
 ```
 
-**Cascade choices** mirror Plan 2a precedents:
-- `Item`, `Warranty`, `Note` → `Cascade`. The file is meaningless without its parent.
-- `ServiceRecord` → `SetNull`. Matches the existing `ServiceRecord.itemId` / `vendorId` precedent — service-history attachments survive vendor cleanup. (A nullable parent FK on Attachment doesn't currently violate the CHECK constraint as long as another FK is set… which it isn't, after `SetNull`. **Caveat**: `SetNull` on ServiceRecord would leave an Attachment row with all four FKs null, violating the CHECK. Resolution: instead of `SetNull`, use `Cascade` here too. The audit/recovery story for orphaned-from-deleted-service-record attachments is weaker than vendor-side history, and consistency with the CHECK is more valuable.)
+**Cascade choices**: all four parents use `onDelete: Cascade`. The file is meaningless without its parent, and `Cascade` is the only choice that preserves the CHECK invariant — `SetNull` on any one of the four would leave the row with all FKs null, violating `Attachment_exactly_one_parent`.
 
-**Updated cascade**: all four parents use `Cascade`. The CHECK then holds across all states.
+This diverges from the Plan 2a precedent on `ServiceRecord` (whose `itemId` / `vendorId` are `SetNull`). The audit/recovery story for orphaned-from-deleted-service-record attachments is weaker than vendor-side service history, and CHECK consistency wins.
 
 ## Storage layout
 
@@ -193,9 +191,18 @@ Worker job `thumbnail`, payload `{ attachmentId: string }`. Handler in `worker/j
 
 `pgBoss.work('thumbnail', { teamSize: 2 }, handleThumbnail)` in `worker/index.ts`. Default retry policy (3 retries, exponential backoff, dead-letter) is fine.
 
+### Failure handling in the handler
+
+The handler wraps the `sharp` resize in `try/catch`. On error:
+1. Log with `attachmentId`, `mimeType`, and the underlying error message.
+2. **Do not throw** — returning normally tells pg-boss the job succeeded so it doesn't retry indefinitely on a malformed file. The attachment row keeps `thumbnailPath = null`; the UI falls back to the original.
+3. The job is "successful" from pg-boss's perspective but logged as a thumbnail failure — operators can grep logs to find broken HEIC files later.
+
+This treats thumbnail failure as a degraded-but-acceptable outcome, not an upload failure. The user already has the file.
+
 ### HEIC handling
 
-`sharp` v0.34 supports HEIC read via libvips when libvips is built with HEIC support. Alpine package `vips-heif` provides this. Add to the Dockerfile runtime stage. If HEIC turns out to be fragile in practice: HEIC uploads still succeed (file stored, original served), but no thumbnail gets generated for them — the worker logs and skips. Document as a known limitation; revisit in Plan 4.
+`sharp` v0.34 supports HEIC read via libvips when libvips is built with HEIC support. Alpine package `vips-heif` provides this. Add to the Dockerfile runtime stage. If HEIC turns out to be fragile in practice, the failure-handling path above kicks in: HEIC uploads succeed (file stored, original served), the thumbnail job logs and gives up. Documented as a known limitation; revisit in Plan 4 if it bites.
 
 ## UI integration
 
@@ -227,12 +234,14 @@ Worker job `thumbnail`, payload `{ attachmentId: string }`. Handler in `worker/j
 
 Dashboard `recentActivity` (in `lib/dashboard/queries.ts`) gets a fifth event type `attachment-added`. Query: top N most-recent attachments by `createdAt desc`, including a small parent join. Label: "Added <filename> to <parentName>" — link target is the parent's detail page (not the file directly), so clicks land on context.
 
+**Known cardinality issue**: bulk uploads (e.g. 8 photos in one session) generate 8 events that can swamp the 10-row feed. Deduplication is deferred to Plan 5 (see "Open questions"). Plan 2b ships the simple per-attachment event; the existing "show last 10" cap self-throttles in the meantime.
+
 ## Security
 
 - **AuthN**: every server action and route handler calls `auth()`; no anonymous access.
 - **AuthZ**: single-household app — any signed-in user can read/write any attachment. Per-row ACLs deferred.
 - **MIME**: strict allowlist + magic-bytes verification (don't trust browser).
-- **Size**: 25 MB hard ceiling, checked before reading the full body into memory (Next.js `formData()` is safe up to the route segment limit; we set the Next route segment config to match).
+- **Size**: 25 MB hard ceiling, checked before reading the full body into memory. Next.js Server Actions default to a 1 MB body limit; we raise it via `next.config.ts`'s `experimental.serverActions.bodySizeLimit: '25mb'` so the action accepts the upload, then enforce 25 MB explicitly in the action (defense in depth — the Next.js limit is a soft suggestion). The Route Handler (`app/api/files/[id]/route.ts`) is download-only and doesn't need a body-size config.
 - **Path traversal**: storage paths are relative + verified-under-`FILES_DIR` on every read.
 - **Header injection**: filename in `Content-Disposition` is percent-encoded.
 - **CSRF**: Server Actions and same-origin Route Handler benefit from Next.js's built-in same-site cookie protection.
@@ -256,7 +265,9 @@ Dashboard `recentActivity` (in `lib/dashboard/queries.ts`) gets a fifth event ty
 
 ### E2E (`tests/e2e/`)
 
-Defer. The existing Playwright happy-path covers sign-in + create-item + log-service. A new attachments e2e would need a fixture image; not blocking. Add as a follow-up if regression risk warrants.
+**Required**, matching the Plan 2a Task 18 precedent. Add `tests/e2e/attachments.spec.ts` covering the upload + view + delete flow on the Item Files tab. Use a small (≤ 50 KB) JPEG fixture under `tests/fixtures/`. Sign-in uses the existing `signIn` helper; `resetAuth` runs in `beforeEach`. The test runs with `workers: 1` (already set in Plan 2a's `playwright.config.ts`) so it doesn't race the existing happy-path spec on shared DB state.
+
+A separate per-entity E2E (Warranty, Note) is overkill for v1 — exercising the path on Item is enough regression coverage; the per-entity wiring is mostly identical and unit + integration tests cover the data layer.
 
 ### Worker test
 
