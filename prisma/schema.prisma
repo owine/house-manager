@@ -274,7 +274,7 @@ model ReminderCompletion {
   reminderId              String
   reminder                Reminder       @relation(fields: [reminderId], references: [id], onDelete: Cascade)
   completedById           String
-  completedBy             User           @relation(fields: [completedById], references: [id])
+  completedBy             User           @relation(fields: [completedById], references: [id], onDelete: Cascade)
   completedOn             DateTime
   notes                   String?        @db.Text
   createdServiceRecordId  String?        @unique
