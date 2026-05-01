@@ -164,6 +164,13 @@ jobs:
       MEILI_KEY: test
       FILES_DIR: /tmp/files
       NODE_ENV: development
+      # Required by lib/env.ts so the dev server can boot. Push delivery
+      # is not exercised in e2e; any non-empty fixture values pass the schema.
+      WEB_PUSH_VAPID_PUBLIC_KEY: ci-vapid-public-key-fixture
+      WEB_PUSH_VAPID_PRIVATE_KEY: ci-vapid-private-key-fixture
+      WEB_PUSH_CONTACT_EMAIL: mailto:ci@example.com
+      FORWARDEMAIL_API_KEY: ci-forwardemail-key
+      FORWARDEMAIL_FROM_ADDRESS: ci@example.com
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
