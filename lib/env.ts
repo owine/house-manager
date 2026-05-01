@@ -21,6 +21,7 @@ const EnvSchema = z.object({
     ),
   FORWARDEMAIL_API_KEY: z.string().min(1),
   FORWARDEMAIL_FROM_ADDRESS: z.string().min(1),
+  APP_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
