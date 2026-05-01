@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { ServiceWorkerRegistrar } from '@/components/notifications/ServiceWorkerRegistrar';
+import { SearchBar } from '@/components/search/SearchBar';
 import { auth } from '@/lib/auth';
 
 // SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
@@ -13,9 +14,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect('/api/auth/signin');
   return (
     <div>
-      <header style={{ padding: '1rem', borderBottom: '1px solid var(--border)' }}>
+      <header
+        style={{
+          padding: '1rem',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+        }}
+      >
         <strong>House Manager</strong>
-        <span style={{ marginLeft: '1rem' }}>Signed in as {session.user.name}</span>
+        <SearchBar />
+        <span style={{ marginLeft: 'auto' }}>Signed in as {session.user.name}</span>
       </header>
       <main style={{ padding: '1rem' }}>{children}</main>
       <ServiceWorkerRegistrar />

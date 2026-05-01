@@ -2,6 +2,7 @@ import { HouseProfileForm } from '@/components/house-profile/HouseProfileForm';
 import { CalendarPanel } from '@/components/notifications/CalendarPanel';
 import { NotificationPrefsForm } from '@/components/notifications/NotificationPrefsForm';
 import { PushSubscribeButton } from '@/components/notifications/PushSubscribeButton';
+import { RebuildIndexButton } from '@/components/search/RebuildIndexButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { getEnv } from '@/lib/env';
 import { getHouseProfile } from '@/lib/house-profile/queries';
@@ -46,6 +47,8 @@ export default async function SettingsPage() {
       </div>
       <h2 style={{ fontSize: '1rem', margin: '1.5rem 0 0.5rem' }}>Calendar</h2>
       <CalendarPanel icsToken={userSettings.icsToken} appUrl={env.APP_URL ?? ''} />
+      <h2 style={{ fontSize: '1rem', margin: '1.5rem 0 0.5rem' }}>Search</h2>
+      <RebuildIndexButton />
     </div>
   );
 }
