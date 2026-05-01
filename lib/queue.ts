@@ -9,6 +9,8 @@ import { getEnv } from '@/lib/env';
 // send/work; createQueue is idempotent.
 export const Queue = {
   Thumbnail: 'thumbnail',
+  RemindersTick: 'reminders.tick',
+  Notify: 'notify',
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];
