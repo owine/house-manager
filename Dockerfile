@@ -22,6 +22,11 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
     MEILI_HOST=http://localhost:7700 \
     MEILI_KEY=build \
     FILES_DIR=/tmp/files \
+    WEB_PUSH_VAPID_PUBLIC_KEY=build-vapid-public-key-placeholder \
+    WEB_PUSH_VAPID_PRIVATE_KEY=build-vapid-private-key-placeholder \
+    WEB_PUSH_CONTACT_EMAIL=mailto:build@example.com \
+    FORWARDEMAIL_API_KEY=build-forwardemail-key \
+    FORWARDEMAIL_FROM_ADDRESS=build@example.com \
     pnpm build
 RUN pnpm prune --prod
 
