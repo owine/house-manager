@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { ServiceWorkerRegistrar } from '@/components/notifications/ServiceWorkerRegistrar';
 import { auth } from '@/lib/auth';
 
 // SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
@@ -17,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <span style={{ marginLeft: '1rem' }}>Signed in as {session.user.name}</span>
       </header>
       <main style={{ padding: '1rem' }}>{children}</main>
+      <ServiceWorkerRegistrar />
     </div>
   );
 }
