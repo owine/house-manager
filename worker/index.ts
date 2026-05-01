@@ -1,6 +1,9 @@
 import { getBoss, Queue } from '@/lib/queue';
+import { ensureSearchIndex } from '@/lib/search/init';
 import { handleNotify, type NotifyJob } from './jobs/notify';
 import { handleRemindersTick } from './jobs/reminders-tick';
+import { handleSearchIndex, type SearchIndexJob } from './jobs/search-index';
+import { handleSearchReindex } from './jobs/search-reindex';
 import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
 
 async function main() {
@@ -31,7 +34,22 @@ async function main() {
     }
   });
 
-  console.log('worker: registered thumbnail, reminders.tick + notify jobs');
+  await ensureSearchIndex();
+
+  await boss.work<SearchIndexJob>(Queue.SearchIndex, { batchSize: 4 }, async (jobs) => {
+    for (const job of jobs) {
+      await handleSearchIndex(job.data);
+    }
+  });
+
+  await boss.schedule(Queue.SearchReindex, '0 3 * * *');
+  await boss.work(Queue.SearchReindex, { batchSize: 1 }, async () => {
+    await handleSearchReindex();
+  });
+
+  console.log(
+    'worker: registered thumbnail, reminders.tick + notify, search.index + search.reindex jobs',
+  );
 
   const shutdown = async (signal: string) => {
     console.log(`worker: received ${signal}, shutting down...`);
