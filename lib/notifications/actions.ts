@@ -64,7 +64,12 @@ export async function subscribePush(
 export async function unsubscribePush(id: string): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
-  await prisma.pushSubscription.delete({ where: { id } });
+  // Scope delete to the calling user so a user can't unsubscribe another
+  // user's devices by guessing/enumerating subscription IDs. deleteMany
+  // is a no-op (count: 0) when the row doesn't belong to the user — same
+  // observable result as a successful delete, which avoids leaking
+  // existence of another user's subscriptions.
+  await prisma.pushSubscription.deleteMany({ where: { id, userId: session.user.id } });
   revalidatePath('/settings');
   return { ok: true, data: undefined };
 }
