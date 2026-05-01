@@ -11,7 +11,7 @@ import { Markdown } from '@/lib/markdown';
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
 
-const VALID_TABS: TabSlug[] = ['overview', 'warranties', 'service', 'notes', 'files'];
+const VALID_TABS: TabSlug[] = ['overview', 'warranties', 'service', 'notes', 'files', 'reminders'];
 
 function parseTab(raw: string | undefined): TabSlug {
   if (raw && (VALID_TABS as string[]).includes(raw)) return raw as TabSlug;
@@ -365,6 +365,44 @@ export default async function ItemDetailPage({
           </header>
           <AttachmentList attachments={item.attachments} />
           <AttachmentUploader parentType="item" parentId={item.id} />
+        </div>
+      )}
+
+      {tab === 'reminders' && (
+        <div>
+          <header
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <h2 style={{ fontSize: '1rem', margin: 0 }}>Reminders</h2>
+            <Link href={`/reminders/new?itemId=${item.id}`}>+ Add reminder</Link>
+          </header>
+          {item.reminders.length === 0 ? (
+            <p>No reminders yet.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {item.reminders.map((r) => (
+                <li
+                  key={r.id}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    padding: '0.5rem 0',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Link href={`/reminders/${r.id}`}>{r.title}</Link>
+                  <span style={{ color: 'var(--fg-muted)', fontSize: '0.85rem' }}>
+                    {r.nextDueOn.toISOString().slice(0, 10)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

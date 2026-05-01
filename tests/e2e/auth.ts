@@ -9,11 +9,30 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 export async function resetAuth(): Promise<void> {
-  // Delete in FK-safe order: Session and Account reference User.
-  await prisma.session.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.verificationToken.deleteMany();
-  await prisma.user.deleteMany();
+  // Truncates auth AND domain tables. Playwright runs workers:1 so specs share
+  // the same DB serially; without clearing items/services/etc. between specs,
+  // dashboard assertions hit "strict mode violation" from accumulated rows.
+  // CASCADE handles FK ordering so we don't have to enumerate child-first.
+  // Categories stay (seeded by `prisma seed`; tests rely on selectOption('hvac')).
+  // house_profile is a per-house singleton; not per-spec state, leave it.
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE
+      attachments,
+      reminder_completions,
+      notification_logs,
+      push_subscriptions,
+      service_records,
+      warranties,
+      notes,
+      reminders,
+      items,
+      vendors,
+      sessions,
+      accounts,
+      verification_tokens,
+      users
+    RESTART IDENTITY CASCADE
+  `);
 }
 
 export async function signIn(page: Page): Promise<void> {

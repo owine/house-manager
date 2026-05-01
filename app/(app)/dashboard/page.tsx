@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
 import { auth } from '@/lib/auth';
-import { quickStats, recentActivity } from '@/lib/dashboard/queries';
+import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
 
 function relativeTime(date: Date): string {
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
@@ -12,7 +13,12 @@ function relativeTime(date: Date): string {
 }
 
 export default async function Dashboard() {
-  const [session, stats, activity] = await Promise.all([auth(), quickStats(), recentActivity(10)]);
+  const [session, stats, activity, reminders] = await Promise.all([
+    auth(),
+    quickStats(),
+    recentActivity(10),
+    upcomingReminders(5),
+  ]);
 
   return (
     <div>
@@ -79,6 +85,58 @@ export default async function Dashboard() {
               </div>
             </div>
           </div>
+        </section>
+        {/* Upcoming reminders lane */}
+        <section style={{ flex: '1 1 280px' }}>
+          <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Upcoming reminders</h2>
+          {reminders.length === 0 ? (
+            <p style={{ color: 'var(--fg-muted)', fontSize: '0.9rem' }}>
+              No upcoming reminders — <Link href="/reminders/new">create one</Link>.
+            </p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {reminders.map((r) => (
+                <li
+                  key={r.id}
+                  style={{
+                    padding: '0.5rem 0',
+                    borderBottom: '1px solid var(--border)',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <Link href={`/reminders/${r.id}`} style={{ flex: 1, minWidth: 0 }}>
+                      {r.title}
+                    </Link>
+                    <span
+                      style={{
+                        color: 'var(--fg-muted)',
+                        fontSize: '0.8rem',
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {r.nextDueOn.toISOString().slice(0, 10)}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <CompleteReminderForm
+                      reminderId={r.id}
+                      autoCreateServiceRecord={r.autoCreateServiceRecord}
+                      hasItem={r.itemId != null}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* Quick actions lane */}
