@@ -109,7 +109,7 @@ This plan is the first of a three-part Plan 4 decomposition. Plan 4b will add **
 
 - **Single client singleton** mirrors `lib/db.ts` and `lib/queue.ts` — module-level lazy init, reused across both worker and Route Handler.
 - **Pure `buildDocument(kind, id)` per kind** keeps the worker handler trivial (dispatch by kind, call build, upsert/delete) and lets unit tests cover the most-likely-to-break logic without touching Meilisearch.
-- **Single unified index over six per-kind indices** because Meilisearch's relevance scoring works best when all matches compete in one query; faceting handles the "filter to one kind" use case cleanly. The synthetic `${kind}:${id}` primary key prevents id collisions across tables.
+- **Single unified index over six per-kind indices** because Meilisearch's relevance scoring works best when all matches compete in one query; faceting handles the "filter to one kind" use case cleanly. The synthetic `${kind}-${id}` primary key prevents id collisions across tables. Hyphen (not colon) because Meilisearch restricts primary keys to `[A-Za-z0-9_-]`.
 - **Per-action enqueue over Prisma `$extends` middleware** matches the existing project style — Server Actions already explicitly call `revalidatePath`; calling `boss.send` next to it is consistent and visible. Auto-enqueue middleware would hide the side-effect.
 - **Route Handler over Server Action for reads** because instant search needs `AbortController` (cancel stale requests when the user keeps typing). Server Actions don't expose abort semantics and can't be cancelled from the browser.
 
@@ -122,7 +122,11 @@ type SearchKind = 'item' | 'vendor' | 'note' | 'service' | 'reminder' | 'attachm
 
 type SearchDocument = {
   // Composite primary key — domain ids are only unique within their table.
-  id: string;                          // e.g. "item:cmom..." | "reminder:cmoma..."
+  id: string;                          // e.g. "item-cmom..." | "reminder-cmoma..."
+                                       // hyphen separator, NOT colon — Meilisearch
+                                       // primary keys are restricted to [A-Za-z0-9_-].
+                                       // cuid2 ids are [0-9a-z]+ so the format is
+                                       // unambiguous (splittable on first hyphen).
 
   kind: SearchKind;
   recordId: string;                    // the underlying domain id (used to build links)
@@ -181,11 +185,11 @@ User submits form → Server Action validates + writes Postgres row
 Worker picks up job
    handleSearchIndex({kind, id, op}):
      if op === 'delete':
-        meilisearch.index('house').deleteDocument(`${kind}:${id}`)
+        meilisearch.index('house').deleteDocument(`${kind}-${id}`)
         if kind === 'item': delete all children docs (query Postgres for them by itemId)
      else: // 'upsert'
         doc = buildDocument(kind, id)
-        if doc === null: deleteDocument(`${kind}:${id}`)   // soft-deleted/orphan row
+        if doc === null: deleteDocument(`${kind}-${id}`)   // soft-deleted/orphan row
         else: addDocuments([doc])
         if kind === 'item': re-upsert all children for the new itemName
 ```
