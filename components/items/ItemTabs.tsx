@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files';
+export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files' | 'reminders';
 
 const TABS: { slug: TabSlug; label: string }[] = [
   { slug: 'overview', label: 'Overview' },
@@ -8,6 +8,7 @@ const TABS: { slug: TabSlug; label: string }[] = [
   { slug: 'service', label: 'Service' },
   { slug: 'notes', label: 'Notes' },
   { slug: 'files', label: 'Files' },
+  { slug: 'reminders', label: 'Reminders' },
 ];
 
 type Props = {

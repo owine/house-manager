@@ -64,6 +64,13 @@ export async function listUpcomingReminders(limit = 5) {
     where: { active: true },
     orderBy: { nextDueOn: 'asc' },
     take: limit,
-    include: STANDARD_INCLUDE,
+    select: {
+      id: true,
+      title: true,
+      nextDueOn: true,
+      autoCreateServiceRecord: true,
+      itemId: true,
+      item: { select: { id: true, name: true } },
+    },
   });
 }

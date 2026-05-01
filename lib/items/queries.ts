@@ -66,6 +66,11 @@ export async function getItem(id: string) {
           thumbnailPath: true,
         },
       },
+      reminders: {
+        where: { active: true },
+        orderBy: { nextDueOn: 'asc' },
+        select: { id: true, title: true, nextDueOn: true, active: true },
+      },
     },
   });
 }

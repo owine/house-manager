@@ -1,10 +1,17 @@
 import { prisma } from '@/lib/db';
+import { listUpcomingReminders } from '@/lib/reminders/queries';
 
 // NOTE: "item-restored" events are deferred until an event log table exists.
 // Plan 3 reminders/notifications work may introduce one; add the 5th event type then.
 
 export type ActivityEvent = {
-  kind: 'item-created' | 'service-logged' | 'note-added' | 'item-archived' | 'attachment-added';
+  kind:
+    | 'item-created'
+    | 'service-logged'
+    | 'note-added'
+    | 'item-archived'
+    | 'attachment-added'
+    | 'reminder-completed';
   occurredAt: Date;
   label: string;
   href: string;
@@ -12,7 +19,7 @@ export type ActivityEvent = {
 };
 
 export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
-  const [items, services, notes, archived, attachments] = await Promise.all([
+  const [items, services, notes, archived, attachments, completions] = await Promise.all([
     prisma.item.findMany({
       where: { archivedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -53,6 +60,17 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
         warranty: { select: { id: true, provider: true } },
         serviceRecord: { select: { id: true, summary: true } },
         note: { select: { id: true, title: true } },
+      },
+    }),
+    prisma.reminderCompletion.findMany({
+      orderBy: { completedOn: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        completedOn: true,
+        reminder: {
+          select: { id: true, title: true, itemId: true, item: { select: { name: true } } },
+        },
       },
     }),
   ]);
@@ -162,6 +180,13 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       }
       return [];
     }),
+    ...completions.map((c) => ({
+      kind: 'reminder-completed' as const,
+      occurredAt: c.completedOn,
+      label: `Completed: ${c.reminder.title}`,
+      href: `/reminders/${c.reminder.id}`,
+      icon: '✅',
+    })),
   ];
 
   return events.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime()).slice(0, limit);
@@ -181,4 +206,8 @@ export async function quickStats(): Promise<QuickStats> {
     prisma.serviceRecord.count({ where: { performedOn: { gte: startOfYear } } }),
   ]);
   return { activeItems, vendors, serviceThisYear };
+}
+
+export async function upcomingReminders(limit = 5) {
+  return listUpcomingReminders(limit);
 }
