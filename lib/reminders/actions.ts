@@ -12,6 +12,14 @@ import {
   updateReminderSchema,
 } from './schema';
 
+// Composite where for ownership-gated reminder lookups. A reminder is "owned"
+// by every user listed in its notifyUserIds array; only those users may
+// update / delete / setActive / complete it. Repeated in four call sites
+// below — kept as a helper so the access predicate has one definition.
+function ownedReminderWhere(id: string, userId: string) {
+  return { id, notifyUserIds: { has: userId } } as const;
+}
+
 function revalidateReminderPaths(itemId: string | null | undefined, reminderId: string) {
   revalidatePath('/reminders');
   revalidatePath(`/reminders/${reminderId}`);
@@ -69,7 +77,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   // filter; uniform "Not found" response avoids leaking existence of
   // reminders that belong to other users.
   const existing = await prisma.reminder.findFirst({
-    where: { id, notifyUserIds: { has: session.user.id } },
+    where: ownedReminderWhere(id, session.user.id),
     select: { id: true, itemId: true },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
@@ -98,7 +106,7 @@ export async function deleteReminder(id: string): Promise<ActionResult> {
 
   // Ownership-gated lookup — see updateReminder for rationale.
   const existing = await prisma.reminder.findFirst({
-    where: { id, notifyUserIds: { has: session.user.id } },
+    where: ownedReminderWhere(id, session.user.id),
     select: { itemId: true },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
@@ -119,7 +127,7 @@ export async function setReminderActive(
   // so any authed user could toggle any reminder's active flag. See
   // updateReminder for the findFirst-with-composite-where rationale.
   const existing = await prisma.reminder.findFirst({
-    where: { id, notifyUserIds: { has: session.user.id } },
+    where: ownedReminderWhere(id, session.user.id),
     select: { id: true },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
@@ -152,7 +160,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
   // nextDueOn for everyone notified on it; only users in notifyUserIds can do
   // either.
   const reminder = await prisma.reminder.findFirst({
-    where: { id, notifyUserIds: { has: userId } },
+    where: ownedReminderWhere(id, userId),
     select: {
       id: true,
       itemId: true,
