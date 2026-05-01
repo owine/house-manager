@@ -1,3 +1,4 @@
+import { prisma } from '@/lib/db';
 import type { SearchDocument, SearchKind } from './schema';
 
 // ─── Row types — minimal shapes that toDocument needs ───────────────────────
@@ -191,4 +192,111 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
       };
     }
   }
+}
+
+/**
+ * Fetches the row for (kind, id) and runs toDocument. Returns null if the
+ * row no longer exists — caller treats null as "delete from index".
+ */
+export async function buildDocument(kind: SearchKind, id: string): Promise<SearchDocument | null> {
+  switch (kind) {
+    case 'item': {
+      const row = await prisma.item.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          manufacturer: true,
+          model: true,
+          notes: true,
+          updatedAt: true,
+          category: { select: { slug: true } },
+        },
+      });
+      return row ? toDocument('item', row) : null;
+    }
+    case 'vendor': {
+      const row = await prisma.vendor.findUnique({
+        where: { id },
+        select: { id: true, name: true, notes: true, updatedAt: true },
+      });
+      return row ? toDocument('vendor', row) : null;
+    }
+    case 'note': {
+      const row = await prisma.note.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          tags: true,
+          updatedAt: true,
+          item: { select: { id: true, name: true } },
+        },
+      });
+      return row ? toDocument('note', row) : null;
+    }
+    case 'service': {
+      const row = await prisma.serviceRecord.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          summary: true,
+          notes: true,
+          updatedAt: true,
+          item: { select: { id: true, name: true } },
+        },
+      });
+      return row ? toDocument('service', row) : null;
+    }
+    case 'reminder': {
+      const row = await prisma.reminder.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          updatedAt: true,
+          item: { select: { id: true, name: true } },
+        },
+      });
+      return row ? toDocument('reminder', row) : null;
+    }
+    case 'attachment': {
+      const row = await prisma.attachment.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          filename: true,
+          displayLabel: true,
+          extractedText: true,
+          createdAt: true, // Attachment has no updatedAt — use createdAt
+          item: { select: { id: true, name: true } },
+        },
+      });
+      return row ? toDocument('attachment', row) : null;
+    }
+  }
+}
+
+/**
+ * For Item rename or delete: returns the synthetic doc identifiers of every
+ * child that denormalizes this item's name (notes, services, reminders,
+ * attachments). The handler re-upserts or deletes each.
+ */
+export async function listChildIdsForItem(
+  itemId: string,
+): Promise<{ kind: SearchKind; id: string }[]> {
+  const [notes, services, reminders, attachments] = await Promise.all([
+    prisma.note.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.serviceRecord.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.reminder.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.attachment.findMany({ where: { itemId }, select: { id: true } }),
+  ]);
+  return [
+    ...notes.map((n) => ({ kind: 'note' as const, id: n.id })),
+    ...services.map((s) => ({ kind: 'service' as const, id: s.id })),
+    ...reminders.map((r) => ({ kind: 'reminder' as const, id: r.id })),
+    ...attachments.map((a) => ({ kind: 'attachment' as const, id: a.id })),
+  ];
 }
