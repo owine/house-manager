@@ -4,7 +4,15 @@ import { PrismaClient } from '@prisma/client';
 import { Meilisearch } from 'meilisearch';
 import { startStack, stopStack, type TestStack } from './setup';
 
-export type IntegrationContext = { stack: TestStack; prisma: PrismaClient; meili: Meilisearch };
+type MeilisearchWithWaitForTask = Meilisearch & {
+  waitForTask(taskUid: number): Promise<unknown>;
+};
+
+export type IntegrationContext = {
+  stack: TestStack;
+  prisma: PrismaClient;
+  meili: MeilisearchWithWaitForTask;
+};
 
 export async function setupIntegration(): Promise<IntegrationContext> {
   const stack = await startStack();
@@ -17,7 +25,13 @@ export async function setupIntegration(): Promise<IntegrationContext> {
   });
   const adapter = new PrismaPg({ connectionString: stack.databaseUrl });
   const prisma = new PrismaClient({ adapter });
-  const meili = new Meilisearch({ host: stack.meiliUrl, apiKey: 'test' });
+  const meili = new Meilisearch({
+    host: stack.meiliUrl,
+    apiKey: 'test',
+  }) as MeilisearchWithWaitForTask;
+
+  meili.waitForTask = (taskUid: number) => meili.tasks.waitForTask(taskUid);
+
   return { stack, prisma, meili };
 }
 
