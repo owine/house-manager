@@ -1,12 +1,18 @@
 import { expect, type Page } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { Meilisearch } from 'meilisearch';
 
 // Each spec runs in the same Postgres container; without a reset, the second
 // spec's sign-in flow hits "Unique constraint failed on email" because the
 // User row from the first spec is still around.
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const meili = new Meilisearch({
+  host: process.env.MEILI_HOST ?? 'http://localhost:7700',
+  apiKey: process.env.MEILI_KEY ?? '',
+});
 
 export async function resetAuth(): Promise<void> {
   // Truncates auth AND domain tables. Playwright runs workers:1 so specs share
@@ -33,6 +39,10 @@ export async function resetAuth(): Promise<void> {
       users
     RESTART IDENTITY CASCADE
   `);
+
+  // Wipe the search index so a previous spec's items don't bleed into the
+  // current spec's hit results. Index may not exist on first run — fine.
+  await meili.deleteIndex('house').catch(() => {});
 }
 
 export async function signIn(page: Page): Promise<void> {
