@@ -1,3 +1,7 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
 /*
  * Theme tokens defined once via the CSS light-dark() function. The active
  * value depends on the element's color-scheme: light, dark, or matching the
@@ -35,9 +39,44 @@
   color-scheme: dark;
 }
 
+@theme {
+  /* Surfaces */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--bg);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--fg);
+  --color-muted: var(--bg-elevated);
+  --color-muted-foreground: var(--fg-muted);
+
+  /* Interactive */
+  --color-primary: var(--app-accent);
+  --color-primary-foreground: var(--app-accent-fg);
+  --color-secondary: var(--bg-elevated);
+  --color-secondary-foreground: var(--fg);
+  --color-accent: var(--bg-elevated);
+  --color-accent-foreground: var(--fg);
+
+  /* Status */
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+
+  /* Borders + focus */
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--focus);
+
+  /* Typography + radius */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 0.5rem;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
+  font-family: var(--font-sans);
 }
 
 /* Visible focus ring on both light and dark backgrounds */
