@@ -83,8 +83,6 @@ You don't pass these at runtime — they're baked into the image at build time.
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `db` service. The app reads `DATABASE_URL` instead |
 | `MEILI_MASTER_KEY` | `meilisearch` service. The app reads `MEILI_KEY` |
 
-> **Note:** the checked-in `.env.example` is somewhat stale (predates the `WEB_PUSH_VAPID_*` rename and includes a never-shipped `VOYAGE_API_KEY`). Trust this README until that file is refreshed.
-
 ## Scripts
 
 | Script | What it does |
