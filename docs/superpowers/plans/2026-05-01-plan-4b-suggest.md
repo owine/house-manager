@@ -10,6 +10,23 @@
 
 ---
 
+## Task 0: Pre-flight greps (do this first, no commit)
+
+Before starting Task 1, take 5 minutes to locate the existing patterns this plan calls back to. The plan tells you to grep for these in various tasks; doing it once up front saves context-switching mid-task.
+
+- [ ] **Reminder model**: confirm `prisma/schema.prisma` `model Reminder` has `recurrence Json`, `nextDueOn DateTime`, `leadTimeDays Int`, `notifyUserIds String[]`, `autoCreateServiceRecord Boolean`. (Verified during plan-writing — should match. If it doesn't, Task 11's reminder-creation logic needs adjustment.)
+- [ ] **Search infrastructure** (Plan 4a): read `lib/search/{client,schema,document}.ts` and `worker/jobs/search-index.ts` to internalize the existing kind dispatch pattern. Task 14 mirrors it.
+- [ ] **Helpers**: `tests/integration/helpers.ts` — confirm `setupIntegration`, `signInAs`, and `waitForIndexed` exist. If `signInAs` is named differently (e.g., `mockAuth`), update Tasks 9-13 to match.
+- [ ] **Logger**: `grep -rn "pino\|logger" lib/` — the spec calls for a Pino structured log at the action boundary. **As of plan-writing the repo has NO logger module.** Tasks 9 and 10 below add a single `console.log({event, ...})` line at the action boundary as a placeholder, with a `// TODO(plan-5): replace with project logger` comment. Don't add Pino as a dep in this plan.
+- [ ] **Auth**: `lib/auth.ts` exports `auth()`. There is no `requireSession()` despite the spec's wording — use `auth()` per the convention block above.
+- [ ] **EmptyState**: `grep -rn "EmptyState" components/` — used in Task 16. Confirm import path (`@/components/EmptyState`).
+- [ ] **Item-create redirect**: `grep -n "router.push\|redirect" app/\(app\)/items/new lib/items/actions.ts` — Task 21 modifies this redirect; locate where the `/items/${id}` push currently lives (in the page's onSubmit, or in the action via `redirect()` from `next/navigation`).
+- [ ] **Admin layout**: `ls app/\(app\)/admin 2>/dev/null` — Task 25 either appends to or creates the admin layout.
+
+Note any deltas from this plan's assumptions in your scratch notes — they'll come up again later.
+
+---
+
 ## Conventions for the implementer
 
 These are project conventions enforced across every task. Don't deviate without flagging.
@@ -1167,7 +1184,7 @@ pnpm test:integration tests/integration/ai/log.test.ts
 Create `lib/ai/log.ts`:
 
 ```ts
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { SYSTEM_PROMPT_VERSION } from './prompts';
 
@@ -1221,7 +1238,7 @@ export async function markAccepted(logId: string, ids: string[]): Promise<void> 
 }
 ```
 
-Note the `Prisma.DbNull` for an explicit JSON null vs. a missing field — required by Prisma 7.
+Note: `Prisma` is imported as a **value** (not `import type`) because `Prisma.DbNull` is a runtime sentinel — `import type` would compile-error at the use site. `Prisma.DbNull` is the explicit "store JSON null" marker, distinct from "field absent" — required by Prisma 7.
 
 - [ ] **Step 4: Run — should pass**
 
@@ -1781,6 +1798,9 @@ export async function proposeReminders(input: {
       model: ANTHROPIC_MODEL,
       latencyMs: Date.now() - start,
     });
+    console.log(
+      JSON.stringify({ event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason }),
+    );
     return { ok: false, formError: userFacingMessage(errorReason) };
   }
 
@@ -1800,6 +1820,21 @@ export async function proposeReminders(input: {
     cacheCreationTokens: usage.cache_creation_input_tokens,
     latencyMs: Date.now() - start,
   });
+
+  // Structured log line at the action boundary (per spec observability section).
+  // TODO(plan-5): replace with project logger once one exists.
+  console.log(
+    JSON.stringify({
+      event: 'ai.suggest',
+      kind: 'reminders',
+      userId,
+      latencyMs: Date.now() - start,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadTokens: usage.cache_read_input_tokens,
+      ok: true,
+    }),
+  );
 
   return { ok: true, data: { logId: log.id, proposals: parsed.proposals } };
 }
@@ -2096,6 +2131,10 @@ git commit -m "feat(ai): proposeChecklist with seasonal|freeform|append discrimi
 
 ---
 
+**Apply the same structured-log pattern in `proposeChecklist`** (Task 10): one success-line, one failure-line, one rate-limit-block line. Three `console.log({event:'ai.suggest', kind:'checklist', ...})` calls. Mirror the shape from Task 9.
+
+---
+
 ## Task 11: Server Action — saveAcceptedReminders
 
 **Files:**
@@ -2284,7 +2323,9 @@ function computeNextDueOn(rec: ProposedRecurrence, anchor: Date): Date {
 }
 ```
 
-(If the existing `lib/reminders` module already has a `nextDueOn` calculator, prefer importing it instead of duplicating. Quick grep: `grep -rn "nextDueOn\|computeNextDueOn" lib/reminders/`. If found, use it and delete the local copy.)
+**Strongly prefer reuse over the inline `computeNextDueOn`**: `grep -rn "nextDueOn" lib/reminders/` first. Plan 3 almost certainly shipped a recurrence-aware due-date calculator. If found, import and delete the local function. The inline copy above is a fallback only.
+
+Move the `import type { ProposedRecurrence }` to the top of the file with the other imports — Biome 2's `noFloatingImports` rule will fail otherwise.
 
 - [ ] **Step 4: Run — should pass**
 
@@ -2391,6 +2432,11 @@ export async function saveAcceptedChecklist(input: {
 
   if (!input.items || input.items.length === 0) {
     return { ok: false, formError: 'No items selected.' };
+  }
+  // `name` is required for the create path, ignored for the append path.
+  // Validate accordingly so an append call doesn't fail on an empty `name`.
+  if (!input.appendToChecklistId && (!input.name || input.name.trim().length === 0)) {
+    return { ok: false, formError: 'Checklist name is required.' };
   }
 
   const checklistId = await prisma.$transaction(async (tx) => {
@@ -2591,6 +2637,8 @@ export const SEARCH_KINDS = [
 
 - [ ] **Step 2: Add `ChecklistRow` and `buildDocument` case**
 
+**Read `lib/search/document.ts` first** — the existing `RowFor<K>` conditional type, the `buildDocument` switch, and the per-kind row types are all extended in lockstep. Mirror the existing `'reminder'` case for shape and select clauses; do not improvise.
+
 In `lib/search/document.ts`, add to the row-type union:
 
 ```ts
@@ -2665,7 +2713,10 @@ describe('checklist search indexing', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error();
 
-    // Wait for the worker to pick it up (existing helper from Plan 4a tests).
+    // Wait for the worker to pick it up. `waitForIndexed` should be in
+    // `tests/integration/helpers.ts` from Plan 4a — confirm during Task 0.
+    // If it isn't, look for the equivalent under a different name (e.g.,
+    // `waitForSearchDoc`) or add a small polling helper.
     const { waitForIndexed } = await import('./helpers');
     const doc = await waitForIndexed(`checklist-${r.data.checklistId}`, 5000);
     expect(doc.title).toBe('Indexable Spring');
@@ -3305,13 +3356,13 @@ After `createItem` succeeds, redirect to `/items/[id]/suggest-after-create?ref=n
 
 - [ ] **Step 1: Adjust the create-item redirect**
 
-Find `app/(app)/items/new/page.tsx` (or wherever the create form's `onSubmit` lives). After `createItem` returns `{ ok: true, data: { id } }`, change:
+The redirect could live in the **client** (`app/(app)/items/new/page.tsx` calling `router.push`) or in the **Server Action** (`lib/items/actions.ts` calling `redirect()` from `next/navigation`). Grep first:
 
-```tsx
-router.push(`/items/${id}/suggest-after-create`);
+```bash
+grep -n "router.push\|redirect" app/\(app\)/items/new/page.tsx lib/items/actions.ts
 ```
 
-(Was probably `router.push(`/items/${id}`)`. The interstitial offers a Skip button that goes to `/items/${id}`.)
+Whichever location currently sends the user to `/items/${id}` after create, change the target to `/items/${id}/suggest-after-create`. The interstitial offers a Skip button that goes to `/items/${id}`.
 
 - [ ] **Step 2: Implement the interstitial page**
 
@@ -3657,6 +3708,10 @@ export default defineConfig({
   },
 });
 ```
+
+- [ ] **Step 1.5: Verify call shape matches Task 4's resolution**
+
+If Task 4 confirmed `output_config: { format: zodOutputFormat(...) }` works on Haiku 4.5, the smoke-test code below is correct as written. If Task 4 fell back to the `betaZodTool` path, **rewrite the smoke test to use the same call shape** as the production action — otherwise the smoke test passes against an API surface the app doesn't actually use.
 
 - [ ] **Step 2: Smoke test**
 
