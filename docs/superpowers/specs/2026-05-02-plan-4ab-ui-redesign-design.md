@@ -344,16 +344,38 @@ Plan 5   — Polish & operations (a11y audit, brand identity, custom fonts, PWA 
 - **Visual-regression coverage.** The repo doesn't have visual-regression tests. Manual eyeball of every route in light + dark is the verification step. Adding visual-regression infra is out of scope (Plan 5).
 - **Rollback.** Single feature branch (`plan-4ab-ui-redesign`); revert is one `git revert <merge-commit>` if anything goes wrong post-merge. The schema is untouched, so no data implications.
 
-## Pre-plan compatibility spike
+## Pre-plan compatibility spike — RESULTS
 
-Before the writing-plans skill produces the plan document, a one-hour verification spike confirms the toolchain triple works end-to-end:
+A spike ran on a throwaway branch (now discarded) on 2026-05-02. The toolchain triple works end-to-end, with caveats that the foundation task must handle.
 
-1. In a throwaway branch off main, run `pnpm dlx shadcn@latest init` against the current Next.js 16 + Tailwind v4 setup.
-2. Run `pnpm dlx shadcn@latest add button card sidebar` (one of each install-set category — utility, surface, complex).
-3. Drop a `<Button>` and `<Sidebar>` into a temporary route. Run `pnpm build` and `pnpm dev`.
-4. Verify the shadcn primitives render with theme tokens correctly resolving (light + dark), that `pnpm typecheck` is clean, and that `components.json` was generated with the Tailwind v4 indicator (`tailwind.cssVariables: true`, no `tailwind.config` path) — shadcn-cli has had v4-detection regressions in past versions; checking `components.json` directly is more reliable than inferring from build success.
+**✅ Versions verified compatible:**
+- Next.js 16.2.4 (current in repo)
+- Tailwind 4.2.4
+- `@tailwindcss/postcss` 4.2.4
+- shadcn-cli 4.6.0
 
-If this spike fails, the spec needs revision before planning — likely respec'ing onto Tailwind v3 (the `@theme` block becomes a `tailwind.config.ts` theme.extend, and several spec sections change). Hitting the fallback is **not** "a few hours of config files"; it's a respec. The spike happens before any planning to avoid that.
+**✅ `components.json` correctly v4-detected:** `tailwind.cssVariables: true`, `tailwind.config: ""` (empty — confirming v4's no-config-file mode).
+
+**✅ `pnpm typecheck` clean** after `shadcn init` and a starter `<Button>` install.
+
+**⚠ Caveats the foundation task MUST handle:**
+
+1. **`shadcn init` is destructive to existing CSS variable names.** The spike found that init **overwrote** the existing `light-dark()` values for `--border` and `--accent` with light-only `oklch()` values, because those names collided with shadcn's expected token namespace. It also injected ~25 new shadcn-namespaced variables (`--background`, `--foreground`, `--card`, `--popover`, `--primary`, `--secondary`, `--muted`, `--destructive`, `--input`, `--ring`, etc.) all as light-only `oklch()` values with no dark counterparts. The foundation task sequence is therefore:
+   1. Pre-init: rename existing `--accent` (project-domain meaning: "the user-facing brand accent color") to `--app-accent` to avoid the collision. Existing `var(--accent)` references in the codebase get migrated.
+   2. Run `shadcn init`.
+   3. Post-init: delete shadcn's injected oklch-light-only variables. They're redundant — our `@theme` block maps shadcn's expected names (`--color-background`, etc.) onto our `light-dark()` tokens directly.
+   4. Restore `--border`'s original `light-dark()` value (init overwrote it).
+   5. Write the `@theme` mapping block per the spec's foundation section.
+
+2. **shadcn's default preset is `base-nova` (uses `@base-ui/react`, not Radix).** base-ui is a newer library from the Radix team. Larger transitive footprint than Radix (~5 more packages). For this redesign, base-nova is acceptable — the components have the same API surface as the Radix-based shadcn primitives users see in older docs. If the dep weight or v0-stability concerns arise, `pnpm dlx shadcn@latest init --base radix` opts into the Radix preset; the spec doesn't mandate either. **Decision for v1: stay on the default `base-nova` preset** — it's where shadcn is heading and the dep cost is bounded.
+
+3. **`shadcn init` adds `@import "tw-animate-css"` and `@import "shadcn/tailwind.css"` to `app/globals.css`.** Both stay — they ship the animation utilities and shadcn's base styles respectively.
+
+4. **`components/ui/button.tsx` is generated automatically by init.** Tasks 2's "install primitives" step starts with this already in place; the explicit `pnpm dlx shadcn@latest add button` is a no-op.
+
+The spec's `@theme` block, install set, and migration plan are all still correct. The only revision is to the foundation task: it now starts with **rename existing `--accent` → `--app-accent`** before running `shadcn init`, then includes a **post-init cleanup step** to delete the injected duplicates. These additions are fully captured in the implementation plan (next step) and add roughly 20 minutes to the foundation task.
+
+**Stash reference:** the spike's working tree is preserved as `git stash@{0} "spike-tailwind-v4-discard"` for ~24h in case the foundation task implementer wants to inspect what `shadcn init` produced. Drop after planning.
 
 ## Open questions
 
