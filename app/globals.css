@@ -3,6 +3,23 @@
 @import "shadcn/tailwind.css";
 
 /*
+ * Redefine the `dark:` variant so it fires under EITHER signal:
+ *   1. OS-level prefers-color-scheme: dark
+ *   2. Manual override via [data-theme="dark"] on :root (set by ThemeToggle)
+ *
+ * Without this, Tailwind v4's default dark: only checks the media query,
+ * which breaks manually-toggled dark mode for all shadcn `dark:` utilities.
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where(:root[data-theme="dark"], :root[data-theme="dark"] *) {
+    @slot;
+  }
+}
+
+/*
  * Theme tokens defined once via the CSS light-dark() function. The active
  * value depends on the element's color-scheme: light, dark, or matching the
  * user's system preference (the default for `light dark`).
