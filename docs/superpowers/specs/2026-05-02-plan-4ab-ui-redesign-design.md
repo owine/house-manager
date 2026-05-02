@@ -59,23 +59,36 @@ Tailwind v4 is CSS-first — no `tailwind.config.js`. Theme is declared via the 
 }
 
 @theme {
+  /* Surfaces */
   --color-background: var(--bg);
   --color-foreground: var(--fg);
+  --color-card: var(--bg);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--fg);
   --color-muted: var(--bg-elevated);
   --color-muted-foreground: var(--fg-muted);
+
+  /* Interactive */
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+  --color-secondary: var(--bg-elevated);
+  --color-secondary-foreground: var(--fg);
+  --color-accent: var(--bg-elevated);     /* hover fills, sidebar active row, etc. */
+  --color-accent-foreground: var(--fg);
+
+  /* Status */
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+
+  /* Borders + focus */
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--focus);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--accent-fg);
-  --color-destructive: var(--danger);
-  --color-destructive-foreground: #ffffff;
-  --color-card: var(--bg);
-  --color-card-foreground: var(--fg);
 
+  /* Typography + radius */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-
   --radius: 0.5rem;
 }
 
@@ -88,7 +101,7 @@ body {
 
 The existing `[data-theme="light"]` and `[data-theme="dark"]` overrides continue working without modification — they only change `color-scheme`, and `light-dark()` resolves correctly under all three states (system, manual light, manual dark). The existing `<ThemeToggle>` component keeps its API.
 
-### shadcn install set (16 primitives)
+### shadcn install set (20 primitives)
 
 Each is copied via `pnpm dlx shadcn@latest add <name>` into `components/ui/<name>.tsx`. They become files in this repo — no upstream upgrade pressure.
 
@@ -109,9 +122,13 @@ Each is copied via `pnpm dlx shadcn@latest add <name>` into `components/ui/<name
 | `Table` | Service records, sortable lists |
 | `Badge` | Category chips, tags, status; replaces `.badge`/`.badge-sm` |
 | `Sidebar` | Left rail nav |
+| `Sheet` | Used by `Sidebar` for mobile collapse (explicit install — shadcn-cli does not reliably auto-pull transitive component deps) |
+| `Separator` | Visual rules between sidebar nav groups; in-page dividers |
+| `Tooltip` | Required by `Sidebar`'s `collapsible="icon"` mode for the collapsed-rail labels |
+| `Avatar` | Sidebar footer user identity (initials-only acceptable; no image source today) |
 | `Sonner` | Toast notifications (action errors, save confirmations) |
 
-`Sheet` is not installed standalone — `Sidebar` uses it internally for mobile collapse.
+The plan's Task 2 verifies after each `add` command that `components/ui/<name>.tsx` actually landed and that its imports compile. shadcn-cli sometimes silently no-ops on transitive deps; the install set is explicit so we don't discover missing primitives at runtime.
 
 ### Icons
 
@@ -273,21 +290,22 @@ Used on every empty list, the dashboard's empty zones, and Plan 4b's Suggest emp
 The plan document (writing-plans skill output) sequences the work as tasks. The shape:
 
 1. **Foundation** — install Tailwind v4 + shadcn-cli, configure `components.json`, write the `app/globals.css` `@theme` block, set the body `font-family`. End state: `pnpm build` succeeds; dashboard renders with sans-serif headings (visible improvement; verifies the layer works).
-2. **Install primitives** — copy in the 16 shadcn components (one shadcn-cli `add` per primitive; no per-component code yet).
+2. **Install primitives** — copy in the 20 shadcn primitives (one shadcn-cli `add` per primitive; no per-component code yet). Verify after each that `components/ui/<name>.tsx` was created and that `pnpm typecheck` is clean.
 3. **Sidebar + AppLayout chrome** — `AppSidebar`, restructured `AppLayout`. End state: every existing page renders inside the new chrome (page bodies still inline-styled at this checkpoint). Sidebar nav functional. Mobile collapse working.
 4. **Page templates** — `<PageHeader>`, `<ListPageShell>`, `<DetailPageShell>`, `<DashboardShell>`, `<FormPageShell>`. Includes a temporary `app/(app)/_dev/templates` route to eyeball each shell against placeholder content; route deleted at the end of the plan.
 5. **Migrate routes**, in order of visibility/risk:
    1. `/dashboard` — the page that motivated the redesign
    2. `/items` list
    3. `/items/[id]` detail (validates `<DetailPageShell>` against the most complex page)
-   4. `/items/new` + `/items/[id]/edit` (validates `<FormPageShell>` + shadcn `<Form>` against existing RHF integration)
-   5. `/settings` (smaller form page)
-   6. `/vendors` + `/vendors/[id]`
-   7. `/reminders`
-   8. `/notes`
-   9. `/search`
-   10. `/service` + `/warranties`
-6. **Cleanup** — delete legacy `.badge`, `.badge-sm`, `.table-row`, `.table-header`, `.table-cell` utility classes from `globals.css`; delete `ItemTable.tsx`; remove inline-style sprawl; run Biome.
+   4. `/items/new` (validates `<FormPageShell>` + shadcn `<Form>` against existing RHF integration — pattern-validation gate)
+   5. `/items/[id]/edit` (mechanical follow-up after `/items/new` proves the form pattern works)
+   6. `/settings` (smaller form page; second consumer of the form pattern)
+   7. `/vendors` + `/vendors/[id]`
+   8. `/reminders`
+   9. `/notes`
+   10. `/search`
+   11. `/service` + `/warranties`
+6. **Cleanup** — delete legacy `.badge`, `.badge-sm`, `.table-row`, `.table-header`, `.table-cell` utility classes from `globals.css`; delete `ItemTable.tsx` (per Q5: card grid is the v1 view for items; if a table view is wanted later, it'd be net-new work using shadcn `<Table>`, not a revert of this deletion); remove inline-style sprawl; run Biome.
 7. **Verify** — `pnpm verify` green; manual eyeball of every route in light + dark; existing Playwright E2E suite green (most should survive — the suite uses semantic role/text queries which shadcn primitives respect).
 
 ## Plan 4b amendment
@@ -295,7 +313,7 @@ The plan document (writing-plans skill output) sequences the work as tasks. The 
 After Plan 4ab merges, `plan-4b-suggest` rebases onto post-4ab main. Schema commit (`00e95a7`) is conflict-free. The plan document (`docs/superpowers/plans/2026-05-01-plan-4b-suggest.md`) gets a single revision pass:
 
 - Tasks 16, 17 (Checklist UI): swap raw HTML for `<ListPageShell>`, shadcn `<Button>`, shadcn `<Card>`.
-- Task 18 (SuggestionPreview): replace placeholder `btn-primary` strings with shadcn `<Button variant="default">`; add `<Dialog>` wrapper for dashboard entry.
+- Task 18 (SuggestionPreview): replace placeholder `btn-primary` strings with shadcn `<Button variant="default">`. (The dashboard entry point's `<Dialog>` is **not new behavior** — Plan 4b's spec already specifies "Button 'Generate {season} checklist' → opens dialog with `<SuggestionPreview kind='checklist'>`" in its Application surface section. The amendment swaps a raw modal-ish element for shadcn `<Dialog>`; lifecycle and trigger are unchanged.)
 - Tasks 21, 23, 24, 25: swap raw HTML for shadcn equivalents.
 
 Server Action contracts and tests don't change. The amendment is mechanical.
@@ -326,8 +344,18 @@ Plan 5   — Polish & operations (a11y audit, brand identity, custom fonts, PWA 
 - **Visual-regression coverage.** The repo doesn't have visual-regression tests. Manual eyeball of every route in light + dark is the verification step. Adding visual-regression infra is out of scope (Plan 5).
 - **Rollback.** Single feature branch (`plan-4ab-ui-redesign`); revert is one `git revert <merge-commit>` if anything goes wrong post-merge. The schema is untouched, so no data implications.
 
+## Pre-plan compatibility spike
+
+Before the writing-plans skill produces the plan document, a one-hour verification spike confirms the toolchain triple works end-to-end:
+
+1. In a throwaway branch off main, run `pnpm dlx shadcn@latest init` against the current Next.js 16 + Tailwind v4 setup.
+2. Run `pnpm dlx shadcn@latest add button card sidebar` (one of each install-set category — utility, surface, complex).
+3. Drop a `<Button>` and `<Sidebar>` into a temporary route. Run `pnpm build` and `pnpm dev`.
+4. Verify the shadcn primitives render with theme tokens correctly resolving (light + dark), that `pnpm typecheck` is clean, and that `components.json` was generated with the Tailwind v4 indicator (`tailwind.cssVariables: true`, no `tailwind.config` path) — shadcn-cli has had v4-detection regressions in past versions; checking `components.json` directly is more reliable than inferring from build success.
+
+If this spike fails, the spec needs revision before planning — likely respec'ing onto Tailwind v3 (the `@theme` block becomes a `tailwind.config.ts` theme.extend, and several spec sections change). Hitting the fallback is **not** "a few hours of config files"; it's a respec. The spike happens before any planning to avoid that.
+
 ## Open questions
 
-- **Tailwind v4 + Next.js 16 compatibility.** v4 is recent; Next.js 16's PostCSS pipeline should support it but the plan's first task verifies before committing. Fallback: Tailwind v3 with `tailwind.config.ts` (older but battle-tested). Cost: a few hours' worth of v3-specific config files.
-- **shadcn-cli + Tailwind v4.** shadcn officially supports v4; the `init` command should DTRT. The plan's first task verifies; fallback is to copy primitive sources directly from shadcn's GitHub at the version that matches v4.
-- **Mobile breakpoints**. shadcn `<Sidebar>` defaults to `md:` breakpoint for collapse. v1 keeps that default; if dogfooding shows it's wrong (e.g., on 1024×768 tablets it's awkward), Plan 5 tunes it.
+- **Mobile breakpoints**. shadcn `<Sidebar>` defaults to the `md:` breakpoint for collapse. v1 keeps that default; if dogfooding shows it's wrong (e.g., on 1024×768 tablets it's awkward), Plan 5 tunes it.
+- **Custom theme tokens for hover/active states**. The spec maps `--color-accent` to `var(--bg-elevated)` so that hover fills work with the existing tokens. If shadcn's hover affordance reads as too subtle on this token (it's a single elevation step from the base bg), v1 ships as-is and we adjust the token assignment in Plan 5 if needed. No new tokens — just one variable assignment.
