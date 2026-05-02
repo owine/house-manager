@@ -1428,6 +1428,8 @@ Identify the existing form composition. Likely it's RHF directly with hand-writt
 
 This is the canonical pattern; copy the shape for every other form in subsequent tasks.
 
+**Add the `mode: 'create' | 'edit'` discriminator now**, even though `/items/new` only uses `mode='create'` — Task 15 immediately reuses this component for `/items/[id]/edit` with `mode='edit'`, and adding the discriminator at Task 15 time means an extra commit churning the file. Cheaper to bake it in here.
+
 ```tsx
 // components/items/ItemForm.tsx
 'use client';
@@ -1523,7 +1525,19 @@ export function ItemForm({ categories }: { categories: Category[] }) {
             </FormItem>
           )}
         />
-        {/* location, manufacturer, model, serialNumber — same FormField pattern */}
+        {/* location, manufacturer, model, serialNumber — same FormField pattern with <Input> */}
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Notes</FormLabel>
+              <FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl>
+              <FormDescription>Markdown supported.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
           <Button type="submit" disabled={submitting}>
@@ -1897,7 +1911,13 @@ Remove these blocks (they're around lines 86-110 of the post-Task-2 globals.css)
 .table-cell { ... }
 ```
 
-Then `grep -rn "badge\|badge-sm\|table-row\|table-header\|table-cell" app/ components/` — expect mostly empty (the class names are common English; filter for `className="...badge..."` patterns specifically). If anything still uses them, replace with shadcn `<Badge>` or shadcn `<Table>` cells.
+Then verify no `className` references remain:
+
+```bash
+grep -rnE 'className="[^"]*\b(badge|badge-sm|table-row|table-header|table-cell)\b' app/ components/
+```
+
+(The targeted regex avoids false positives from English words in comments/strings.) Expect zero hits. If anything matches, replace with shadcn `<Badge>` or `<Table>` cells.
 
 - [ ] **Step 3: Restyle `EmptyState`**
 
