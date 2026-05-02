@@ -1,18 +1,16 @@
 import { notFound } from 'next/navigation';
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ItemForm } from '@/components/items/ItemForm';
 import { updateItem } from '@/lib/items/actions';
 import { getItem, listAllCategories } from '@/lib/items/queries';
 
-type Params = Promise<{ id: string }>;
-
-export default async function EditItemPage({ params }: { params: Params }) {
+export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [item, categories] = await Promise.all([getItem(id), listAllCategories()]);
   if (!item) notFound();
-
   return (
-    <div>
-      <h1>Edit item</h1>
+    <FormPageShell header={<PageHeader title={`Edit ${item.name}`} />}>
       <ItemForm
         categories={categories}
         defaultValues={{
@@ -33,6 +31,6 @@ export default async function EditItemPage({ params }: { params: Params }) {
         action={updateItem}
         submitLabel="Save changes"
       />
-    </div>
+    </FormPageShell>
   );
 }
