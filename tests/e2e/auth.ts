@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { Meilisearch } from 'meilisearch';
+import { INDEX_SETTINGS } from '@/lib/search/schema';
 
 // Each spec runs in the same Postgres container; without a reset, the second
 // spec's sign-in flow hits "Unique constraint failed on email" because the
@@ -40,9 +41,19 @@ export async function resetAuth(): Promise<void> {
     RESTART IDENTITY CASCADE
   `);
 
-  // Wipe the search index so a previous spec's items don't bleed into the
-  // current spec's hit results. Index may not exist on first run — fine.
+  // Wipe + recreate the search index so a previous spec's items don't bleed
+  // in. Recreating with settings is required: handleSearchIndex's first
+  // addDocuments after a bare deleteIndex would auto-create an index WITHOUT
+  // filterableAttributes, breaking facet queries. Worker's ensureSearchIndex
+  // only runs at startup, not per-job, so we own the priming here.
   await meili.deleteIndex('house').catch(() => {});
+  const created = await meili.createIndex('house', { primaryKey: 'id' });
+  await meili.tasks.waitForTask(created.taskUid);
+  const settings = await meili.index('house').updateSettings(
+    // biome-ignore lint/suspicious/noExplicitAny: structural typing on the as-const settings; matches lib/search/init.ts
+    INDEX_SETTINGS as any,
+  );
+  await meili.tasks.waitForTask(settings.taskUid);
 }
 
 export async function signIn(page: Page): Promise<void> {
