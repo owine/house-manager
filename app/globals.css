@@ -16,8 +16,8 @@
   --fg-muted: light-dark(#666666, #9a9a9a);
   --border: light-dark(#dddddd, #2a2a2d);
   --border-strong: light-dark(#999999, #444448);
-  --accent: light-dark(#0066cc, #4d9fff);
-  --accent-fg: light-dark(#ffffff, #0e0e10);
+  --app-accent: light-dark(#0066cc, #4d9fff);
+  --app-accent-fg: light-dark(#ffffff, #0e0e10);
   --danger: light-dark(#b00020, #ff6b6b);
   --danger-bg: light-dark(#fde8e8, #3a1818);
   --focus: light-dark(#0066cc, #4d9fff);
@@ -48,7 +48,7 @@ body {
 
 /* Default link color */
 a {
-  color: var(--accent);
+  color: var(--app-accent);
 }
 
 /* Markdown code/pre/blockquote adapt to theme */
