@@ -14,6 +14,13 @@ FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
+
+# Declare GIT_SHA AFTER deps + db:generate so layer cache for those stays warm.
+# The default 'unknown' applies to local `docker build` without --build-arg;
+# CI passes the real value. NEXT_PUBLIC_* gets inlined into the JS bundle.
+ARG GIT_SHA=unknown
+ENV NEXT_PUBLIC_GIT_SHA=$GIT_SHA
+
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
     AUTH_SECRET=buildsecretbuildsecretbuildsecretbuild \
     AUTH_OIDC_ISSUER=https://auth.example.com \
@@ -57,6 +64,22 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 # Manifests
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/.npmrc ./.npmrc
+
+# Re-declare GIT_SHA in this stage; placed AFTER all COPYs so only this final
+# tiny layer rebuilds per commit (the COPY layers stay cached as long as the
+# build stage's outputs are unchanged for the same SHA).
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
+# Static OCI labels (the dynamic ones — revision, version, created — are
+# applied at the manifest level by docker/metadata-action in CI).
+LABEL org.opencontainers.image.title="house-manager" \
+      org.opencontainers.image.description="Self-hosted PWA for household record-keeping." \
+      org.opencontainers.image.authors="Oliver Wine <ow@mroliverwine.com>" \
+      org.opencontainers.image.vendor="owine" \
+      org.opencontainers.image.source="https://github.com/owine/house-manager" \
+      org.opencontainers.image.documentation="https://github.com/owine/house-manager#readme" \
+      org.opencontainers.image.revision=$GIT_SHA
 
 EXPOSE 3000
 
