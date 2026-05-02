@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { createItemSchema, updateItemSchema } from './schema';
 
 export async function createItem(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -38,6 +39,7 @@ export async function createItem(input: unknown): Promise<ActionResult<{ id: str
   const item = await prisma.item.create({
     data: { ...rest, categoryId: category.id, metadata: metadataResult.data as object },
   });
+  await enqueueSearchIndex('item', item.id, 'upsert');
 
   revalidatePath('/items');
   revalidatePath('/dashboard');
@@ -89,6 +91,7 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
   }
 
   await prisma.item.update({ where: { id }, data });
+  await enqueueSearchIndex('item', id, 'upsert');
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
@@ -101,6 +104,7 @@ export async function archiveItem(id: string): Promise<ActionResult> {
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
   await prisma.item.update({ where: { id }, data: { archivedAt: new Date() } });
+  await enqueueSearchIndex('item', id, 'upsert');
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
@@ -113,6 +117,7 @@ export async function restoreItem(id: string): Promise<ActionResult> {
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
   await prisma.item.update({ where: { id }, data: { archivedAt: null } });
+  await enqueueSearchIndex('item', id, 'upsert');
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);

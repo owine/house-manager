@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { createServiceRecordSchema, updateServiceRecordSchema } from './schema';
 
 function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -46,6 +47,7 @@ export async function createServiceRecord(input: unknown): Promise<ActionResult<
   }
 
   const record = await prisma.serviceRecord.create({ data });
+  await enqueueSearchIndex('service', record.id, 'upsert');
 
   revalidatePath('/service');
   revalidatePath('/dashboard');
@@ -81,6 +83,7 @@ export async function updateServiceRecord(input: unknown): Promise<ActionResult<
   }
 
   await prisma.serviceRecord.update({ where: { id }, data });
+  await enqueueSearchIndex('service', id, 'upsert');
 
   revalidatePath('/service');
   revalidatePath(`/service/${id}`);
@@ -102,6 +105,7 @@ export async function deleteServiceRecord(id: string): Promise<ActionResult> {
   if (!existing) return { ok: false, formError: 'Service record not found' };
 
   await prisma.serviceRecord.delete({ where: { id } });
+  await enqueueSearchIndex('service', id, 'delete');
 
   revalidatePath('/service');
   revalidatePath('/dashboard');

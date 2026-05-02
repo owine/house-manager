@@ -11,6 +11,8 @@ export const Queue = {
   Thumbnail: 'thumbnail',
   RemindersTick: 'reminders.tick',
   Notify: 'notify',
+  SearchIndex: 'search.index',
+  SearchReindex: 'search.reindex',
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];

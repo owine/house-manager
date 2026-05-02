@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { computeNextDueOn } from './recurrence';
 import {
   completeReminderSchema,
@@ -54,6 +55,7 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
     },
     select: { id: true, itemId: true },
   });
+  await enqueueSearchIndex('reminder', reminder.id, 'upsert');
 
   revalidateReminderPaths(reminder.itemId, reminder.id);
   return { ok: true, data: { id: reminder.id } };
@@ -93,6 +95,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   if (notifyUserIds !== undefined) data.notifyUserIds = notifyUserIds;
 
   await prisma.reminder.update({ where: { id }, data });
+  await enqueueSearchIndex('reminder', id, 'upsert');
   revalidateReminderPaths(existing.itemId, id);
   if (itemId !== undefined && itemId !== existing.itemId && existing.itemId)
     revalidatePath(`/items/${existing.itemId}`);
@@ -112,6 +115,7 @@ export async function deleteReminder(id: string): Promise<ActionResult> {
   if (!existing) return { ok: false, formError: 'Not found' };
 
   await prisma.reminder.delete({ where: { id } });
+  await enqueueSearchIndex('reminder', id, 'delete');
   revalidateReminderPaths(existing.itemId, id);
   return { ok: true, data: undefined };
 }
@@ -137,6 +141,7 @@ export async function setReminderActive(
     data: { active },
     select: { id: true, itemId: true },
   });
+  await enqueueSearchIndex('reminder', id, 'upsert');
   revalidateReminderPaths(updated.itemId, id);
   return { ok: true, data: { id } };
 }
@@ -197,6 +202,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
       },
       select: { id: true },
     });
+    await enqueueSearchIndex('service', sr.id, 'upsert');
     await prisma.reminderCompletion.update({
       where: { id: completion.id },
       data: { createdServiceRecordId: sr.id },
@@ -207,6 +213,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
     where: { id },
     data: { lastCompletedOn: now, nextDueOn },
   });
+  await enqueueSearchIndex('reminder', id, 'upsert');
 
   revalidateReminderPaths(reminder.itemId, id);
   return { ok: true, data: { id } };

@@ -1,12 +1,19 @@
 import { expect, type Page } from '@playwright/test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { Meilisearch } from 'meilisearch';
+import { INDEX_SETTINGS } from '@/lib/search/schema';
 
 // Each spec runs in the same Postgres container; without a reset, the second
 // spec's sign-in flow hits "Unique constraint failed on email" because the
 // User row from the first spec is still around.
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const meili = new Meilisearch({
+  host: process.env.MEILI_HOST ?? 'http://localhost:7700',
+  apiKey: process.env.MEILI_KEY ?? '',
+});
 
 export async function resetAuth(): Promise<void> {
   // Truncates auth AND domain tables. Playwright runs workers:1 so specs share
@@ -33,6 +40,20 @@ export async function resetAuth(): Promise<void> {
       users
     RESTART IDENTITY CASCADE
   `);
+
+  // Wipe + recreate the search index so a previous spec's items don't bleed
+  // in. Recreating with settings is required: handleSearchIndex's first
+  // addDocuments after a bare deleteIndex would auto-create an index WITHOUT
+  // filterableAttributes, breaking facet queries. Worker's ensureSearchIndex
+  // only runs at startup, not per-job, so we own the priming here.
+  await meili.deleteIndex('house').catch(() => {});
+  const created = await meili.createIndex('house', { primaryKey: 'id' });
+  await meili.tasks.waitForTask(created.taskUid);
+  const settings = await meili.index('house').updateSettings(
+    // biome-ignore lint/suspicious/noExplicitAny: structural typing on the as-const settings; matches lib/search/init.ts
+    INDEX_SETTINGS as any,
+  );
+  await meili.tasks.waitForTask(settings.taskUid);
 }
 
 export async function signIn(page: Page): Promise<void> {

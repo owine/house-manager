@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
 import { addAttachmentLinkSchema, type ParentType, uploadAttachmentSchema } from './schema';
 import { atomicWrite, removeDir } from './storage';
@@ -95,6 +96,7 @@ export async function uploadAttachment(formData: FormData): Promise<ActionResult
       },
       select: { id: true },
     });
+    await enqueueSearchIndex('attachment', created.id, 'upsert');
 
     if (file.type.startsWith('image/')) {
       try {
@@ -127,6 +129,7 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   if (!row) return { ok: false, formError: 'Not found' };
 
   await prisma.attachment.delete({ where: { id } });
+  await enqueueSearchIndex('attachment', id, 'delete');
   await removeDir(env.FILES_DIR, id).catch((e) => {
     console.error('[attachments] failed to remove storage dir', e);
   });
@@ -181,6 +184,7 @@ export async function addAttachmentLink(formData: FormData): Promise<ActionResul
       },
       select: { id: true },
     });
+    await enqueueSearchIndex('attachment', created.id, 'upsert');
     for (const p of REVALIDATE_PATH[parentType](parentId)) revalidatePath(p);
     return { ok: true, data: { id: created.id } };
   } catch (e) {
