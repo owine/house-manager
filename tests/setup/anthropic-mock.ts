@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 
 type ParsedResponse = {
   parsed_output: unknown;
@@ -48,4 +48,9 @@ vi.mock('@anthropic-ai/sdk', () => {
     };
   }
   return { default: MockAnthropic };
+});
+
+// Auto-reset mock state between tests to prevent stale state from leaking across tests
+afterEach(() => {
+  resetAnthropicMock();
 });
