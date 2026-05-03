@@ -15,8 +15,10 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   // Create a new item
   await page.goto('/items/new');
   await page.getByLabel('Name').fill('Furnace');
-  // Category is a <select> — selectOption by value (slug)
-  await page.getByLabel('Category').selectOption('hvac');
+  // Open the Category combobox and pick HVAC.
+  // Was a native <select> before Plan 4ab; now shadcn <Select> (Base UI listbox).
+  await page.getByLabel('Category').click();
+  await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
 
   // After submit we land on the item detail page (cuid id, not "new")
