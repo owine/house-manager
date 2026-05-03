@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { GenerateRemindersButton } from '@/components/ai/GenerateRemindersButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { getItem } from '@/lib/items/queries';
@@ -21,6 +22,9 @@ export function RemindersTab({ item }: Props) {
         </Button>
       </CardHeader>
       <CardContent className="pt-4">
+        <div className="mb-4">
+          <GenerateRemindersButton itemId={item.id} />
+        </div>
         {item.reminders.length === 0 ? (
           <p className="text-sm text-muted-foreground">No reminders yet.</p>
         ) : (
