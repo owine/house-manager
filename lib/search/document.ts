@@ -56,6 +56,14 @@ export type AttachmentRow = {
   createdAt: Date; // Attachment has no updatedAt column — use createdAt as the sort key
 };
 
+export type ChecklistRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  items: { title: string }[];
+  updatedAt: Date;
+};
+
 export type RowFor<K extends SearchKind> = K extends 'item'
   ? ItemRow
   : K extends 'vendor'
@@ -68,7 +76,9 @@ export type RowFor<K extends SearchKind> = K extends 'item'
           ? ReminderRow
           : K extends 'attachment'
             ? AttachmentRow
-            : never;
+            : K extends 'checklist'
+              ? ChecklistRow
+              : never;
 
 // ─── Pure transform per kind ────────────────────────────────────────────────
 
@@ -79,6 +89,7 @@ const ICON: Record<SearchKind, string> = {
   service: '🔧',
   reminder: '⏰',
   attachment: '📎',
+  checklist: '✅',
 };
 
 export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): SearchDocument {
@@ -191,6 +202,23 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
         updatedAt: Math.floor(r.createdAt.getTime() / 1000),
       };
     }
+    case 'checklist': {
+      const r = row as ChecklistRow;
+      return {
+        id: `checklist-${r.id}`,
+        kind: 'checklist',
+        recordId: r.id,
+        title: r.name,
+        body: [r.description ?? '', ...r.items.map((i) => i.title)].join('\n'),
+        tags: [],
+        itemName: '',
+        itemId: null,
+        categorySlug: null,
+        href: `/checklists/${r.id}`,
+        iconHint: ICON.checklist,
+        updatedAt: Math.floor(r.updatedAt.getTime() / 1000),
+      };
+    }
   }
 }
 
@@ -275,6 +303,19 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
         },
       });
       return row ? toDocument('attachment', row) : null;
+    }
+    case 'checklist': {
+      const row = await prisma.checklist.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          updatedAt: true,
+          items: { select: { title: true } },
+        },
+      });
+      return row ? toDocument('checklist', row) : null;
     }
   }
 }

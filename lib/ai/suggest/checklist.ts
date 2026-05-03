@@ -239,10 +239,9 @@ export async function saveAcceptedChecklist(input: {
     throw e;
   }
 
-  // Search-index sync. The 'checklist' kind is a stop-gap until Task 14
-  // widens SearchKind. The cast keeps typecheck green; remove after Task 14.
+  // Search-index sync.
   try {
-    await enqueueSearchIndex('checklist' as never, checklistId, 'upsert');
+    await enqueueSearchIndex('checklist', checklistId, 'upsert');
   } catch (e) {
     console.warn(
       JSON.stringify({

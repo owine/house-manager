@@ -24,6 +24,7 @@ const KIND_LABELS: Record<SearchKind, string> = {
   service: 'Services',
   reminder: 'Reminders',
   attachment: 'Attachments',
+  checklist: 'Checklists',
 };
 
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {

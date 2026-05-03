@@ -57,5 +57,7 @@ async function listAllIds(kind: SearchKind): Promise<string[]> {
       return (await prisma.reminder.findMany({ select: { id: true } })).map((r) => r.id);
     case 'attachment':
       return (await prisma.attachment.findMany({ select: { id: true } })).map((r) => r.id);
+    case 'checklist':
+      return (await prisma.checklist.findMany({ select: { id: true } })).map((r) => r.id);
   }
 }
