@@ -29,3 +29,21 @@ export async function teardownIntegration(ctx: IntegrationContext) {
   await ctx.prisma.$disconnect();
   await stopStack(ctx.stack);
 }
+
+// signInAs: simulate an authenticated session for tests that target Server Actions.
+// Usage: at the top of the test file (NOT inside a beforeAll), call:
+//   vi.mock('@/lib/auth', async () => {
+//     const { __getCurrentUserId } = await import('../helpers');
+//     return { auth: vi.fn(async () => { const id = __getCurrentUserId(); return id ? { user: { id } } : null; }) };
+//   });
+// Then call `signInAs(userId)` or `signInAs(null)` to switch sessions.
+//
+// IMPORTANT: vi.mock is hoisted per-file. We expose a setter so tests can swap the user
+// without re-mocking. The mocked module reads the value at call time.
+let __currentUserId: string | null = null;
+export function signInAs(userId: string | null): void {
+  __currentUserId = userId;
+}
+export function __getCurrentUserId(): string | null {
+  return __currentUserId;
+}
