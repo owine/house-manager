@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { Input } from '@/components/ui/input';
 import type { SearchHit } from '@/lib/search/queries';
 import { SearchResults } from './SearchResults';
 
@@ -75,8 +76,8 @@ export function SearchBar() {
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', flex: 1, maxWidth: 360 }}>
-      <input
+    <div ref={containerRef} className="relative flex-1 max-w-sm">
+      <Input
         ref={inputRef}
         type="search"
         value={query}
@@ -87,40 +88,20 @@ export function SearchBar() {
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder="Search…"
-        style={{ width: '100%', padding: '0.4rem 0.6rem' }}
       />
       {open && (query.trim() || error) && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderTop: 'none',
-            zIndex: 100,
-            maxHeight: 400,
-            overflowY: 'auto',
-          }}
-        >
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-y-auto rounded-md border bg-popover shadow-md">
           {error ? (
-            <p style={{ padding: '0.5rem', color: 'var(--fg-muted)' }}>{error}</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">{error}</p>
           ) : (
             <>
               <SearchResults hits={hits} variant="dropdown" onItemClick={() => setOpen(false)} />
               {hits.length > 0 && (
-                <div
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    borderTop: '1px solid var(--border)',
-                    fontSize: '0.85rem',
-                    textAlign: 'right',
-                  }}
-                >
+                <div className="border-t px-3 py-2 text-right text-sm">
                   <Link
                     href={`/search?q=${encodeURIComponent(query)}`}
                     onClick={() => setOpen(false)}
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     See all results →
                   </Link>
