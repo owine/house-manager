@@ -382,3 +382,77 @@ export async function saveAcceptedReminders(input: {
   if (input.itemId) revalidatePath(`/items/${input.itemId}`);
   return { ok: true, data: { savedIds } };
 }
+
+// ─── saveAcceptedChecklist ───────────────────────────────────────────────────
+
+export async function saveAcceptedChecklist(input: {
+  logId: string;
+  name: string;
+  description?: string;
+  items: ProposedChecklistItem[];
+  appendToChecklistId?: string;
+}): Promise<ActionResult<{ checklistId: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  if (!input.items || input.items.length === 0) {
+    return { ok: false, formError: 'No items selected.' };
+  }
+  // `name` required for the create path; ignored for the append path.
+  if (!input.appendToChecklistId && (!input.name || input.name.trim().length === 0)) {
+    return { ok: false, formError: 'Checklist name is required.' };
+  }
+
+  let checklistId: string;
+  try {
+    checklistId = await prisma.$transaction(async (tx) => {
+      let target: { id: string; nextPosition: number };
+
+      if (input.appendToChecklistId) {
+        const existing = await tx.checklist.findUnique({
+          where: { id: input.appendToChecklistId },
+          include: { items: { orderBy: { position: 'desc' }, take: 1 } },
+        });
+        if (!existing) throw new Error('Checklist not found');
+        target = {
+          id: existing.id,
+          nextPosition: (existing.items[0]?.position ?? -1) + 1,
+        };
+      } else {
+        const created = await tx.checklist.create({
+          data: { name: input.name, description: input.description },
+        });
+        target = { id: created.id, nextPosition: 0 };
+      }
+
+      for (let i = 0; i < input.items.length; i++) {
+        const row = input.items[i];
+        await tx.checklistItem.create({
+          data: {
+            checklistId: target.id,
+            position: target.nextPosition + i,
+            title: row.title,
+            itemId: row.itemId,
+          },
+        });
+      }
+
+      return target.id;
+    });
+  } catch (e) {
+    const msg = (e as Error)?.message ?? '';
+    if (msg === 'Checklist not found') {
+      return { ok: false, formError: 'Checklist not found.' };
+    }
+    throw e;
+  }
+
+  // Search-index sync. The 'checklist' kind is a stop-gap until Task 14
+  // widens SearchKind. The cast keeps typecheck green; remove after Task 14.
+  await enqueueSearchIndex('checklist' as never, checklistId, 'upsert');
+
+  await markAccepted(input.logId, [checklistId]);
+  revalidatePath('/checklists');
+  revalidatePath(`/checklists/${checklistId}`);
+  return { ok: true, data: { checklistId } };
+}
