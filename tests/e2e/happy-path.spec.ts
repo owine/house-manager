@@ -21,6 +21,12 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
 
+  // Plan 4b Task 21: post-create lands on the suggest-after-create interstitial.
+  // Skip past it to reach the item detail page.
+  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+\/suggest-after-create$/);
+  // Base UI's Button keeps role="button" even when render={<Link>} produces an <a>.
+  await page.getByRole('button', { name: 'Skip' }).click();
+
   // After submit we land on the item detail page (cuid id, not "new")
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
   await expect(page.locator('h1')).toContainText('Furnace');

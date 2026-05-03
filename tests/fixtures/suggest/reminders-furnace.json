@@ -1,0 +1,31 @@
+{
+  "id": "msg_test_furnace",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 5800,
+    "output_tokens": 320,
+    "cache_creation_input_tokens": 5200,
+    "cache_read_input_tokens": 0
+  },
+  "parsed_output": {
+    "proposals": [
+      {
+        "title": "Replace furnace air filter",
+        "description": "Replace the 1\" furnace filter every 90 days.",
+        "recurrence": { "kind": "interval", "days": 90 },
+        "leadTimeDays": 7,
+        "rationale": "Carrier 58STA documentation recommends 90-day filter intervals."
+      },
+      {
+        "title": "Annual furnace inspection",
+        "recurrence": { "kind": "yearly", "month": 10, "day": 15 },
+        "leadTimeDays": 14,
+        "rationale": "Pre-heating-season combustion check is industry standard."
+      }
+    ]
+  }
+}

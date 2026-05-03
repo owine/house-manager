@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const EnvSchema = z.object({
+  ANTHROPIC_API_KEY: z.string().min(1),
   DATABASE_URL: z.string().url(),
   AUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
   AUTH_OIDC_ISSUER: z.string().url(),

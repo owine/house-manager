@@ -1,0 +1,27 @@
+{
+  "id": "msg_test_spring",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 5900,
+    "output_tokens": 600,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 5200
+  },
+  "parsed_output": {
+    "name": "Spring 2026 Maintenance",
+    "description": "Pre-warm-season tasks for HVAC, exterior, and tools.",
+    "items": [
+      { "title": "Clean condenser coils", "itemId": null, "rationale": "Spring HVAC startup." },
+      { "title": "Sharpen mower blades", "itemId": null, "rationale": "Pre-mowing-season." },
+      {
+        "title": "Inspect roof for winter damage",
+        "itemId": null,
+        "rationale": "Annual exterior check."
+      }
+    ]
+  }
+}

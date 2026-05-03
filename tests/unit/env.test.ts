@@ -4,6 +4,7 @@ import { parseEnv } from '@/lib/env';
 describe('parseEnv', () => {
   it('parses a valid environment', () => {
     const env = parseEnv({
+      ANTHROPIC_API_KEY: 'sk-ant-test-fixture',
       DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
       AUTH_SECRET: 'a'.repeat(32),
       AUTH_OIDC_ISSUER: 'https://auth.example.com',

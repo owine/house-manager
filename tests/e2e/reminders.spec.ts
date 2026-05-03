@@ -17,6 +17,11 @@ test('creates a reminder, marks it complete, sees it in history', async ({ page,
   await page.getByRole('combobox', { name: 'Category' }).click();
   await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
+  // Plan 4b Task 21: post-create lands on the suggest-after-create interstitial.
+  // Skip past it to reach the item detail page.
+  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+\/suggest-after-create$/);
+  // Base UI's Button keeps role="button" even when render={<Link>} produces an <a>.
+  await page.getByRole('button', { name: 'Skip' }).click();
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
 
   // Switch to Reminders tab (scoped to avoid matching the sidebar nav link)

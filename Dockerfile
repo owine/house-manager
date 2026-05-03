@@ -34,6 +34,7 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
     WEB_PUSH_CONTACT_EMAIL=mailto:build@example.com \
     FORWARDEMAIL_API_KEY=build-forwardemail-key \
     FORWARDEMAIL_FROM_ADDRESS=build@example.com \
+    ANTHROPIC_API_KEY=placeholder-build-time \
     pnpm build
 RUN pnpm prune --prod
 

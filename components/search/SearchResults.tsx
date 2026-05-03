@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Calendar, Package, Paperclip, StickyNote, Users, Wrench } from 'lucide-react';
+import { Calendar, CheckSquare, Package, Paperclip, StickyNote, Users, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { HL_CLOSE, HL_OPEN } from '@/lib/search/highlight';
@@ -19,6 +19,7 @@ const KIND_ICONS: Record<SearchKind, LucideIcon> = {
   service: Wrench,
   reminder: Calendar,
   attachment: Paperclip,
+  checklist: CheckSquare,
 };
 
 const KIND_LABELS: Record<SearchKind, string> = {
@@ -28,6 +29,7 @@ const KIND_LABELS: Record<SearchKind, string> = {
   service: 'Service',
   reminder: 'Reminder',
   attachment: 'Attachment',
+  checklist: 'Checklist',
 };
 
 // Splits a Meilisearch _formatted string on HL_OPEN/HL_CLOSE sentinels and

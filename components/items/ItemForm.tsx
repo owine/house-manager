@@ -85,7 +85,10 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
       }
       const isEdit = !!defaultValues?.id;
       toast.success(isEdit ? 'Item updated' : 'Item created');
-      router.push(`/items/${result.data.id}`);
+      const target = isEdit
+        ? `/items/${result.data.id}`
+        : `/items/${result.data.id}/suggest-after-create`;
+      router.push(target);
     });
   });
 

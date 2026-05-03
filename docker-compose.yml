@@ -10,6 +10,7 @@ x-app-env: &app-env
   MEILI_KEY: ${MEILI_KEY}
   FILES_DIR: /data/files
   NODE_ENV: production
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
 
 services:
   db:

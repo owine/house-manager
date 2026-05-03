@@ -54,6 +54,7 @@ export default async function ItemDetailPage({
           <ItemOverflowMenu
             itemId={item.id}
             isArchived={item.archivedAt !== null}
+            initialIncludeInSuggestions={item.includeInSuggestions}
             onArchive={doArchive}
             onRestore={doRestore}
           />

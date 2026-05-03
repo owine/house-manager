@@ -36,6 +36,7 @@ model User {
   pushSubscriptions PushSubscription[]
   reminderCompletions ReminderCompletion[]
   notificationLogs NotificationLog[]
+  aiSuggestionLogs AISuggestionLog[]
 
   @@map("users")
 }
@@ -115,6 +116,7 @@ model Item {
   metadata        Json       @default("{}")
   notes           String?    @db.Text
   archivedAt      DateTime?
+  includeInSuggestions Boolean @default(true)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
@@ -123,6 +125,7 @@ model Item {
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
   reminders       Reminder[]
+  checklistItems  ChecklistItem[]
 
   @@index([categoryId])
   @@index([archivedAt])
@@ -315,4 +318,56 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+model Checklist {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  schedule    Json?
+  nextDueOn   DateTime?
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  items       ChecklistItem[]
+
+  @@index([active])
+}
+
+model ChecklistItem {
+  id          String  @id @default(cuid())
+  checklistId String
+  position    Int
+  title       String
+  itemId      String?
+
+  checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([checklistId, position])
+  @@index([itemId])
+}
+
+model AISuggestionLog {
+  id                   String   @id @default(cuid())
+  userId               String
+  kind                 String
+  systemPromptVersion  String
+  userPrompt           String?
+  inventorySnapshotIds String[]
+  response             Json?
+  acceptedItemIds      Json     @default("[]")
+  errorReason          String?
+  model                String
+  inputTokens          Int?
+  outputTokens         Int?
+  cacheReadTokens      Int?
+  cacheCreationTokens  Int?
+  latencyMs            Int?
+  createdAt            DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
