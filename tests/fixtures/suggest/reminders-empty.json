@@ -1,0 +1,15 @@
+{
+  "id": "msg_test_empty",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 5500,
+    "output_tokens": 30,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 5200
+  },
+  "parsed_output": { "proposals": [] }
+}
