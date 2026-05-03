@@ -20,7 +20,7 @@ These are project conventions enforced across every task. Don't deviate without 
 - **Push cadence**: branch accumulates commits across all tasks; push happens at the end via `superpowers:finishing-a-development-branch`. Branch is already `plan-5a-observability` (off main, spec already committed as `fa8a24f`).
 - **Dependency pinning**: every new dep uses `~` (patch-level) range per `feedback_dep_pinning`. Run `pnpm view <pkg>@latest version` before adding to confirm currency (per `feedback_dep_currency`).
 - **Module-load DATABASE_URL trap** (familiar from Plans 4a/4b): `lib/db.ts` constructs PrismaClient at module load. The Pino logger module (`lib/logger.ts`) is pure (no Prisma dependency) so it doesn't have this trap. But anything that transitively imports `lib/db` from a test must use the dynamic-import-in-`beforeAll` pattern.
-- **Env-var trap** (from Plans 3 / 4b): adding any new env var to `lib/env.ts` requires three more edits — `.github/workflows/ci.yml` e2e job env block, `Dockerfile` build-step `ARG` + `ENV` (or runtime `ENV`), and `docker-compose.yml`. This plan adds three env vars (`LOG_LEVEL`, `SENTRY_DSN`, `SENTRY_AUTH_TOKEN`); Task 1 covers all four locations for all three vars.
+- **Env-var trap** (from Plans 3 / 4b): adding any new env var to `lib/env.ts` requires three more edits — `.github/workflows/ci.yml` e2e job env block, `Dockerfile` build-step `ARG` + `ENV` (or runtime `ENV`), and `docker-compose.yml`. This plan adds **four** env vars (`LOG_LEVEL`, `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`); Task 1 covers all four locations for all four vars upfront so no later task has to revisit the env-var surface.
 - **`.optional()` pattern**: all three new env vars are optional (Zod `.optional()`). Pattern matches `APP_URL` already in `lib/env.ts`. App must run cleanly with all three unset.
 - **Tests location**: pure unit tests colocate as `<module>.test.ts` next to source (e.g., `lib/logger.test.ts`); integration tests under `tests/integration/`.
 - **Don't replace `console.*` outside `lib/` and `worker/`**: tests, `prisma/seed.ts`, scripts, the dev server's own `next dev` output stay as-is.
@@ -116,32 +116,37 @@ docs/observability.md                         # Task 9 (new — env vars + dev p
 - Modify: `docker-compose.yml`
 - Modify: `.github/workflows/ci.yml`
 
-Three new env vars, all optional. App must boot with all three unset.
+Four new env vars, all optional. App must boot with all four unset.
+
+**Why two Sentry DSN vars?** `@sentry/nextjs`'s server-side code reads `SENTRY_DSN`; the browser-side code reads `NEXT_PUBLIC_SENTRY_DSN` because Next.js inlines `NEXT_PUBLIC_*` into the client bundle at build time. Setting both to the same value gives full server + browser coverage. Setting only one is valid — you just lose the other side's reporting.
 
 - [ ] **Step 1: Add to `lib/env.ts`**
 
-Add these three lines to the `EnvSchema` (anywhere, but grouping with `APP_URL` keeps the optional vars together):
+Add these four lines to the `EnvSchema` (anywhere, but grouping with `APP_URL` keeps the optional vars together):
 
 ```ts
 LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
 SENTRY_DSN: z.string().url().optional(),
+NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
 SENTRY_AUTH_TOKEN: z.string().optional(),
 ```
 
 - [ ] **Step 2: Update `Dockerfile`**
 
-In the `build` stage's env block (around the `ANTHROPIC_API_KEY` line), add a build-time `ARG` for source-map upload and a runtime `ENV` for both:
+In the `build` stage's env block (around the `ANTHROPIC_API_KEY` line), add build-time `ARG`s for the Sentry vars (so they're inlined into the bundle / available to source-map upload) and runtime `ENV`s for the rest:
 
 ```dockerfile
 # Sentry (optional — source-map upload during build, runtime DSN reporting)
 ARG SENTRY_DSN
+ARG NEXT_PUBLIC_SENTRY_DSN
 ARG SENTRY_AUTH_TOKEN
 ENV SENTRY_DSN=$SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 ENV LOG_LEVEL=info
 ```
 
-(`LOG_LEVEL` is runtime-only — no `ARG` needed.)
+(`LOG_LEVEL` is runtime-only — no `ARG` needed. `NEXT_PUBLIC_*` MUST be a build `ARG` so Next.js inlines it at build time.)
 
 - [ ] **Step 3: Update `docker-compose.yml`**
 
@@ -150,6 +155,7 @@ Add commented placeholder env entries to the `web` and `worker` services (don't 
 ```yaml
 # Optional observability vars. Set these once GlitchTip / Loki are running.
 # SENTRY_DSN: ${SENTRY_DSN:-}
+# NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
 # SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
 # LOG_LEVEL: ${LOG_LEVEL:-info}
 ```
@@ -158,11 +164,12 @@ If you find existing YAML anchors for shared env (the project uses them), follow
 
 - [ ] **Step 4: Update `.github/workflows/ci.yml`**
 
-In the `e2e` job's `env:` block, add the three vars with empty/placeholder values:
+In the `e2e` job's `env:` block, add the four vars with empty/placeholder values:
 
 ```yaml
 LOG_LEVEL: info
 # SENTRY_DSN intentionally unset in CI; SDK no-ops gracefully.
+# NEXT_PUBLIC_SENTRY_DSN intentionally unset; browser SDK no-ops gracefully.
 # SENTRY_AUTH_TOKEN intentionally unset; source-map upload skipped.
 ```
 
@@ -181,7 +188,7 @@ Both should pass — the schema additions are optional, no consumers exist yet.
 
 ```bash
 git add lib/env.ts Dockerfile docker-compose.yml .github/workflows/ci.yml
-git commit -m "chore(observability): add optional LOG_LEVEL + SENTRY_* env vars"
+git commit -m "chore(observability): add optional LOG_LEVEL + SENTRY_* env vars (4 total)"
 ```
 
 ---
@@ -655,17 +662,7 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
 }
 ```
 
-NOTE: the browser SDK reads `NEXT_PUBLIC_SENTRY_DSN` (Next.js inlines `NEXT_PUBLIC_*` into the client bundle at build time). The server uses the un-prefixed `SENTRY_DSN`. **This means the user needs to set BOTH env vars to the same DSN value to get full coverage.** Document this in `docs/observability.md` (Task 9).
-
-If you want to use ONE env var for both, add the `NEXT_PUBLIC_SENTRY_DSN` to `lib/env.ts` as a separate optional var. Recommend: keep them separate to make the public-vs-private distinction explicit.
-
-Update `lib/env.ts` Task-1 additions to also include:
-
-```ts
-NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
-```
-
-(If you already shipped Task 1 without this, amend it now in this commit.)
+(`NEXT_PUBLIC_SENTRY_DSN` was already added to `lib/env.ts` + Dockerfile + docker-compose + ci.yml in Task 1. Nothing more to change there now.)
 
 - [ ] **Step 4: Wrap `next.config.ts` with `withSentryConfig`**
 
@@ -711,7 +708,7 @@ The instrumentation files import lazily inside `register()` and via the DSN gate
 - [ ] **Step 6: Commit**
 
 ```bash
-git add instrumentation.ts sentry.client.config.ts next.config.ts package.json pnpm-lock.yaml lib/env.ts
+git add instrumentation.ts sentry.client.config.ts next.config.ts package.json pnpm-lock.yaml
 git commit -m "feat(observability): wire @sentry/nextjs SDK with optional-DSN gating"
 ```
 
@@ -806,25 +803,29 @@ git commit -m "feat(observability): report uncaught client errors to Sentry"
 
 The worker runs as a separate process via `tsx worker/index.ts`. Next.js's `instrumentation.ts` doesn't apply to it — the worker needs its own `Sentry.init` call early in startup.
 
-`@sentry/nextjs` exports a Node init too, but for cleanness we'll use `@sentry/node` directly via the `@sentry/nextjs` re-export (which bundles `@sentry/node` internally). Calling `Sentry.init` from `@sentry/nextjs` inside a non-Next.js process works — the SDK just runs the Node integration.
+We'll import `@sentry/node` directly (cleaner than reaching into `@sentry/nextjs`'s Node-runtime entry from a non-Next.js process). It's a transitive dep of `@sentry/nextjs` so it should already be in the dep graph after Task 5.
 
-Actually, simpler and more correct: import `@sentry/node` directly. It's already a transitive dep via `@sentry/nextjs`. **Verify by `pnpm list @sentry/node` after Task 5 lands.** If it's NOT a transitive dep, add it explicitly with `pnpm add @sentry/node`.
-
-- [ ] **Step 1: Verify `@sentry/node` is available**
+- [ ] **Step 1: Verify `@sentry/node` is resolvable**
 
 ```bash
 pnpm list @sentry/node
 ```
 
-If it's not present, install it:
+If the output is empty (no entry), add it explicitly — defensive against future `@sentry/nextjs` versions that internalize the Node SDK differently:
 
 ```bash
 pnpm add @sentry/node
 ```
 
+(Adding it explicitly is harmless even if it's already a transitive dep.)
+
 - [ ] **Step 2: Add Sentry init to `worker/index.ts`**
 
-At the very top of the file, before any other imports that might throw, add:
+At the very top of the file, **before all other imports** (so module-load errors in `lib/queue.ts` or anywhere else are captured), add:
+
+> **Module-load ordering matters.** `lib/queue.ts`'s `boss.on('error', ...)` handler (modified in Step 3 below to call `Sentry.captureException`) fires whenever pg-boss emits an error. If queue.ts is imported BEFORE Sentry inits, an error during early module load won't be captured. Putting `Sentry.init` at the absolute top of `worker/index.ts` — before the queue import — ensures init completes first.
+
+
 
 ```ts
 import * as Sentry from '@sentry/node';
