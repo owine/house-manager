@@ -23,6 +23,10 @@ const EnvSchema = z.object({
   FORWARDEMAIL_API_KEY: z.string().min(1),
   FORWARDEMAIL_FROM_ADDRESS: z.string().min(1),
   APP_URL: z.string().url().optional(),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
+  SENTRY_DSN: z.string().url().optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  SENTRY_AUTH_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

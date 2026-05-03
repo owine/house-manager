@@ -21,6 +21,15 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
 ARG GIT_SHA=unknown
 ENV NEXT_PUBLIC_GIT_SHA=$GIT_SHA
 
+# Sentry (optional — source-map upload during build, runtime DSN reporting)
+ARG SENTRY_DSN
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG SENTRY_AUTH_TOKEN
+ENV SENTRY_DSN=$SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+ENV LOG_LEVEL=info
+
 RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
     AUTH_SECRET=buildsecretbuildsecretbuildsecretbuild \
     AUTH_OIDC_ISSUER=https://auth.example.com \
