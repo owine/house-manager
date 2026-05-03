@@ -1,6 +1,9 @@
 import { PgBoss } from 'pg-boss';
 
 import { getEnv } from '@/lib/env';
+import { getLogger } from '@/lib/logger';
+
+const logger = getLogger('queue');
 
 // Single source of truth for queue names. Producers (boss.send) and consumers
 // (boss.work) import `Queue.X` instead of repeating string literals — adding a
@@ -23,7 +26,7 @@ export async function getBoss(): Promise<PgBoss> {
   if (bossInstance) return bossInstance;
   const env = getEnv();
   const boss = new PgBoss({ connectionString: env.DATABASE_URL });
-  boss.on('error', (e) => console.error('pg-boss error', e));
+  boss.on('error', (e) => logger.error({ err: e }, 'pg-boss error'));
   await boss.start();
   for (const name of QUEUES) await boss.createQueue(name);
   bossInstance = boss;
