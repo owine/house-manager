@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { PgBoss } from 'pg-boss';
 
 import { getEnv } from '@/lib/env';
@@ -26,7 +27,10 @@ export async function getBoss(): Promise<PgBoss> {
   if (bossInstance) return bossInstance;
   const env = getEnv();
   const boss = new PgBoss({ connectionString: env.DATABASE_URL });
-  boss.on('error', (e) => logger.error({ err: e }, 'pg-boss error'));
+  boss.on('error', (e) => {
+    Sentry.captureException(e);
+    logger.error({ err: e }, 'pg-boss error');
+  });
   await boss.start();
   for (const name of QUEUES) await boss.createQueue(name);
   bossInstance = boss;

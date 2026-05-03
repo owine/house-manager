@@ -1,11 +1,26 @@
+// Sentry init MUST run before any other imports so that lib/queue.ts's
+// boss.on('error') handler (which calls Sentry.captureException) has a
+// live SDK to report through. The DSN gate makes init a no-op when unset.
+import * as Sentry from '@sentry/node';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
+import { APP_GIT_SHA } from '@/lib/version';
 import { handleNotify, type NotifyJob } from './jobs/notify';
 import { handleRemindersTick } from './jobs/reminders-tick';
 import { handleSearchIndex, type SearchIndexJob } from './jobs/search-index';
 import { handleSearchReindex } from './jobs/search-reindex';
 import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    release: APP_GIT_SHA,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 0,
+    sendDefaultPii: false,
+  });
+}
 
 const logger = getLogger('worker.lifecycle');
 
@@ -68,6 +83,7 @@ async function main() {
 }
 
 main().catch((e) => {
+  Sentry.captureException(e);
   logger.error({ err: e }, 'failed to start');
   process.exit(1);
 });
