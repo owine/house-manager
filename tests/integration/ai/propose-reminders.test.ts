@@ -49,7 +49,7 @@ function resetMock() {
 describe('proposeReminders', () => {
   let ctx: IntegrationContext;
   let categoryId: string;
-  let proposeReminders: typeof import('@/lib/ai/suggest/actions').proposeReminders;
+  let proposeReminders: typeof import('@/lib/ai/suggest/reminders').proposeReminders;
 
   beforeAll(async () => {
     ctx = await setupIntegration();
@@ -59,7 +59,7 @@ describe('proposeReminders', () => {
       update: {},
     });
     categoryId = cat.id;
-    ({ proposeReminders } = await import('@/lib/ai/suggest/actions'));
+    ({ proposeReminders } = await import('@/lib/ai/suggest/reminders'));
   }, 60_000);
 
   afterAll(async () => {

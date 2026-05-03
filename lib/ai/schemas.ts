@@ -2,11 +2,11 @@ import { z } from 'zod';
 
 export const recurrenceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('interval'), days: z.number().int().min(1).max(3650) }),
-  z.object({ kind: z.literal('monthly'), dayOfMonth: z.number().int().min(1).max(31) }),
+  z.object({ kind: z.literal('monthly'), dayOfMonth: z.number().int().min(1).max(28) }),
   z.object({
     kind: z.literal('yearly'),
     month: z.number().int().min(1).max(12),
-    day: z.number().int().min(1).max(31),
+    day: z.number().int().min(1).max(28),
   }),
 ]);
 export type ProposedRecurrence = z.infer<typeof recurrenceSchema>;

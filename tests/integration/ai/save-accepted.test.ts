@@ -20,12 +20,14 @@ vi.mock('@/lib/search/client', async (importOriginal) => {
 });
 
 let ctx: IntegrationContext;
-let actions: typeof import('@/lib/ai/suggest/actions');
+let actionsR: typeof import('@/lib/ai/suggest/reminders');
+let actionsC: typeof import('@/lib/ai/suggest/checklist');
 let categoryId: string;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
-  actions = await import('@/lib/ai/suggest/actions');
+  actionsR = await import('@/lib/ai/suggest/reminders');
+  actionsC = await import('@/lib/ai/suggest/checklist');
   const cat = await ctx.prisma.category.upsert({
     where: { slug: 'hvac' },
     create: { slug: 'hvac', name: 'HVAC', sortOrder: 20 },
@@ -71,7 +73,7 @@ describe('saveAcceptedReminders', () => {
   });
 
   it('inserts reminders + updates acceptedItemIds in one transaction', async () => {
-    const result = await actions.saveAcceptedReminders({
+    const result = await actionsR.saveAcceptedReminders({
       logId,
       accepted: [
         {
@@ -104,7 +106,7 @@ describe('saveAcceptedReminders', () => {
 
   it('attaches itemId when provided', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
-    const result = await actions.saveAcceptedReminders({
+    const result = await actionsR.saveAcceptedReminders({
       logId,
       itemId: item.id,
       accepted: [
@@ -125,7 +127,7 @@ describe('saveAcceptedReminders', () => {
   });
 
   it('rejects empty accepted list', async () => {
-    const result = await actions.saveAcceptedReminders({ logId, accepted: [] });
+    const result = await actionsR.saveAcceptedReminders({ logId, accepted: [] });
     expect(result.ok).toBe(false);
   });
 });
@@ -158,7 +160,7 @@ describe('saveAcceptedChecklist', () => {
   });
 
   it('creates a new checklist when appendToChecklistId is null', async () => {
-    const r = await actions.saveAcceptedChecklist({
+    const r = await actionsC.saveAcceptedChecklist({
       logId,
       name: 'Spring 2026',
       description: 'd',
@@ -186,7 +188,7 @@ describe('saveAcceptedChecklist', () => {
     const existing = await ctx.prisma.checklist.create({
       data: { name: 'Quarterly', items: { create: [{ position: 0, title: 'Existing 1' }] } },
     });
-    const r = await actions.saveAcceptedChecklist({
+    const r = await actionsC.saveAcceptedChecklist({
       logId,
       name: 'ignored when appending',
       items: [{ title: 'New 1', itemId: null, rationale: 'r' }],
@@ -204,7 +206,7 @@ describe('saveAcceptedChecklist', () => {
   });
 
   it('enqueues a checklist search-index sync after save', async () => {
-    const r = await actions.saveAcceptedChecklist({
+    const r = await actionsC.saveAcceptedChecklist({
       logId,
       name: 'Indexable',
       items: [{ title: 'item', itemId: null, rationale: 'r' }],
@@ -215,12 +217,12 @@ describe('saveAcceptedChecklist', () => {
   });
 
   it('rejects empty items list', async () => {
-    const r = await actions.saveAcceptedChecklist({ logId, name: 'X', items: [] });
+    const r = await actionsC.saveAcceptedChecklist({ logId, name: 'X', items: [] });
     expect(r.ok).toBe(false);
   });
 
   it('rejects missing name on create path', async () => {
-    const r = await actions.saveAcceptedChecklist({
+    const r = await actionsC.saveAcceptedChecklist({
       logId,
       name: '',
       items: [{ title: 'A', itemId: null, rationale: 'r' }],

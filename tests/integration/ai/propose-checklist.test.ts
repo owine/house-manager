@@ -45,11 +45,11 @@ function resetMock() {
 
 describe('proposeChecklist', () => {
   let ctx: IntegrationContext;
-  let proposeChecklist: typeof import('@/lib/ai/suggest/actions').proposeChecklist;
+  let proposeChecklist: typeof import('@/lib/ai/suggest/checklist').proposeChecklist;
 
   beforeAll(async () => {
     ctx = await setupIntegration();
-    ({ proposeChecklist } = await import('@/lib/ai/suggest/actions'));
+    ({ proposeChecklist } = await import('@/lib/ai/suggest/checklist'));
   }, 60_000);
 
   afterAll(async () => {

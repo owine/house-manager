@@ -4,161 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { computeNextDueOn } from '@/lib/reminders/recurrence';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
-import { buildSuggestContext, type FocusedItem } from '../context-builder';
+import { buildSuggestContext } from '../context-builder';
 import { createSuggestionLog, markAccepted } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
-import {
-  type ProposedChecklistItem,
-  type ProposedReminder,
-  proposeChecklistResponseSchema,
-  proposedReminderSchema,
-  proposeRemindersResponseSchema,
-} from '../schemas';
-
-export type ProposeRemindersData = {
-  logId: string;
-  proposals: ProposedReminder[];
-};
-
-function buildReminderUserMessage(focused: FocusedItem | null): string {
-  if (focused) {
-    return `Generate up to 5 maintenance reminders for this item:
-id=${focused.id}
-name="${focused.name}"
-category=${focused.categoryName}
-manufacturer=${focused.manufacturer ?? '—'}
-model=${focused.model ?? '—'}
-
-Return reminders that are specific to this item. Use the inventory only for cross-references.`;
-  }
-  return `Generate up to 5 broad household maintenance reminders based on the inventory and house profile.`;
-}
-
-export async function proposeReminders(input: {
-  itemId?: string;
-}): Promise<ActionResult<ProposeRemindersData>> {
-  const session = await auth();
-  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
-  const userId = session.user.id;
-
-  const rl = await checkRateLimit(userId);
-  if (!rl.allowed) {
-    await createSuggestionLog({
-      userId,
-      kind: 'reminders',
-      userPrompt: null,
-      inventorySnapshotIds: [],
-      response: null,
-      errorReason: 'user_rate_limit',
-      model: ANTHROPIC_MODEL,
-    });
-    return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
-  }
-
-  const ctx = await buildSuggestContext({ today: new Date(), focusedItemId: input.itemId });
-
-  const start = Date.now();
-  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
-  try {
-    result = await getAnthropic().messages.parse({
-      model: ANTHROPIC_MODEL,
-      max_tokens: ANTHROPIC_MAX_TOKENS,
-      system: buildSystemBlocks({
-        profile: ctx.profile,
-        today: new Date(),
-        inventory: ctx.inventory,
-      }),
-      messages: [{ role: 'user', content: buildReminderUserMessage(ctx.focusedItem) }],
-      output_config: { format: zodOutputFormat(proposeRemindersResponseSchema) },
-    } as never);
-  } catch (e) {
-    const errorReason = classifyAnthropicError(e);
-    await createSuggestionLog({
-      userId,
-      kind: 'reminders',
-      userPrompt: null,
-      inventorySnapshotIds: ctx.inventorySnapshotIds,
-      response: null,
-      errorReason,
-      model: ANTHROPIC_MODEL,
-      latencyMs: Date.now() - start,
-    });
-    console.log(
-      JSON.stringify({ event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason }),
-    );
-    return { ok: false, formError: userFacingMessage(errorReason) };
-  }
-
-  const parsed = (result as { parsed_output: { proposals: ProposedReminder[] } }).parsed_output;
-  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
-
-  const log = await createSuggestionLog({
-    userId,
-    kind: 'reminders',
-    userPrompt: null,
-    inventorySnapshotIds: ctx.inventorySnapshotIds,
-    response: parsed,
-    model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
-    latencyMs: Date.now() - start,
-  });
-
-  // Structured log line at the action boundary (per spec observability section).
-  // TODO(plan-5): replace with project logger once one exists.
-  console.log(
-    JSON.stringify({
-      event: 'ai.suggest',
-      kind: 'reminders',
-      userId,
-      latencyMs: Date.now() - start,
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
-      cacheReadTokens: usage.cache_read_input_tokens,
-      ok: true,
-    }),
-  );
-
-  return { ok: true, data: { logId: log.id, proposals: parsed.proposals } };
-}
-
-export function classifyAnthropicError(e: unknown): string {
-  const msg = (e as Error)?.message ?? '';
-  const status = (e as { status?: number })?.status;
-  if (status === 429) return 'rate_limited';
-  if (status && status >= 500 && status < 600) return 'upstream_5xx';
-  if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('aborted')) {
-    return 'timeout';
-  }
-  if (msg.toLowerCase().includes('zoderror') || msg.toLowerCase().includes('schema')) {
-    return 'schema_violation';
-  }
-  return 'unknown';
-}
-
-function userFacingMessage(reason: string): string {
-  switch (reason) {
-    case 'rate_limited':
-      return 'Service busy — try again in a minute.';
-    case 'upstream_5xx':
-      return "Couldn't reach AI service.";
-    case 'timeout':
-      return 'Took too long — try again.';
-    case 'schema_violation':
-      return 'Got an unexpected response — try again.';
-    default:
-      return 'Something went wrong generating suggestions.';
-  }
-}
-
-// ─── proposeChecklist ────────────────────────────────────────────────────────
+import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
+import { ChecklistNotFoundError, classifyAnthropicError, userFacingMessage } from './_shared';
 
 const proposeChecklistInputSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('seasonal'), season: z.enum(['spring', 'summer', 'fall', 'winter']) }),
@@ -322,67 +176,6 @@ export async function proposeChecklist(
   };
 }
 
-// ─── saveAcceptedReminders ───────────────────────────────────────────────────
-
-export async function saveAcceptedReminders(input: {
-  logId: string;
-  accepted: ProposedReminder[];
-  itemId?: string;
-}): Promise<ActionResult<{ savedIds: string[] }>> {
-  const session = await auth();
-  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
-  const userId = session.user.id;
-
-  if (!input.accepted || input.accepted.length === 0) {
-    return { ok: false, formError: 'No reminders selected.' };
-  }
-
-  // Defence in depth — re-validate every row through the AI schema
-  // (the user may have edited title/recurrence inline before saving).
-  const validated: ProposedReminder[] = [];
-  for (const row of input.accepted) {
-    const parsed = proposedReminderSchema.safeParse(row);
-    if (!parsed.success) {
-      return { ok: false, formError: 'Invalid reminder data.' };
-    }
-    validated.push(parsed.data);
-  }
-
-  const today = new Date();
-
-  const savedIds = await prisma.$transaction(async (tx) => {
-    const ids: string[] = [];
-    for (const r of validated) {
-      const created = await tx.reminder.create({
-        data: {
-          title: r.title,
-          description: r.description ?? null,
-          itemId: input.itemId ?? null,
-          recurrence: r.recurrence,
-          leadTimeDays: r.leadTimeDays,
-          nextDueOn: computeNextDueOn(r.recurrence, today),
-          notifyUserIds: [userId],
-          autoCreateServiceRecord: false,
-          active: true,
-        },
-        select: { id: true },
-      });
-      ids.push(created.id);
-    }
-    return ids;
-  });
-
-  // Search index after the transaction commits
-  for (const id of savedIds) {
-    await enqueueSearchIndex('reminder', id, 'upsert');
-  }
-
-  await markAccepted(input.logId, savedIds);
-  revalidatePath('/reminders');
-  if (input.itemId) revalidatePath(`/items/${input.itemId}`);
-  return { ok: true, data: { savedIds } };
-}
-
 // ─── saveAcceptedChecklist ───────────────────────────────────────────────────
 
 export async function saveAcceptedChecklist(input: {
@@ -413,7 +206,7 @@ export async function saveAcceptedChecklist(input: {
           where: { id: input.appendToChecklistId },
           include: { items: { orderBy: { position: 'desc' }, take: 1 } },
         });
-        if (!existing) throw new Error('Checklist not found');
+        if (!existing) throw new ChecklistNotFoundError();
         target = {
           id: existing.id,
           nextPosition: (existing.items[0]?.position ?? -1) + 1,
@@ -440,8 +233,7 @@ export async function saveAcceptedChecklist(input: {
       return target.id;
     });
   } catch (e) {
-    const msg = (e as Error)?.message ?? '';
-    if (msg === 'Checklist not found') {
+    if (e instanceof ChecklistNotFoundError) {
       return { ok: false, formError: 'Checklist not found.' };
     }
     throw e;
@@ -449,9 +241,31 @@ export async function saveAcceptedChecklist(input: {
 
   // Search-index sync. The 'checklist' kind is a stop-gap until Task 14
   // widens SearchKind. The cast keeps typecheck green; remove after Task 14.
-  await enqueueSearchIndex('checklist' as never, checklistId, 'upsert');
+  try {
+    await enqueueSearchIndex('checklist' as never, checklistId, 'upsert');
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        event: 'ai.suggest.enqueueSearchIndex.failed',
+        kind: 'checklist',
+        checklistId,
+        err: (e as Error).message,
+      }),
+    );
+  }
 
-  await markAccepted(input.logId, [checklistId]);
+  try {
+    await markAccepted(input.logId, [checklistId]);
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        event: 'ai.suggest.markAccepted.failed',
+        logId: input.logId,
+        err: (e as Error).message,
+      }),
+    );
+  }
+
   revalidatePath('/checklists');
   revalidatePath(`/checklists/${checklistId}`);
   return { ok: true, data: { checklistId } };
