@@ -16,6 +16,5 @@ export default defineConfig({
     // generous enough not to hurt.
     testTimeout: 60_000,
     hookTimeout: 120_000,
-    setupFiles: ['tests/setup/anthropic-mock.ts'],
   },
 });
