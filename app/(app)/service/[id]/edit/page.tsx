@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
 import { listItems } from '@/lib/items/queries';
 import { updateServiceRecord } from '@/lib/service-records/actions';
@@ -20,8 +22,7 @@ export default async function EditServiceRecordPage({ params }: { params: Params
   const vendorOptions = vendors.map((v) => ({ id: v.id, name: v.name }));
 
   return (
-    <div>
-      <h1>Edit service record</h1>
+    <FormPageShell header={<PageHeader title="Edit service record" />}>
       <ServiceRecordForm
         items={itemOptions}
         vendors={vendorOptions}
@@ -37,6 +38,6 @@ export default async function EditServiceRecordPage({ params }: { params: Params
         action={updateServiceRecord}
         submitLabel="Save changes"
       />
-    </div>
+    </FormPageShell>
   );
 }
