@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { VendorForm } from '@/components/vendors/VendorForm';
 import { updateVendor } from '@/lib/vendors/actions';
 import { getVendor } from '@/lib/vendors/queries';
@@ -11,8 +13,7 @@ export default async function EditVendorPage({ params }: { params: Params }) {
   if (!vendor) notFound();
 
   return (
-    <div>
-      <h1>Edit vendor</h1>
+    <FormPageShell header={<PageHeader title={`Edit ${vendor.name}`} />}>
       <VendorForm
         defaultValues={{
           id: vendor.id,
@@ -28,6 +29,6 @@ export default async function EditVendorPage({ params }: { params: Params }) {
         action={updateVendor}
         submitLabel="Save changes"
       />
-    </div>
+    </FormPageShell>
   );
 }

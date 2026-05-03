@@ -3,10 +3,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { Controller, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import { type CreateVendorInput, createVendorSchema } from '@/lib/vendors/schema';
 
@@ -25,16 +35,18 @@ type Props = {
 export function VendorForm({ defaultValues, action, submitLabel }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const {
-    register,
-    control,
-    handleSubmit,
-    setError,
-    formState: { errors },
-  } = useForm<VendorFormValues>({
+
+  const form = useForm<VendorFormValues>({
     resolver: zodResolver(createVendorSchema),
     defaultValues: { tags: [], ...defaultValues },
   });
+
+  const {
+    handleSubmit,
+    setError,
+    formState: { errors },
+  } = form;
+
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((data) => {
@@ -42,68 +54,154 @@ export function VendorForm({ defaultValues, action, submitLabel }: Props) {
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as unknown as CreateVendorInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as keyof VendorFormValues, { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save vendor');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Vendor updated' : 'Vendor created');
       router.push(`/vendors/${result.data.id}`);
     });
   });
 
   return (
-    <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-      <ErrorBanner message={formError} />
-      <FormField label="Name" htmlFor="name" error={errors.name?.message}>
-        <input id="name" {...register('name')} required />
-      </FormField>
-      <FormField
-        label="Kind"
-        htmlFor="kind"
-        error={errors.kind?.message}
-        hint="e.g. plumber, hvac tech"
-      >
-        <input id="kind" {...register('kind')} />
-      </FormField>
-      <FormField label="Phone" htmlFor="phone" error={errors.phone?.message}>
-        <input id="phone" {...register('phone')} />
-      </FormField>
-      <FormField label="Email" htmlFor="email" error={errors.email?.message}>
-        <input id="email" type="email" {...register('email')} />
-      </FormField>
-      <FormField label="Website" htmlFor="website" error={errors.website?.message}>
-        <input id="website" type="url" {...register('website')} />
-      </FormField>
-      <FormField label="Address" htmlFor="address" error={errors.address?.message}>
-        <input id="address" {...register('address')} />
-      </FormField>
-      <FormField label="Notes (markdown)" htmlFor="notes" error={errors.notes?.message}>
-        <textarea id="notes" rows={6} {...register('notes')} />
-      </FormField>
-      <FormField label="Tags (comma-separated)" htmlFor="tags" error={errors.tags?.message}>
-        <Controller
-          control={control}
-          name="tags"
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
+
+        <FormField
+          control={form.control}
+          name="name"
           render={({ field }) => (
-            <input
-              id="tags"
-              defaultValue={(field.value ?? []).join(', ')}
-              onChange={(e) =>
-                field.onChange(
-                  e.target.value
-                    .split(',')
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                )
-              }
-            />
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
         />
-      </FormField>
-      <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
-    </form>
+
+        <FormField
+          control={form.control}
+          name="kind"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Kind</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g. plumber, hvac tech" {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="phone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Phone</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="website"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Website</FormLabel>
+              <FormControl>
+                <Input type="url" {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="address"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Address</FormLabel>
+              <FormControl>
+                <Textarea rows={2} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Notes (markdown)</FormLabel>
+              <FormControl>
+                <Textarea rows={6} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Tags: comma-separated input — same UX as before, just shadcn primitives */}
+        <FormItem>
+          <FormLabel>Tags (comma-separated)</FormLabel>
+          <FormControl>
+            <Controller
+              control={form.control}
+              name="tags"
+              render={({ field }) => (
+                <Input
+                  id="tags"
+                  defaultValue={(field.value ?? []).join(', ')}
+                  onChange={(e) =>
+                    field.onChange(
+                      e.target.value
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean),
+                    )
+                  }
+                />
+              )}
+            />
+          </FormControl>
+          {errors.tags && <FormMessage>{errors.tags.message as string}</FormMessage>}
+        </FormItem>
+
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
+      </form>
+    </Form>
   );
 }

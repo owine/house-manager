@@ -1,5 +1,9 @@
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
+import { Button } from '@/components/ui/button';
 import { VendorTable } from '@/components/vendors/VendorTable';
 import { parseListParams } from '@/lib/url-params';
 import { listVendors } from '@/lib/vendors/queries';
@@ -15,19 +19,27 @@ export default async function VendorsPage({ searchParams }: { searchParams: Sear
   const { vendors, total } = await listVendors(params);
 
   return (
-    <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Vendors ({total})</h1>
-        <Link href="/vendors/new">+ Add vendor</Link>
-      </header>
-      {vendors.length === 0 ? (
+    <ListPageShell
+      header={
+        <PageHeader
+          title={`Vendors (${total})`}
+          actions={
+            <Button render={<Link href="/vendors/new" />}>
+              <Plus className="h-4 w-4" />
+              Add vendor
+            </Button>
+          }
+        />
+      }
+      isEmpty={vendors.length === 0}
+      empty={
         <EmptyState
           message="No vendors yet."
-          action={<Link href="/vendors/new">Add your first vendor</Link>}
+          action={<Button render={<Link href="/vendors/new" />}>Add your first vendor</Button>}
         />
-      ) : (
-        <VendorTable vendors={vendors} />
-      )}
-    </div>
+      }
+    >
+      <VendorTable vendors={vendors} />
+    </ListPageShell>
   );
 }
