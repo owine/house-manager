@@ -27,8 +27,9 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
 
   // Switch to the Service tab
   await page.getByRole('link', { name: 'Service' }).click();
-  // Click the "+ Log service" link
-  await page.getByRole('link', { name: '+ Log service' }).click();
+  // Click the "+ Log service" button. Base UI's Button keeps role="button" even
+  // when render={<Link>} produces an <a>; query by role=button, not role=link.
+  await page.getByRole('button', { name: '+ Log service' }).click();
 
   // Fill the service record form — item is pre-filled via ?itemId= query param
   await page.getByLabel('Performed on').fill('2026-04-15');

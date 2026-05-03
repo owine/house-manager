@@ -26,8 +26,9 @@ test('creates a reminder, marks it complete, sees it in history', async ({ page,
     .click();
   await expect(page.locator('text=No reminders yet')).toBeVisible();
 
-  // Add a reminder
-  await page.getByRole('link', { name: '+ Add reminder' }).click();
+  // Add a reminder. Base UI's Button keeps role="button" even when render={<Link>}
+  // produces an <a>; query by role=button, not role=link.
+  await page.getByRole('button', { name: '+ Add reminder' }).click();
   await page.getByLabel('Title').fill('Replace HVAC filter');
   await page
     .getByLabel('First due date')
