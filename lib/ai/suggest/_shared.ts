@@ -10,7 +10,11 @@ export function classifyAnthropicError(e: unknown): string {
   const status = (e as { status?: number })?.status;
   if (status === 429) return 'rate_limited';
   if (status && status >= 500 && status < 600) return 'upstream_5xx';
-  if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('aborted')) {
+  if (
+    msg.toLowerCase().includes('timeout') ||
+    msg.toLowerCase().includes('timed out') ||
+    msg.toLowerCase().includes('aborted')
+  ) {
     return 'timeout';
   }
   if (msg.toLowerCase().includes('zoderror') || msg.toLowerCase().includes('schema')) {
