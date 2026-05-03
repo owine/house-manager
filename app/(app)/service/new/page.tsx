@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+
+export const metadata: Metadata = { title: 'New service record' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
 import { listItems } from '@/lib/items/queries';

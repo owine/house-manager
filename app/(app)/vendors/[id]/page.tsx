@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DetailPageShell } from '@/app/(app)/_components/DetailPageShell';
@@ -18,6 +19,12 @@ import { Markdown } from '@/lib/markdown';
 import { getVendor } from '@/lib/vendors/queries';
 
 type Params = Promise<{ id: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const vendor = await getVendor(id);
+  return { title: vendor?.name ?? 'Not found' };
+}
 
 export default async function VendorDetailPage({ params }: { params: Params }) {
   const { id } = await params;

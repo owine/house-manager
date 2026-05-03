@@ -1,9 +1,20 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ItemForm } from '@/components/items/ItemForm';
 import { updateItem } from '@/lib/items/actions';
 import { getItem, listAllCategories } from '@/lib/items/queries';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const item = await getItem(id);
+  return { title: item ? `Edit ${item.name}` : 'Not found' };
+}
 
 export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

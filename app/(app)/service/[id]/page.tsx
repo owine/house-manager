@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -9,6 +10,12 @@ import { Markdown } from '@/lib/markdown';
 import { getServiceRecord } from '@/lib/service-records/queries';
 
 type Params = Promise<{ id: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const record = await getServiceRecord(id);
+  return { title: record?.summary ?? 'Not found' };
+}
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   style: 'currency',

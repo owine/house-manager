@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { DashboardShell } from '@/app/(app)/_components/DashboardShell';
+
+export const metadata: Metadata = { title: 'Dashboard' };
+
 import { auth } from '@/lib/auth';
 import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
 import { DashboardGreeting } from './DashboardGreeting';

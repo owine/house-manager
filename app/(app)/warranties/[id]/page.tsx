@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -14,6 +15,15 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 });
 
 type Params = Promise<{ id: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const warranty = await getWarranty(id);
+  if (!warranty) return { title: 'Not found' };
+  return {
+    title: warranty.item ? `Warranty for ${warranty.item.name}` : warranty.provider,
+  };
+}
 
 export default async function WarrantyDetailPage({ params }: { params: Params }) {
   const { id } = await params;

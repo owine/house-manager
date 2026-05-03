@@ -1,4 +1,13 @@
+import type { Metadata } from 'next';
 import './globals.css';
+
+export const metadata: Metadata = {
+  title: {
+    template: '%s · House Manager',
+    default: 'House Manager',
+  },
+  description: 'Track home inventory, maintenance, warranties, and reminders.',
+};
 
 // Inline script executed synchronously before first paint to apply the stored
 // theme. This prevents a flash of the light theme when the user has selected

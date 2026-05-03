@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+
+export const metadata: Metadata = { title: 'New reminder' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
 import { listAllItemsForAutocomplete } from '@/lib/notes/queries';

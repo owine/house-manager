@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+
+export const metadata: Metadata = { title: 'New note' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
 import { createNote } from '@/lib/notes/actions';
