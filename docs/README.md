@@ -115,7 +115,7 @@ You don't pass these at runtime — they're baked into the image at build time.
 - [x] Plan 2c: Attachment links
 - [x] Plan 3: Reminders, Web Push, email, iCal feed
 - [x] Plan 4a: Find — Meilisearch keyword search
-- [ ] Plan 4ab: UI redesign — design system, navigation, page templates (this plan)
-- [ ] Plan 4b: Suggest — AI structured generation (paused at schema migration; resumes after 4ab)
+- [x] Plan 4ab: UI redesign — design system, navigation, page templates
+- [ ] Plan 4b: Suggest — AI structured generation (paused at schema migration; resumes next)
 - [ ] Plan 4c: Ask — RAG over user documents + OCR
 - [ ] Plan 5: Polish & Operations
