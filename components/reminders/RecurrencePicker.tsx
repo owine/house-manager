@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { Input } from '@/components/ui/input';
 import type { Recurrence } from '@/lib/reminders/schema';
 
 type Props = {
@@ -21,14 +22,10 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
   }
 
   return (
-    <fieldset
-      style={{ border: '1px solid var(--border)', padding: '0.75rem', borderRadius: '4px' }}
-    >
-      <legend style={{ fontSize: '0.85rem' }}>Recurrence</legend>
+    <fieldset className="rounded border border-border p-3">
+      <legend className="px-1 text-sm font-medium">Recurrence</legend>
 
-      <label
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.4rem' }}
-      >
+      <label className="mb-1.5 flex items-center gap-2">
         <input
           type="radio"
           checked={kind === 'interval'}
@@ -37,8 +34,8 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             emit({ kind: 'interval', days });
           }}
         />
-        Every
-        <input
+        <span className="text-sm">Every</span>
+        <Input
           type="number"
           min={1}
           max={3650}
@@ -48,14 +45,12 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             setDays(n);
             if (kind === 'interval') emit({ kind: 'interval', days: n });
           }}
-          style={{ width: '5rem' }}
+          className="w-20"
         />
-        days from last completion
+        <span className="text-sm">days from last completion</span>
       </label>
 
-      <label
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.4rem' }}
-      >
+      <label className="mb-1.5 flex items-center gap-2">
         <input
           type="radio"
           checked={kind === 'monthly'}
@@ -64,8 +59,8 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             emit({ kind: 'monthly', dayOfMonth });
           }}
         />
-        Every month on day
-        <input
+        <span className="text-sm">Every month on day</span>
+        <Input
           type="number"
           min={1}
           max={28}
@@ -75,12 +70,12 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             setDayOfMonth(n);
             if (kind === 'monthly') emit({ kind: 'monthly', dayOfMonth: n });
           }}
-          style={{ width: '4rem' }}
+          className="w-16"
         />
-        <span style={{ color: 'var(--fg-muted)', fontSize: '0.8rem' }}>(1–28)</span>
+        <span className="text-xs text-muted-foreground">(1–28)</span>
       </label>
 
-      <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <label className="flex items-center gap-2">
         <input
           type="radio"
           checked={kind === 'yearly'}
@@ -89,7 +84,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             emit({ kind: 'yearly', month, day });
           }}
         />
-        Every year on
+        <span className="text-sm">Every year on</span>
         <select
           value={month}
           onChange={(e) => {
@@ -97,6 +92,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             setMonth(n);
             if (kind === 'yearly') emit({ kind: 'yearly', month: n, day });
           }}
+          className="rounded border border-input bg-background px-2 py-1 text-sm"
         >
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
             <option key={m} value={m}>
@@ -104,7 +100,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             </option>
           ))}
         </select>
-        <input
+        <Input
           type="number"
           min={1}
           max={28}
@@ -114,7 +110,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             setDay(n);
             if (kind === 'yearly') emit({ kind: 'yearly', month, day: n });
           }}
-          style={{ width: '4rem' }}
+          className="w-16"
         />
       </label>
     </fieldset>

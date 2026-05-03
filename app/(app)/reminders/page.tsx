@@ -1,6 +1,10 @@
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { ReminderTable } from '@/components/reminders/ReminderTable';
+import { Button } from '@/components/ui/button';
 import { listReminders } from '@/lib/reminders/queries';
 import { parseListParams } from '@/lib/url-params';
 
@@ -13,19 +17,27 @@ export default async function RemindersPage({ searchParams }: { searchParams: Se
   const { reminders, total } = await listReminders(params);
 
   return (
-    <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Reminders ({total})</h1>
-        <Link href="/reminders/new">+ Add reminder</Link>
-      </header>
-      {reminders.length === 0 ? (
+    <ListPageShell
+      header={
+        <PageHeader
+          title={`Reminders (${total})`}
+          actions={
+            <Button render={<Link href="/reminders/new" />}>
+              <Plus className="h-4 w-4" />
+              New reminder
+            </Button>
+          }
+        />
+      }
+      isEmpty={reminders.length === 0}
+      empty={
         <EmptyState
           message="No reminders yet."
-          action={<Link href="/reminders/new">Add your first reminder</Link>}
+          action={<Button render={<Link href="/reminders/new" />}>Add your first reminder</Button>}
         />
-      ) : (
-        <ReminderTable reminders={reminders} />
-      )}
-    </div>
+      }
+    >
+      <ReminderTable reminders={reminders} />
+    </ListPageShell>
   );
 }

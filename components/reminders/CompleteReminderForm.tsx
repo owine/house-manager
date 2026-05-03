@@ -1,6 +1,9 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { completeReminder } from '@/lib/reminders/actions';
 
 type Props = {
@@ -20,9 +23,9 @@ export function CompleteReminderForm({ reminderId, autoCreateServiceRecord, hasI
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} style={{ padding: '0.5rem 1rem' }}>
+      <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
         Mark complete
-      </button>
+      </Button>
     );
   }
 
@@ -52,50 +55,62 @@ export function CompleteReminderForm({ reminderId, autoCreateServiceRecord, hasI
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: 480 }}
-    >
-      <label style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column' }}>
-        Notes (optional)
-        <textarea
+    <form onSubmit={onSubmit} className="flex flex-col gap-3 max-w-sm">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="complete-notes" className="text-sm font-medium">
+          Notes (optional)
+        </label>
+        <Textarea
+          id="complete-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           disabled={pending}
         />
-      </label>
+      </div>
       {showServiceFields && (
         <>
-          <label style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column' }}>
-            Service summary
-            <input
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="complete-summary" className="text-sm font-medium">
+              Service summary
+            </label>
+            <Input
+              id="complete-summary"
               type="text"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               disabled={pending}
             />
-          </label>
-          <label style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column' }}>
-            Cost (optional)
-            <input
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="complete-cost" className="text-sm font-medium">
+              Cost (optional)
+            </label>
+            <Input
+              id="complete-cost"
               type="number"
               step="0.01"
               value={cost}
               onChange={(e) => setCost(e.target.value)}
               disabled={pending}
             />
-          </label>
+          </div>
         </>
       )}
-      {error && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', margin: 0 }}>{error}</p>}
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button type="submit" disabled={pending}>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending} size="sm">
           {pending ? 'Saving…' : 'Save completion'}
-        </button>
-        <button type="button" onClick={() => setOpen(false)} disabled={pending}>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen(false)}
+          disabled={pending}
+        >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
