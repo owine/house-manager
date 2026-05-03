@@ -1,7 +1,18 @@
 'use client';
 import { useFormContext } from 'react-hook-form';
 import { z } from 'zod';
-import { FormField } from '@/components/forms/FormField';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { metadataSchemaFor } from '@/lib/categories';
 
 type Props = { slug: string };
@@ -25,95 +36,142 @@ function unwrap(node: z.ZodTypeAny): z.ZodTypeAny {
 }
 
 export function ItemMetadataFields({ slug }: Props) {
-  const {
-    register,
-    formState: { errors },
-    getValues,
-  } = useFormContext();
+  const form = useFormContext();
+  const { control } = form;
 
   const schema = metadataSchemaFor(slug);
 
   // ZodObject has .shape — render one field per key
   if (schema instanceof z.ZodObject) {
     const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
-    const metaErrors = (errors.metadata ?? {}) as Record<string, { message?: string }>;
 
     return (
-      <fieldset
-        style={{
-          border: '1px solid var(--border-strong)',
-          borderRadius: 4,
-          padding: '1rem',
-          marginBottom: '1rem',
-        }}
-      >
-        <legend style={{ fontWeight: 600, padding: '0 0.5rem' }}>Metadata</legend>
-        {Object.entries(shape).map(([key, rawNode]) => {
-          const fieldId = `metadata.${key}`;
-          const node = unwrap(rawNode as z.ZodTypeAny);
-          const error = metaErrors[key]?.message;
-          const label = toLabel(key);
+      <Card>
+        <CardHeader>
+          <CardTitle>Metadata</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.entries(shape).map(([key, rawNode]) => {
+            const node = unwrap(rawNode as z.ZodTypeAny);
+            const label = toLabel(key);
+            const fieldName = `metadata.${key}` as const;
 
-          if (node instanceof z.ZodNumber) {
-            return (
-              <FormField key={key} label={label} htmlFor={fieldId} error={error}>
-                <input
-                  id={fieldId}
-                  type="number"
-                  step="any"
-                  {...register(`metadata.${key}`, { valueAsNumber: true })}
+            if (node instanceof z.ZodNumber) {
+              return (
+                <FormField
+                  key={key}
+                  control={control}
+                  name={fieldName}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{label}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="any"
+                          value={field.value ?? ''}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === '' ? undefined : Number(e.target.value),
+                            )
+                          }
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </FormField>
-            );
-          }
+              );
+            }
 
-          // ZodEnum: .options is available in both Zod 3 and Zod 4.
-          // Zod 4 also has _def.entries (an object); fall back to its keys if needed.
-          if (node instanceof z.ZodEnum) {
-            // Cast via unknown to avoid version-specific generic shape mismatches.
-            const enumAny = node as unknown as {
-              options?: string[];
-              _def?: { entries?: Record<string, string> };
-            };
-            const opts: string[] = Array.isArray(enumAny.options)
-              ? enumAny.options
-              : Object.keys(enumAny._def?.entries ?? {});
+            // ZodEnum: .options is available in both Zod 3 and Zod 4.
+            // Zod 4 also has _def.entries (an object); fall back to its keys if needed.
+            if (node instanceof z.ZodEnum) {
+              // Cast via unknown to avoid version-specific generic shape mismatches.
+              const enumAny = node as unknown as {
+                options?: string[];
+                _def?: { entries?: Record<string, string> };
+              };
+              const opts: string[] = Array.isArray(enumAny.options)
+                ? enumAny.options
+                : Object.keys(enumAny._def?.entries ?? {});
 
+              return (
+                <FormField
+                  key={key}
+                  control={control}
+                  name={fieldName}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{label}</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="— select —" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {opts.map((v) => (
+                            <SelectItem key={v} value={v}>
+                              {v}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            }
+
+            if (node instanceof z.ZodBoolean) {
+              return (
+                <FormField
+                  key={key}
+                  control={control}
+                  name={fieldName}
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <FormLabel className="cursor-pointer">{label}</FormLabel>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              );
+            }
+
+            // ZodString and fallback → text input
             return (
-              <FormField key={key} label={label} htmlFor={fieldId} error={error}>
-                <select id={fieldId} {...register(`metadata.${key}`)}>
-                  <option value="">— select —</option>
-                  {opts.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+              <FormField
+                key={key}
+                control={control}
+                name={fieldName}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{label}</FormLabel>
+                    <FormControl>
+                      <Input {...field} value={field.value ?? ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             );
-          }
-
-          if (node instanceof z.ZodBoolean) {
-            return (
-              <FormField key={key} label={label} htmlFor={fieldId} error={error}>
-                <input id={fieldId} type="checkbox" {...register(`metadata.${key}`)} />
-              </FormField>
-            );
-          }
-
-          // ZodString and fallback → text input
-          return (
-            <FormField key={key} label={label} htmlFor={fieldId} error={error}>
-              <input id={fieldId} type="text" {...register(`metadata.${key}`)} />
-            </FormField>
-          );
-        })}
-      </fieldset>
+          })}
+        </CardContent>
+      </Card>
     );
   }
 
   // Freeform fallback (ZodRecord / unknown slug) → JSON textarea
-  const currentMetadata = getValues('metadata');
+  const currentMetadata = form.getValues('metadata');
   const defaultJson =
     currentMetadata && typeof currentMetadata === 'object'
       ? JSON.stringify(currentMetadata, null, 2)
@@ -121,35 +179,38 @@ export function ItemMetadataFields({ slug }: Props) {
         ? currentMetadata
         : '{}';
 
-  const metaError = (errors.metadata as { message?: string } | undefined)?.message;
-
   return (
-    <fieldset
-      style={{
-        border: '1px solid var(--border-strong)',
-        borderRadius: 4,
-        padding: '1rem',
-        marginBottom: '1rem',
-      }}
-    >
-      <legend style={{ fontWeight: 600, padding: '0 0.5rem' }}>Metadata</legend>
-      <FormField label="Metadata (JSON)" htmlFor="metadata" error={metaError}>
-        <textarea
-          id="metadata"
-          rows={6}
-          defaultValue={defaultJson}
-          style={{ fontFamily: 'monospace', width: '100%' }}
-          {...register('metadata', {
-            setValueAs: (v: string) => {
-              try {
-                return JSON.parse(v || '{}');
-              } catch {
-                return v;
-              }
-            },
-          })}
+    <Card>
+      <CardHeader>
+        <CardTitle>Metadata</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <FormField
+          control={control}
+          name="metadata"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Metadata (JSON)</FormLabel>
+              <FormControl>
+                <Textarea
+                  rows={6}
+                  defaultValue={defaultJson}
+                  className="font-mono"
+                  {...field}
+                  onChange={(e) => {
+                    try {
+                      field.onChange(JSON.parse(e.target.value || '{}'));
+                    } catch {
+                      field.onChange(e.target.value);
+                    }
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </FormField>
-    </fieldset>
+      </CardContent>
+    </Card>
   );
 }
