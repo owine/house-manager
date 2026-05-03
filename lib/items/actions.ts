@@ -124,3 +124,17 @@ export async function restoreItem(id: string): Promise<ActionResult> {
   revalidatePath('/dashboard');
   return { ok: true, data: undefined };
 }
+
+export async function setIncludeInSuggestions(input: {
+  itemId: string;
+  value: boolean;
+}): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+  await prisma.item.update({
+    where: { id: input.itemId },
+    data: { includeInSuggestions: input.value },
+  });
+  revalidatePath(`/items/${input.itemId}`);
+  return { ok: true, data: undefined };
+}
