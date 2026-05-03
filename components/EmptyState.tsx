@@ -1,15 +1,25 @@
+import { cn } from '@/lib/utils';
+
 type Props = {
   icon?: React.ReactNode;
-  message: string;
+  title: string;
+  description?: string;
   action?: React.ReactNode;
+  className?: string;
 };
 
-export function EmptyState({ icon, message, action }: Props) {
+export function EmptyState({ icon, title, description, action, className }: Props) {
   return (
-    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--fg-muted)' }}>
-      {icon && <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>{icon}</div>}
-      <p>{message}</p>
-      {action && <div style={{ marginTop: '1rem' }}>{action}</div>}
+    <div
+      className={cn(
+        'flex flex-col items-center justify-center rounded-md border border-dashed p-12 text-center',
+        className,
+      )}
+    >
+      {icon && <div className="mb-3 text-muted-foreground">{icon}</div>}
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {description && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

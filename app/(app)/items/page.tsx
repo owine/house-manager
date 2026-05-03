@@ -56,12 +56,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       empty={
         noItemsAtAll ? (
           <EmptyState
-            message="No items yet."
+            title="No items yet."
             action={<Button render={<Link href="/items/new" />}>Add your first item</Button>}
           />
         ) : (
           <EmptyState
-            message="No items match your filters."
+            title="No items match your filters."
             action={
               <Button variant="ghost" render={<Link href="/items" />}>
                 Clear filters

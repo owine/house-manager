@@ -132,37 +132,3 @@ blockquote {
   padding-left: 1rem;
   color: var(--fg-muted);
 }
-
-/*
- * Utility classes for the most-repeated inline patterns. Centralizing here
- * means future theme tweaks (radius, padding, etc.) live in one place.
- * Keep this list small — it is not a design system, just a way to localize
- * recurrent style objects. Plan 5 may replace this with proper components.
- */
-.badge {
-  padding: 0.1rem 0.4rem;
-  background: var(--badge-bg);
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-/* Smaller variant for chips inside denser layouts (cards, headers, tag clouds) */
-.badge-sm {
-  padding: 0.1rem 0.35rem;
-  background: var(--badge-bg);
-  border-radius: 3px;
-  font-size: 0.8rem;
-}
-
-.table-row {
-  border-bottom: 1px solid var(--border);
-}
-
-.table-header {
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.table-cell {
-  padding: 0.5rem;
-}

@@ -57,12 +57,12 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
       empty={
         isEmpty ? (
           <EmptyState
-            message="No service records yet."
+            title="No service records yet."
             action={<Button render={<Link href="/service/new" />}>Log first service</Button>}
           />
         ) : (
           <EmptyState
-            message="No records match your filters."
+            title="No records match your filters."
             action={
               <Button variant="ghost" render={<Link href="/service" />}>
                 Clear filters

@@ -34,7 +34,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Sear
       isEmpty={vendors.length === 0}
       empty={
         <EmptyState
-          message="No vendors yet."
+          title="No vendors yet."
           action={<Button render={<Link href="/vendors/new" />}>Add your first vendor</Button>}
         />
       }
