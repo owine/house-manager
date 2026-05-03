@@ -1,18 +1,22 @@
 'use server';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { computeNextDueOn } from '@/lib/reminders/recurrence';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext, type FocusedItem } from '../context-builder';
-import { createSuggestionLog } from '../log';
+import { createSuggestionLog, markAccepted } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import {
   type ProposedChecklistItem,
   type ProposedReminder,
   proposeChecklistResponseSchema,
+  proposedReminderSchema,
   proposeRemindersResponseSchema,
 } from '../schemas';
 
@@ -316,4 +320,65 @@ export async function proposeChecklist(
       items: parsedResp.items,
     },
   };
+}
+
+// ─── saveAcceptedReminders ───────────────────────────────────────────────────
+
+export async function saveAcceptedReminders(input: {
+  logId: string;
+  accepted: ProposedReminder[];
+  itemId?: string;
+}): Promise<ActionResult<{ savedIds: string[] }>> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+  const userId = session.user.id;
+
+  if (!input.accepted || input.accepted.length === 0) {
+    return { ok: false, formError: 'No reminders selected.' };
+  }
+
+  // Defence in depth — re-validate every row through the AI schema
+  // (the user may have edited title/recurrence inline before saving).
+  const validated: ProposedReminder[] = [];
+  for (const row of input.accepted) {
+    const parsed = proposedReminderSchema.safeParse(row);
+    if (!parsed.success) {
+      return { ok: false, formError: 'Invalid reminder data.' };
+    }
+    validated.push(parsed.data);
+  }
+
+  const today = new Date();
+
+  const savedIds = await prisma.$transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const r of validated) {
+      const created = await tx.reminder.create({
+        data: {
+          title: r.title,
+          description: r.description ?? null,
+          itemId: input.itemId ?? null,
+          recurrence: r.recurrence,
+          leadTimeDays: r.leadTimeDays,
+          nextDueOn: computeNextDueOn(r.recurrence, today),
+          notifyUserIds: [userId],
+          autoCreateServiceRecord: false,
+          active: true,
+        },
+        select: { id: true },
+      });
+      ids.push(created.id);
+    }
+    return ids;
+  });
+
+  // Search index after the transaction commits
+  for (const id of savedIds) {
+    await enqueueSearchIndex('reminder', id, 'upsert');
+  }
+
+  await markAccepted(input.logId, savedIds);
+  revalidatePath('/reminders');
+  if (input.itemId) revalidatePath(`/items/${input.itemId}`);
+  return { ok: true, data: { savedIds } };
 }
