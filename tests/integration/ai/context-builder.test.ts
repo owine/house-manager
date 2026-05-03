@@ -58,6 +58,18 @@ describe('buildSuggestContext', () => {
     });
   });
 
+  it('passes through null fields from a partial profile without coercing to empty string', async () => {
+    await ctx.prisma.houseProfile.create({
+      data: { location: 'Austin, TX' }, // climateZone and propertyType default to null
+    });
+    const result = await buildSuggestContext({ today: new Date('2026-04-15') });
+    expect(result.profile).toEqual({
+      location: 'Austin, TX',
+      climateZone: null,
+      propertyType: null,
+    });
+  });
+
   it('focuses on a single item when itemId is provided', async () => {
     const focused = await ctx.prisma.item.create({
       data: { name: 'Focused furnace', categoryId, manufacturer: 'Carrier', model: '58STA' },

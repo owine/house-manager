@@ -55,6 +55,16 @@ describe('buildHouseProfileBlock', () => {
     expect(block).toContain('not configured');
     expect(block).toContain('2026-04-15');
   });
+
+  it('renders "not specified" for null fields in a partial profile', () => {
+    const block = buildHouseProfileBlock({
+      profile: { location: 'Austin, TX', climateZone: null, propertyType: null },
+      today: new Date('2026-04-15'),
+    });
+    expect(block).toContain('Austin, TX');
+    expect(block).toContain('Climate zone: not specified');
+    expect(block).toContain('Property type: not specified');
+  });
 });
 
 describe('formatInventoryLine', () => {

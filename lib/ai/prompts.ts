@@ -21,9 +21,9 @@ export function seasonForDate(d: Date): Season {
 }
 
 export type HouseProfileForPrompt = {
-  location: string;
-  climateZone: string;
-  propertyType: string;
+  location: string | null;
+  climateZone: string | null;
+  propertyType: string | null;
 } | null;
 
 export function buildHouseProfileBlock(input: {
@@ -35,11 +35,12 @@ export function buildHouseProfileBlock(input: {
   if (!input.profile) {
     return `House profile: not configured.\nToday: ${dateStr}\nSeason: ${season}`;
   }
+  const fmt = (v: string | null) => v ?? 'not specified';
   return [
     'House profile',
-    `  Location: ${input.profile.location}`,
-    `  Climate zone: ${input.profile.climateZone}`,
-    `  Property type: ${input.profile.propertyType}`,
+    `  Location: ${fmt(input.profile.location)}`,
+    `  Climate zone: ${fmt(input.profile.climateZone)}`,
+    `  Property type: ${fmt(input.profile.propertyType)}`,
     `Today: ${dateStr}`,
     `Season: ${season}`,
   ].join('\n');

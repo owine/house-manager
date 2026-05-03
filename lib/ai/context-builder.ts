@@ -56,9 +56,9 @@ export async function buildSuggestContext(input: {
 
   const profile: HouseProfileForPrompt = profileRow
     ? {
-        location: profileRow.location ?? '',
-        climateZone: profileRow.climateZone ?? '',
-        propertyType: profileRow.propertyType ?? '',
+        location: profileRow.location,
+        climateZone: profileRow.climateZone,
+        propertyType: profileRow.propertyType,
       }
     : null;
 
