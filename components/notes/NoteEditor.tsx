@@ -1,5 +1,6 @@
 'use client';
 import { useFormContext, useWatch } from 'react-hook-form';
+import { Textarea } from '@/components/ui/textarea';
 import { Markdown } from '@/lib/markdown';
 
 export function NoteEditor() {
@@ -8,62 +9,30 @@ export function NoteEditor() {
     formState: { errors },
   } = useFormContext();
   const body = useWatch({ name: 'body' }) ?? '';
+  const bodyError = errors.body?.message as string | undefined;
 
   return (
-    <div style={{ marginBottom: '1rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
-        {/* Textarea pane */}
-        <div style={{ flex: '1 1 300px', minWidth: 0 }}>
-          <p style={{ fontWeight: 500, marginBottom: '0.25rem', fontSize: '0.85rem' }}>Markdown</p>
-          <textarea
-            id="body"
-            rows={16}
-            {...register('body')}
-            style={{
-              width: '100%',
-              padding: '0.4rem 0.5rem',
-              border: '1px solid var(--border-strong)',
-              borderRadius: '4px',
-              fontFamily: 'monospace',
-              fontSize: '0.875rem',
-              resize: 'vertical',
-              boxSizing: 'border-box',
-            }}
-          />
-          {errors.body?.message && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
-              {String(errors.body.message)}
-            </p>
-          )}
-        </div>
+    <div className="flex flex-wrap gap-4">
+      {/* Markdown pane */}
+      <div className="flex flex-1 basis-72 min-w-0 flex-col gap-1.5">
+        <p className="text-sm font-medium leading-none">Body (markdown)</p>
+        <Textarea
+          id="body"
+          rows={16}
+          className="resize-y font-mono text-sm"
+          {...register('body')}
+        />
+        {bodyError && <p className="text-sm font-medium text-destructive">{bodyError}</p>}
+      </div>
 
-        {/* Preview pane */}
-        <div
-          style={{
-            flex: '1 1 300px',
-            minWidth: 0,
-            border: '1px solid var(--border)',
-            borderRadius: '4px',
-            padding: '0.5rem 0.75rem',
-            background: 'var(--bg-elevated)',
-            overflow: 'auto',
-          }}
-        >
-          <p style={{ fontWeight: 500, marginBottom: '0.25rem', fontSize: '0.85rem' }}>Preview</p>
-          {body ? (
-            <Markdown>{body}</Markdown>
-          ) : (
-            <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem', fontStyle: 'italic' }}>
-              Nothing to preview yet.
-            </p>
-          )}
-        </div>
+      {/* Preview pane */}
+      <div className="flex-1 basis-72 min-w-0 rounded-lg border border-input bg-muted/40 px-3 py-2 overflow-auto">
+        <p className="mb-2 text-sm font-medium">Preview</p>
+        {body ? (
+          <Markdown>{body}</Markdown>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">Nothing to preview yet.</p>
+        )}
       </div>
     </div>
   );

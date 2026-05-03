@@ -1,3 +1,5 @@
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
 import { createNote } from '@/lib/notes/actions';
 import { listAllItemsForAutocomplete } from '@/lib/notes/queries';
@@ -11,14 +13,13 @@ export default async function NewNotePage({ searchParams }: { searchParams: Sear
   const items = await listAllItemsForAutocomplete();
 
   return (
-    <div>
-      <h1>Add note</h1>
+    <FormPageShell maxWidth="3xl" header={<PageHeader title="Add note" />}>
       <NoteForm
         items={items}
         defaultValues={{ itemId: prefillItemId }}
         action={createNote}
         submitLabel="Save note"
       />
-    </div>
+    </FormPageShell>
   );
 }

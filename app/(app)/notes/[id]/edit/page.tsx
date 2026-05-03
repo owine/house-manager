@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
 import { updateNote } from '@/lib/notes/actions';
 import { getNote, listAllItemsForAutocomplete } from '@/lib/notes/queries';
@@ -11,8 +13,7 @@ export default async function EditNotePage({ params }: { params: Params }) {
   if (!note) notFound();
 
   return (
-    <div>
-      <h1>Edit note</h1>
+    <FormPageShell maxWidth="3xl" header={<PageHeader title="Edit note" />}>
       <NoteForm
         items={items}
         defaultValues={{
@@ -25,6 +26,6 @@ export default async function EditNotePage({ params }: { params: Params }) {
         action={updateNote}
         submitLabel="Save changes"
       />
-    </div>
+    </FormPageShell>
   );
 }

@@ -1,6 +1,11 @@
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
-import { NoteTable } from '@/components/notes/NoteTable';
+import { NoteCardGrid } from '@/components/notes/NoteCardGrid';
+import { NotesFilterBar } from '@/components/notes/NotesFilterBar';
+import { Button } from '@/components/ui/button';
 import { listAllItemsForAutocomplete, listNotes } from '@/lib/notes/queries';
 import { parseListParams } from '@/lib/url-params';
 
@@ -19,106 +24,48 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
   ]);
 
   const hasFilters = !!params.q || Object.keys(params.filters).length > 0;
-  const isEmpty = notes.length === 0 && !hasFilters;
+  const noNotesAtAll = notes.length === 0 && !hasFilters;
 
   return (
-    <div>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1.5rem',
-        }}
-      >
-        <h1>Notes ({total})</h1>
-        <Link href="/notes/new">+ Add note</Link>
-      </header>
-
-      {/* Filter form */}
-      <form
-        method="get"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginBottom: '1.5rem',
-          alignItems: 'flex-end',
-        }}
-      >
-        <label
-          style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.85rem' }}
-        >
-          Search
-          <input
-            name="q"
-            defaultValue={params.q ?? ''}
-            placeholder="Search title or body…"
-            style={{
-              padding: '0.3rem 0.5rem',
-              border: '1px solid var(--border-strong)',
-              borderRadius: '4px',
-            }}
+    <ListPageShell
+      header={
+        <PageHeader
+          title={`Notes (${total})`}
+          actions={
+            <Button render={<Link href="/notes/new" />}>
+              <Plus className="h-4 w-4" />
+              Add note
+            </Button>
+          }
+        />
+      }
+      filters={
+        <NotesFilterBar
+          q={params.q ?? ''}
+          selectedItemId={params.filters.itemId?.[0] ?? ''}
+          items={items}
+        />
+      }
+      isEmpty={notes.length === 0}
+      empty={
+        noNotesAtAll ? (
+          <EmptyState
+            message="No notes yet."
+            action={<Button render={<Link href="/notes/new" />}>Add your first note</Button>}
           />
-        </label>
-
-        <label
-          style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.85rem' }}
-        >
-          Item
-          <select
-            name="itemId"
-            defaultValue={params.filters.itemId?.[0] ?? ''}
-            style={{
-              padding: '0.3rem 0.5rem',
-              border: '1px solid var(--border-strong)',
-              borderRadius: '4px',
-            }}
-          >
-            <option value="">All items</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <button
-          type="submit"
-          style={{
-            padding: '0.3rem 0.75rem',
-            borderRadius: '4px',
-            border: '1px solid var(--border-strong)',
-            cursor: 'pointer',
-          }}
-        >
-          Filter
-        </button>
-
-        {hasFilters && (
-          <Link
-            href="/notes"
-            style={{ padding: '0.3rem 0.75rem', fontSize: '0.85rem', alignSelf: 'flex-end' }}
-          >
-            Clear
-          </Link>
-        )}
-      </form>
-
-      {isEmpty ? (
-        <EmptyState
-          message="No notes yet."
-          action={<Link href="/notes/new">Add your first note</Link>}
-        />
-      ) : notes.length === 0 ? (
-        <EmptyState
-          message="No notes match your filters."
-          action={<Link href="/notes">Clear filters</Link>}
-        />
-      ) : (
-        <NoteTable notes={notes} />
-      )}
-    </div>
+        ) : (
+          <EmptyState
+            message="No notes match your filters."
+            action={
+              <Button variant="ghost" render={<Link href="/notes" />}>
+                Clear filters
+              </Button>
+            }
+          />
+        )
+      }
+    >
+      <NoteCardGrid notes={notes} />
+    </ListPageShell>
   );
 }
