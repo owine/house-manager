@@ -3923,3 +3923,31 @@ Use the `superpowers:finishing-a-development-branch` skill to choose between mer
 2. Confirm `lib/reminders/` already exposes a `nextDueOn` calculator that handles the three recurrence shapes — if so, import it in Task 11 instead of duplicating.
 3. Confirm the project's existing `<EmptyState>` import path and styling conventions during Task 16.
 4. Confirm whether `app/(app)/admin` already exists (Task 25) — if so, append the AI section; if not, add the admin layout gate.
+
+---
+
+## Amendment after Plan 4ab (UI redesign — shipped 2026-05-03 as `eab30ff`)
+
+After Plan 4ab merged, this plan rebases onto post-4ab main. The schema commit (Task 1, `00e95a7`) is conflict-free. UI tasks below now use shadcn primitives instead of inline-styled placeholders.
+
+**Plan 4ab installed primitives note (applies to ALL UI tasks below):** `<Button>`, `<DropdownMenu*>`, `<Tabs>`, `<Sidebar*>`, and several other shadcn primitives use Base UI's `render={...}` prop pattern (NOT `asChild`) because the `base-nova` preset wraps `@base-ui/react`. When porting any pattern from external shadcn docs that uses `asChild`, swap to `render={<Element />}`. `<Button>` auto-defaults `nativeButton={false}` when `render` is passed (via `components/ui/button.tsx` modification), so `<Button render={<Link href="...">}>` works at all sites without per-call `nativeButton` props.
+
+**Task 16 (`/checklists` index)** — replace raw `<main>` shell with `<ListPageShell>`. Replace inline-styled `<Link href="/checklists/new">New checklist</Link>` with `<Button render={<Link href="/checklists/new" />}>`. Cards use shadcn `<Card>` + `<CardHeader>` / `<CardTitle>` / `<CardContent>`. Add `loading.tsx` mirroring the card grid.
+
+**Task 17 (`/checklists/[id]` editor)** — replace raw form composition with shadcn `<Form>` + `<FormField>` per the canonical pattern from `components/items/ItemForm.tsx`. Wrap in `<FormPageShell>`. Note: `components/ui/form.tsx` exists in this repo (manually ported during 4ab Task 3 because `base-nova` registry omits it). Use `applyActionFieldErrors` from `@/lib/forms/helpers` for server-side validation errors.
+
+**Task 18 (SuggestionPreview)** — replace placeholder `btn-primary` className strings with `<Button variant="default">`. Replace `btn-ghost` strings with `<Button variant="ghost">`. The dashboard entry point's modal uses shadcn `<Dialog>` from `@/components/ui/dialog`. The dashboard surface that triggers it: `app/(app)/dashboard/SeasonalChecklistCard.tsx` — currently a placeholder Card from 4ab; replace its body with the "Generate {season} checklist" `<Button>` + `<Dialog>` trigger.
+
+**Task 21 (post-create interstitial)** — `<main className="mx-auto max-w-xl p-6">` becomes `<FormPageShell maxWidth="xl" header={<PageHeader title="Suggestion saved" />}>`. Buttons become shadcn (`<Button>` for primary, `<Button variant="outline">` for secondary).
+
+**Task 23 (`/suggest` standalone)** — `<textarea>` → shadcn `<Textarea>` from `@/components/ui/textarea`. Submit button → shadcn `<Button type="submit">`. Wrap the page in `<FormPageShell maxWidth="2xl" header={<PageHeader title="Generate suggestion" />}>`.
+
+**Task 24 (per-item `IncludeInSuggestionsToggle`)** — wire it into `<ItemOverflowMenu>` (exists from 4ab Task 13 at `components/items/ItemOverflowMenu.tsx`). Use shadcn `<DropdownMenuCheckboxItem>` rather than a raw `<input type="checkbox">`. The toggle calls the existing `setIncludeInSuggestions` server action; on success show a `toast.success(...)` from `sonner` (already wired in `app/(app)/layout.tsx`).
+
+**Task 25 (admin `/admin/ai`)** — stat strip uses shadcn `<Card>` per stat (similar shape to the dashboard's `DueSoonLane` strip in `app/(app)/dashboard/DueSoonLane.tsx`). Page wraps in `<FormPageShell>` if it's read-only stats with no controls, or `<ListPageShell>` if it has a recent-suggestions table. Designer's call.
+
+**`<EmptyState>` API note (resolves Open Question #3 above):** as of 4ab Task 22, the API is `{icon?, title, description?, action?, className?}` — title is the headline, description is the subtext. Pass `<EmptyState title="No checklists yet" description="..." action={<Button .../>} />`. The old `message=` API was removed.
+
+**`/admin` route note (resolves Open Question #4 above):** as of 4ab, no `/admin` route group exists — Task 25 creates `app/(app)/admin/ai/page.tsx` as a new route. The auth gate in `app/(app)/layout.tsx` only checks for any signed-in user; the role check `session.user.role === 'ADMIN'` belongs in the admin page itself or in a new `app/(app)/admin/layout.tsx`. The `<AppSidebar>` already conditionally renders an "Admin" link when `user.role === 'ADMIN'` (from 4ab Task 4); just add `/admin/ai` to that link's destination or to a sub-nav inside the admin route group.
+
+Server Action contracts and tests don't change. The amendment is mechanical — same logic, different JSX nouns.
