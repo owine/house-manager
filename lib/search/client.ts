@@ -1,7 +1,10 @@
 import { Meilisearch } from 'meilisearch';
 import { getEnv } from '@/lib/env';
+import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { SearchKind } from './schema';
+
+const logger = getLogger('search.client');
 
 export const SEARCH_INDEX_NAME = 'house';
 
@@ -32,11 +35,9 @@ export async function enqueueSearchIndex(
     const boss = await getBoss();
     await boss.send(Queue.SearchIndex, { kind, id, op });
   } catch (e) {
-    console.warn('search index enqueue failed (will recover via reindex-all)', {
-      kind,
-      id,
-      op,
-      error: (e as Error).message,
-    });
+    logger.warn(
+      { kind, id, op, error: (e as Error).message },
+      'search index enqueue failed (will recover via reindex-all)',
+    );
   }
 }

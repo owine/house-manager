@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getLogger } from '@/lib/logger';
 import { computeNextDueOn } from '@/lib/reminders/recurrence';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -18,6 +19,8 @@ import {
   proposeRemindersResponseSchema,
 } from '../schemas';
 import { classifyAnthropicError, userFacingMessage } from './_shared';
+
+const logger = getLogger('ai.suggest.reminders');
 
 export type ProposeRemindersData = {
   logId: string;
@@ -56,14 +59,9 @@ export async function proposeReminders(input: {
       errorReason: 'user_rate_limit',
       model: ANTHROPIC_MODEL,
     });
-    console.log(
-      JSON.stringify({
-        event: 'ai.suggest',
-        kind: 'reminders',
-        userId,
-        ok: false,
-        errorReason: 'user_rate_limit',
-      }),
+    logger.info(
+      { event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason: 'user_rate_limit' },
+      'rate-limited',
     );
     return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
   }
@@ -96,8 +94,9 @@ export async function proposeReminders(input: {
       model: ANTHROPIC_MODEL,
       latencyMs: Date.now() - start,
     });
-    console.log(
-      JSON.stringify({ event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason }),
+    logger.info(
+      { event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason },
+      'anthropic call failed',
     );
     return { ok: false, formError: userFacingMessage(errorReason) };
   }
@@ -119,10 +118,8 @@ export async function proposeReminders(input: {
     latencyMs: Date.now() - start,
   });
 
-  // Structured log line at the action boundary (per spec observability section).
-  // TODO(plan-5): replace with project logger once one exists.
-  console.log(
-    JSON.stringify({
+  logger.info(
+    {
       event: 'ai.suggest',
       kind: 'reminders',
       userId,
@@ -131,7 +128,8 @@ export async function proposeReminders(input: {
       outputTokens: usage.output_tokens,
       cacheReadTokens: usage.cache_read_input_tokens,
       ok: true,
-    }),
+    },
+    'success',
   );
 
   return { ok: true, data: { logId: log.id, proposals: parsed.proposals } };
@@ -188,24 +186,22 @@ export async function saveAcceptedReminders(input: {
   try {
     await Promise.all(savedIds.map((id) => enqueueSearchIndex('reminder', id, 'upsert')));
   } catch (e) {
-    console.warn(
-      JSON.stringify({
+    logger.warn(
+      {
         event: 'ai.suggest.enqueueSearchIndex.failed',
         kind: 'reminders',
         err: (e as Error).message,
-      }),
+      },
+      'enqueueSearchIndex failed',
     );
   }
 
   try {
     await markAccepted(input.logId, savedIds);
   } catch (e) {
-    console.warn(
-      JSON.stringify({
-        event: 'ai.suggest.markAccepted.failed',
-        logId: input.logId,
-        err: (e as Error).message,
-      }),
+    logger.warn(
+      { event: 'ai.suggest.markAccepted.failed', logId: input.logId, err: (e as Error).message },
+      'markAccepted failed',
     );
   }
 

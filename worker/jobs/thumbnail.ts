@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import { atomicWrite, resolveStoragePath } from '@/lib/attachments/storage';
 import { prisma as defaultPrisma } from '@/lib/db';
+import { getLogger } from '@/lib/logger';
+
+const logger = getLogger('worker.thumbnail');
 
 export type ThumbnailJob = { attachmentId: string };
 
@@ -14,7 +17,7 @@ export async function handleThumbnail(
   const { attachmentId } = payload;
   const filesDir = process.env.FILES_DIR;
   if (!filesDir) {
-    console.error('[thumbnail] FILES_DIR is not set');
+    logger.error('FILES_DIR is not set');
     return;
   }
   const row = await db.attachment.findUnique({
@@ -31,7 +34,7 @@ export async function handleThumbnail(
     const abs = resolveStoragePath(filesDir, row.storagePath);
     buffer = await readFile(abs);
   } catch (e) {
-    console.error('[thumbnail] cannot read source', { attachmentId, error: (e as Error).message });
+    logger.error({ attachmentId, err: e }, 'cannot read source');
     return;
   }
 
@@ -44,11 +47,7 @@ export async function handleThumbnail(
   } catch (e) {
     // sharp/libvips can fail on HEIC + corrupt files; log and bail without
     // throwing so pg-boss treats the job as done (no retry).
-    console.error('[thumbnail] resize failed', {
-      attachmentId,
-      mimeType: row.mimeType,
-      error: (e as Error).message,
-    });
+    logger.error({ attachmentId, mimeType: row.mimeType, err: e }, 'resize failed');
     return;
   }
 

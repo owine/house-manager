@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
@@ -13,6 +14,8 @@ import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
 import { ChecklistNotFoundError, classifyAnthropicError, userFacingMessage } from './_shared';
+
+const logger = getLogger('ai.suggest.checklist');
 
 const proposeChecklistInputSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('seasonal'), season: z.enum(['spring', 'summer', 'fall', 'winter']) }),
@@ -79,14 +82,9 @@ export async function proposeChecklist(
       errorReason: 'user_rate_limit',
       model: ANTHROPIC_MODEL,
     });
-    console.log(
-      JSON.stringify({
-        event: 'ai.suggest',
-        kind: 'checklist',
-        userId,
-        ok: false,
-        errorReason: 'user_rate_limit',
-      }),
+    logger.info(
+      { event: 'ai.suggest', kind: 'checklist', userId, ok: false, errorReason: 'user_rate_limit' },
+      'rate-limited',
     );
     return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
   }
@@ -119,14 +117,9 @@ export async function proposeChecklist(
       model: ANTHROPIC_MODEL,
       latencyMs: Date.now() - start,
     });
-    console.log(
-      JSON.stringify({
-        event: 'ai.suggest',
-        kind: 'checklist',
-        userId,
-        ok: false,
-        errorReason,
-      }),
+    logger.info(
+      { event: 'ai.suggest', kind: 'checklist', userId, ok: false, errorReason },
+      'anthropic call failed',
     );
     return { ok: false, formError: userFacingMessage(errorReason) };
   }
@@ -152,8 +145,8 @@ export async function proposeChecklist(
     latencyMs: Date.now() - start,
   });
 
-  console.log(
-    JSON.stringify({
+  logger.info(
+    {
       event: 'ai.suggest',
       kind: 'checklist',
       userId,
@@ -162,7 +155,8 @@ export async function proposeChecklist(
       outputTokens: usage.output_tokens,
       cacheReadTokens: usage.cache_read_input_tokens,
       ok: true,
-    }),
+    },
+    'success',
   );
 
   return {
@@ -243,25 +237,23 @@ export async function saveAcceptedChecklist(input: {
   try {
     await enqueueSearchIndex('checklist', checklistId, 'upsert');
   } catch (e) {
-    console.warn(
-      JSON.stringify({
+    logger.warn(
+      {
         event: 'ai.suggest.enqueueSearchIndex.failed',
         kind: 'checklist',
         checklistId,
         err: (e as Error).message,
-      }),
+      },
+      'enqueueSearchIndex failed',
     );
   }
 
   try {
     await markAccepted(input.logId, [checklistId]);
   } catch (e) {
-    console.warn(
-      JSON.stringify({
-        event: 'ai.suggest.markAccepted.failed',
-        logId: input.logId,
-        err: (e as Error).message,
-      }),
+    logger.warn(
+      { event: 'ai.suggest.markAccepted.failed', logId: input.logId, err: (e as Error).message },
+      'markAccepted failed',
     );
   }
 

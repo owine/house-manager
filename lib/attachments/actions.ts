@@ -4,12 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
+import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
 import { addAttachmentLinkSchema, type ParentType, uploadAttachmentSchema } from './schema';
 import { atomicWrite, removeDir } from './storage';
+
+const logger = getLogger('attachments.actions');
 
 const MAX_BYTES = 25_000_000;
 
@@ -104,7 +107,7 @@ export async function uploadAttachment(formData: FormData): Promise<ActionResult
         await boss.send(Queue.Thumbnail, { attachmentId: id });
       } catch (e) {
         // Queue failure is logged-but-not-fatal — the upload still succeeded.
-        console.error('[attachments] failed to enqueue thumbnail job', e);
+        logger.error({ err: e }, 'failed to enqueue thumbnail job');
       }
     }
 
@@ -131,7 +134,7 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   await prisma.attachment.delete({ where: { id } });
   await enqueueSearchIndex('attachment', id, 'delete');
   await removeDir(env.FILES_DIR, id).catch((e) => {
-    console.error('[attachments] failed to remove storage dir', e);
+    logger.error({ err: e }, 'failed to remove storage dir');
   });
 
   if (row.itemId) revalidatePath(`/items/${row.itemId}`);

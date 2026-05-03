@@ -11,6 +11,11 @@ x-app-env: &app-env
   FILES_DIR: /data/files
   NODE_ENV: production
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  # Optional observability vars. Set these once GlitchTip / Loki are running.
+  # SENTRY_DSN: ${SENTRY_DSN:-}
+  # NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+  # SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+  # LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:
   db:
