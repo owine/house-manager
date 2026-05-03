@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useController, useFormContext } from 'react-hook-form';
+import { Input } from '@/components/ui/input';
 
 type Props = {
   name: 'itemId' | 'vendorId';
@@ -38,34 +39,26 @@ export function ItemAutocomplete({ name, label, options }: Props) {
   }
 
   return (
-    <div style={{ marginBottom: '1rem' }}>
-      <label htmlFor={name} style={{ display: 'block', fontWeight: 500, marginBottom: '0.25rem' }}>
-        {label}
-      </label>
-      <input
+    <div className="mb-4">
+      {label && (
+        <label htmlFor={name} className="mb-1 block text-sm font-medium">
+          {label}
+        </label>
+      )}
+      <Input
         id={name}
         list={listId}
         value={text}
         onChange={handleChange}
         autoComplete="off"
-        style={{
-          padding: '0.3rem 0.5rem',
-          border: '1px solid var(--border-strong)',
-          borderRadius: '4px',
-          width: '100%',
-        }}
-        placeholder={`Type to search ${label.toLowerCase()}…`}
+        placeholder={label ? `Type to search ${label.toLowerCase()}…` : 'Type to search…'}
       />
       <datalist id={listId}>
         {options.map((o) => (
           <option key={o.id} value={o.name} />
         ))}
       </datalist>
-      {error?.message && (
-        <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
-          {error.message}
-        </p>
-      )}
+      {error?.message && <p className="mt-1 text-sm text-destructive">{error.message}</p>}
     </div>
   );
 }

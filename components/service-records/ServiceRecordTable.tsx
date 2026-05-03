@@ -1,4 +1,12 @@
 import Link from 'next/link';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 // Structural interface matching Prisma's Decimal for display purposes
 interface DecimalLike {
@@ -22,47 +30,56 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead>
-        <tr className="table-header">
-          <th className="table-cell">Date</th>
-          <th className="table-cell">Summary</th>
-          <th className="table-cell">Item</th>
-          <th className="table-cell">Vendor</th>
-          <th className="table-cell">Cost</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Date</TableHead>
+          <TableHead>Summary</TableHead>
+          <TableHead>Item</TableHead>
+          <TableHead>Vendor</TableHead>
+          <TableHead className="text-right">Cost</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {records.map((record) => (
-          <tr key={record.id} className="table-row">
-            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
-              <Link href={`/service/${record.id}`}>
+          <TableRow key={record.id}>
+            <TableCell>
+              <Link href={`/service/${record.id}`} className="underline underline-offset-2">
                 {record.performedOn.toISOString().slice(0, 10)}
               </Link>
-            </td>
-            <td className="table-cell">
-              <Link href={`/service/${record.id}`}>{record.summary}</Link>
-            </td>
-            <td className="table-cell">
+            </TableCell>
+            <TableCell>
+              <Link href={`/service/${record.id}`} className="underline underline-offset-2">
+                {record.summary}
+              </Link>
+            </TableCell>
+            <TableCell>
               {record.item ? (
-                <Link href={`/items/${record.item.id}`}>{record.item.name}</Link>
+                <Link href={`/items/${record.item.id}`} className="underline underline-offset-2">
+                  {record.item.name}
+                </Link>
               ) : (
-                '—'
+                <span className="text-muted-foreground">—</span>
               )}
-            </td>
-            <td className="table-cell">
+            </TableCell>
+            <TableCell>
               {record.vendor ? (
-                <Link href={`/vendors/${record.vendor.id}`}>{record.vendor.name}</Link>
+                <Link
+                  href={`/vendors/${record.vendor.id}`}
+                  className="underline underline-offset-2"
+                >
+                  {record.vendor.name}
+                </Link>
               ) : (
-                '—'
+                <span className="text-muted-foreground">—</span>
               )}
-            </td>
-            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
+            </TableCell>
+            <TableCell className="text-right">
               {record.cost != null ? currencyFmt.format(record.cost.toNumber()) : '—'}
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

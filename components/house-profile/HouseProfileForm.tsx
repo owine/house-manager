@@ -2,9 +2,27 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { saveHouseProfile } from '@/lib/house-profile/actions';
 import { type HouseProfileInput, houseProfileSchema } from '@/lib/house-profile/schema';
 
@@ -45,79 +63,96 @@ type Props = {
 
 export function HouseProfileForm({ defaultValues }: Props) {
   const [pending, startTransition] = useTransition();
-  const {
-    register,
-    handleSubmit,
-    setError,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(houseProfileSchema),
     defaultValues,
   });
 
-  const formError = (errors as { root?: { message?: string } }).root?.message;
-
-  const onSubmit = handleSubmit((data) => {
+  async function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const result = await saveHouseProfile(data);
+      const result = await saveHouseProfile(values);
       if (!result.ok) {
-        if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as keyof FormValues, { message: msgs?.[0] });
-          }
-        }
+        const applied = applyActionFieldErrors(form.setError, result);
+        if (result.formError) form.setError('root', { message: result.formError });
+        if (!applied && !result.formError) toast.error('Failed to save');
+        return;
       }
-      // On success the page re-renders via revalidatePath, showing the saved
-      // values — no explicit redirect or "Saved" state needed.
+      toast.success('Settings saved');
     });
-  });
+  }
 
   return (
-    <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-      <ErrorBanner message={formError} />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {form.formState.errors.root?.message && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {form.formState.errors.root.message}
+          </p>
+        )}
 
-      <FormField label="Location" htmlFor="location" error={errors.location?.message}>
-        <input id="location" {...register('location')} style={{ width: '100%' }} />
-      </FormField>
-
-      <FormField
-        label="Climate zone"
-        htmlFor="climateZone"
-        error={errors.climateZone?.message}
-        hint="IECC zone (e.g. 3B) or any custom value"
-      >
-        <input
-          id="climateZone"
-          list="iecc-zones"
-          {...register('climateZone')}
-          style={{ width: '100%' }}
+        <FormField
+          control={form.control}
+          name="location"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Location</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        <datalist id="iecc-zones">
-          {IECC_ZONES.map((zone) => (
-            <option key={zone} value={zone} />
-          ))}
-        </datalist>
-      </FormField>
 
-      <FormField label="Property type" htmlFor="propertyType" error={errors.propertyType?.message}>
-        <select id="propertyType" {...register('propertyType')} style={{ width: '100%' }}>
-          <option value="">(none)</option>
-          {PROPERTY_TYPE_OPTIONS.map(({ value, label }) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </FormField>
+        <FormField
+          control={form.control}
+          name="climateZone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Climate zone</FormLabel>
+              <FormControl>
+                <Input list="iecc-zones" {...field} />
+              </FormControl>
+              <datalist id="iecc-zones">
+                {IECC_ZONES.map((zone) => (
+                  <option key={zone} value={zone} />
+                ))}
+              </datalist>
+              <FormDescription>IECC zone (e.g. 3B) or any custom value</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <button
-        type="submit"
-        disabled={pending}
-        style={{ padding: '0.5rem 1rem', marginTop: '0.5rem' }}
-      >
-        {pending ? 'Saving…' : 'Save'}
-      </button>
-    </form>
+        <FormField
+          control={form.control}
+          name="propertyType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Property type</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="(none)" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {PROPERTY_TYPE_OPTIONS.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : 'Save'}
+        </Button>
+      </form>
+    </Form>
   );
 }

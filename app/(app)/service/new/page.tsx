@@ -1,3 +1,5 @@
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
 import { listItems } from '@/lib/items/queries';
 import { createServiceRecord } from '@/lib/service-records/actions';
@@ -23,8 +25,7 @@ export default async function NewServiceRecordPage({
   const vendorOptions = vendors.map((v) => ({ id: v.id, name: v.name }));
 
   return (
-    <div>
-      <h1>Log service</h1>
+    <FormPageShell header={<PageHeader title="Log service" />}>
       <ServiceRecordForm
         items={itemOptions}
         vendors={vendorOptions}
@@ -35,6 +36,6 @@ export default async function NewServiceRecordPage({
         action={createServiceRecord}
         submitLabel="Save record"
       />
-    </div>
+    </FormPageShell>
   );
 }

@@ -3,9 +3,27 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { saveNotificationPrefs, unsubscribePush } from '@/lib/notifications/actions';
 import type { NotificationPrefs } from '@/lib/notifications/prefs';
 import { notificationPrefsSchema } from '@/lib/notifications/prefs';
@@ -37,37 +55,24 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [unsubscribePending, setUnsubscribePending] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    setError,
-    setValue,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(notificationPrefsSchema),
     defaultValues: prefs,
   });
 
-  const formError = (errors as { root?: { message?: string } }).root?.message;
-
-  const onSubmit = handleSubmit((data) => {
-    setSaveStatus(null);
+  async function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const result = await saveNotificationPrefs(data);
+      const result = await saveNotificationPrefs(values);
       if (!result.ok) {
-        if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as keyof FormValues, { message: msgs?.[0] });
-          }
-        }
-      } else {
-        setSaveStatus('Saved.');
+        const applied = applyActionFieldErrors(form.setError, result);
+        if (result.formError) form.setError('root', { message: result.formError });
+        if (!applied && !result.formError) toast.error('Failed to save');
+        return;
       }
+      toast.success('Saved');
     });
-  });
+  }
 
   const handleUnsubscribe = async (id: string) => {
     setUnsubscribePending(true);
@@ -82,128 +87,144 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-      <ErrorBanner message={formError} />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {form.formState.errors.root?.message && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {form.formState.errors.root.message}
+          </p>
+        )}
 
-      <FormField
-        label="Push notifications"
-        htmlFor="pushEnabled"
-        error={errors.pushEnabled?.message}
-      >
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-          <input id="pushEnabled" type="checkbox" {...register('pushEnabled')} />
-          <span>Enable push notifications</span>
-        </label>
-      </FormField>
-
-      <FormField
-        label="Email notifications"
-        htmlFor="emailEnabled"
-        error={errors.emailEnabled?.message}
-      >
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-          <input id="emailEnabled" type="checkbox" {...register('emailEnabled')} />
-          <span>Enable email notifications</span>
-        </label>
-      </FormField>
-
-      <FormField label="Quiet hours start" htmlFor="quietStart" error={errors.quietStart?.message}>
-        <input
-          id="quietStart"
-          type="time"
-          {...register('quietStart', {
-            onChange: (e) => {
-              if (e.target.value === '') {
-                setValue('quietStart', null);
-              }
-            },
-          })}
-          style={{ width: '100%' }}
+        <FormField
+          control={form.control}
+          name="pushEnabled"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center gap-2 space-y-0">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+              <FormLabel className="cursor-pointer">Enable push notifications</FormLabel>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </FormField>
 
-      <FormField label="Quiet hours end" htmlFor="quietEnd" error={errors.quietEnd?.message}>
-        <input
-          id="quietEnd"
-          type="time"
-          {...register('quietEnd', {
-            onChange: (e) => {
-              if (e.target.value === '') {
-                setValue('quietEnd', null);
-              }
-            },
-          })}
-          style={{ width: '100%' }}
+        <FormField
+          control={form.control}
+          name="emailEnabled"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center gap-2 space-y-0">
+              <FormControl>
+                <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+              <FormLabel className="cursor-pointer">Enable email notifications</FormLabel>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </FormField>
 
-      <FormField label="Timezone" htmlFor="timezone" error={errors.timezone?.message}>
-        <select id="timezone" {...register('timezone')} style={{ width: '100%' }}>
-          {TIMEZONE_OPTIONS.map((tz) => (
-            <option key={tz} value={tz}>
-              {tz}
-            </option>
-          ))}
-        </select>
-      </FormField>
+        <FormField
+          control={form.control}
+          name="quietStart"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Quiet hours start</FormLabel>
+              <FormControl>
+                <Input
+                  type="time"
+                  value={field.value ?? ''}
+                  onChange={(e) => field.onChange(e.target.value || null)}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <button
-        type="submit"
-        disabled={pending}
-        style={{ padding: '0.5rem 1rem', marginTop: '0.5rem' }}
-      >
-        {pending ? 'Saving…' : 'Save'}
-      </button>
+        <FormField
+          control={form.control}
+          name="quietEnd"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Quiet hours end</FormLabel>
+              <FormControl>
+                <Input
+                  type="time"
+                  value={field.value ?? ''}
+                  onChange={(e) => field.onChange(e.target.value || null)}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      {saveStatus && (
-        <p style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-success)' }}>
-          {saveStatus}
-        </p>
-      )}
+        <FormField
+          control={form.control}
+          name="timezone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Timezone</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <SelectItem key={tz} value={tz}>
+                      {tz}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      {subscriptions.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h3 style={{ fontSize: '0.95rem', marginBottom: '0.5rem' }}>Subscribed devices</h3>
-          <div style={{ fontSize: '0.85rem', color: 'var(--fg-muted)', marginBottom: '1rem' }}>
-            You are subscribed to notifications on {subscriptions.length} device
-            {subscriptions.length !== 1 ? 's' : ''}.
-          </div>
-          {subscriptions.map((sub) => (
-            <div
-              key={sub.id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid var(--border)',
-              }}
-            >
-              <div style={{ fontSize: '0.85rem' }}>
-                <div>{sub.userAgent || 'Unknown device'}</div>
-                <div style={{ color: 'var(--fg-muted)', fontSize: '0.75rem' }}>
-                  {new Date(sub.createdAt).toLocaleDateString()}
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : 'Save'}
+        </Button>
+
+        {subscriptions.length > 0 && (
+          <div className="mt-8">
+            <h3 className="mb-2 text-sm font-medium">Subscribed devices</h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              You are subscribed to notifications on {subscriptions.length} device
+              {subscriptions.length !== 1 ? 's' : ''}.
+            </p>
+            <div className="divide-y">
+              {subscriptions.map((sub) => (
+                <div key={sub.id} className="flex items-center justify-between py-2">
+                  <div className="text-sm">
+                    <div>{sub.userAgent || 'Unknown device'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(sub.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleUnsubscribe(sub.id)}
+                    disabled={unsubscribePending}
+                  >
+                    {unsubscribePending ? 'Removing…' : 'Unsubscribe'}
+                  </Button>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUnsubscribe(sub.id)}
-                disabled={unsubscribePending}
-                style={{
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.85rem',
-                  backgroundColor: 'transparent',
-                  border: '1px solid var(--border)',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                {unsubscribePending ? 'Removing…' : 'Unsubscribe'}
-              </button>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-    </form>
+          </div>
+        )}
+      </form>
+    </Form>
   );
 }

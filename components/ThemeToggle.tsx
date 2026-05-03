@@ -45,10 +45,10 @@ const buttonBase: React.CSSProperties = {
 
 const buttonActive: React.CSSProperties = {
   ...buttonBase,
-  background: 'var(--accent)',
-  color: 'var(--accent-fg)',
+  background: 'var(--app-accent)',
+  color: 'var(--app-accent-fg)',
   fontWeight: 600,
-  borderColor: 'var(--accent)',
+  borderColor: 'var(--app-accent)',
 };
 
 export function ThemeToggle() {

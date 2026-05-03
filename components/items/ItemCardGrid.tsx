@@ -1,6 +1,9 @@
 import type { Category, Item } from '@prisma/client';
 import Link from 'next/link';
 
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+
 type ItemWithRelations = Item & {
   category: Category;
   _count: { warranties: number; serviceRecords: number; itemNotes: number };
@@ -8,56 +11,34 @@ type ItemWithRelations = Item & {
 
 export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-        gap: '1rem',
-      }}
-    >
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            padding: '1rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          <Link
-            href={`/items/${item.id}`}
-            style={{ fontWeight: 600, fontSize: '1rem', textDecoration: 'none' }}
-          >
-            {item.name}
-          </Link>
-          <span className="badge-sm" style={{ alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
-            {item.category.icon ? `${item.category.icon} ` : ''}
-            {item.category.name}
-          </span>
-          {item.location && (
-            <span style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>{item.location}</span>
-          )}
-          {item.purchaseDate && (
-            <span style={{ fontSize: '0.8rem', color: 'var(--fg-muted)' }}>
-              Purchased: {new Date(item.purchaseDate).toLocaleDateString()}
-            </span>
-          )}
-          <div
-            style={{
-              marginTop: 'auto',
-              display: 'flex',
-              gap: '0.75rem',
-              fontSize: '0.8rem',
-              color: 'var(--fg-muted)',
-            }}
-          >
-            <span>{item._count.warranties} warranties</span>
-            <span>{item._count.serviceRecords} service records</span>
-          </div>
-        </div>
+        <Card key={item.id} className="flex flex-col">
+          <CardHeader>
+            <CardTitle>
+              <Link href={`/items/${item.id}`} className="hover:underline">
+                {item.name}
+              </Link>
+            </CardTitle>
+            <Badge variant="secondary" className="w-fit">
+              {item.category.icon ? `${item.category.icon} ` : ''}
+              {item.category.name}
+            </Badge>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            {item.location && (
+              <span className="text-sm text-muted-foreground">{item.location}</span>
+            )}
+            {item.purchaseDate && (
+              <span className="text-xs text-muted-foreground">
+                Purchased: {new Date(item.purchaseDate).toLocaleDateString()}
+              </span>
+            )}
+          </CardContent>
+          <CardFooter className="mt-auto text-xs text-muted-foreground">
+            {item._count.warranties} warranties · {item._count.serviceRecords} service records
+          </CardFooter>
+        </Card>
       ))}
     </div>
   );

@@ -3,12 +3,29 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { Category } from '@prisma/client';
 import { useRouter } from 'next/navigation';
 import { useEffect, useTransition } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
 import { ItemMetadataFields } from '@/components/items/ItemMetadataFields';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { type CreateItemInput, createItemSchema } from '@/lib/items/schema';
 import type { ActionResult } from '@/lib/result';
 
@@ -28,7 +45,7 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const methods = useForm<ItemFormValues>({
+  const form = useForm<ItemFormValues>({
     resolver: zodResolver(createItemSchema),
     defaultValues: {
       name: '',
@@ -39,19 +56,17 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
   });
 
   const {
-    register,
     handleSubmit,
     setError,
     watch,
     setValue,
     formState: { errors },
-  } = methods;
+  } = form;
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
   const watchedCategorySlug = watch('categorySlug');
 
   // Reset metadata when category changes so previous-category values don't leak.
-  // watchedCategorySlug is referenced below to make the dependency explicit to the linter.
   useEffect(() => {
     if (watchedCategorySlug !== undefined) {
       setValue('metadata', {});
@@ -63,97 +78,200 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as unknown as CreateItemInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            // RHF supports nested dot-paths (e.g. "metadata.fuelType")
-            setError(field as Parameters<typeof setError>[0], { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save item');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Item updated' : 'Item created');
       router.push(`/items/${result.data.id}`);
     });
   });
 
   return (
-    <FormProvider {...methods}>
-      <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-        <ErrorBanner message={formError} />
-
-        <FormField label="Name" htmlFor="name" error={errors.name?.message}>
-          <input id="name" {...register('name')} required />
-        </FormField>
-
-        <FormField label="Category" htmlFor="categorySlug" error={errors.categorySlug?.message}>
-          <select id="categorySlug" {...register('categorySlug')} required>
-            <option value="">— select category —</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.slug}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-
-        <FormField label="Location" htmlFor="location" error={errors.location?.message}>
-          <input id="location" {...register('location')} />
-        </FormField>
-
-        <FormField label="Manufacturer" htmlFor="manufacturer" error={errors.manufacturer?.message}>
-          <input id="manufacturer" {...register('manufacturer')} />
-        </FormField>
-
-        <FormField label="Model" htmlFor="model" error={errors.model?.message}>
-          <input id="model" {...register('model')} />
-        </FormField>
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
         <FormField
-          label="Serial number"
-          htmlFor="serialNumber"
-          error={errors.serialNumber?.message}
-        >
-          <input id="serialNumber" {...register('serialNumber')} />
-        </FormField>
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
-          label="Purchase date"
-          htmlFor="purchaseDate"
-          error={errors.purchaseDate?.message}
-        >
-          <input
-            id="purchaseDate"
-            type="date"
-            {...register('purchaseDate', {
-              setValueAs: (v) => (v === '' ? undefined : v),
-            })}
-          />
-        </FormField>
+          control={form.control}
+          name="categorySlug"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Category</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="— select category —" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.slug}>
+                      {cat.icon ? `${cat.icon} ` : ''}
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
-          label="Purchase price"
-          htmlFor="purchasePrice"
-          error={errors.purchasePrice?.message}
-        >
-          <input
-            id="purchasePrice"
-            type="number"
-            step="0.01"
-            min="0"
-            {...register('purchasePrice', {
-              setValueAs: (v) => (v === '' || v === null ? undefined : Number(v)),
-            })}
-          />
-        </FormField>
+          control={form.control}
+          name="location"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Location</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <FormField label="Notes (markdown)" htmlFor="notes" error={errors.notes?.message}>
-          <textarea id="notes" rows={6} {...register('notes')} />
-        </FormField>
+        <FormField
+          control={form.control}
+          name="manufacturer"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Manufacturer</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="model"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Model</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="serialNumber"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Serial number</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="purchaseDate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Purchase date</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={
+                    field.value instanceof Date
+                      ? field.value.toISOString().slice(0, 10)
+                      : typeof field.value === 'string'
+                        ? field.value
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : v);
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="purchasePrice"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Purchase price</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={typeof field.value === 'number' ? field.value : ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : Number(v));
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Notes (markdown)</FormLabel>
+              <FormControl>
+                <Textarea rows={6} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {watchedCategorySlug && <ItemMetadataFields slug={watchedCategorySlug} />}
 
-        <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
       </form>
-    </FormProvider>
+    </Form>
   );
 }

@@ -1,5 +1,13 @@
 import Link from 'next/link';
-import { deleteWarranty } from '@/lib/warranties/actions';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { WarrantyRowActions } from './WarrantyRowActions';
 import { WarrantyStatusBadge } from './WarrantyStatusBadge';
 
 // Structural interface matching Prisma's Decimal for display purposes
@@ -22,74 +30,47 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
 });
 
-function WarrantyDeleteForm({ warrantyId }: { warrantyId: string }) {
-  async function doDelete() {
-    'use server';
-    await deleteWarranty(warrantyId);
-  }
-
-  return (
-    <form action={doDelete}>
-      <button
-        type="submit"
-        style={{
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-          color: 'var(--danger)',
-          font: 'inherit',
-        }}
-      >
-        Delete
-      </button>
-    </form>
-  );
-}
-
 export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
   if (warranties.length === 0) {
-    return <p style={{ color: 'var(--fg-muted)' }}>No warranties recorded.</p>;
+    return <p className="text-sm text-muted-foreground">No warranties recorded.</p>;
   }
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead>
-        <tr className="table-header">
-          <th className="table-cell">Provider</th>
-          <th className="table-cell">Policy #</th>
-          <th className="table-cell">Starts on</th>
-          <th className="table-cell">Ends on</th>
-          <th className="table-cell">Status</th>
-          <th className="table-cell">Cost</th>
-          <th className="table-cell"></th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Provider</TableHead>
+          <TableHead>Policy #</TableHead>
+          <TableHead>Starts on</TableHead>
+          <TableHead>Ends on</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="text-right">Cost</TableHead>
+          <TableHead />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {warranties.map((warranty) => (
-          <tr key={warranty.id} className="table-row">
-            <td className="table-cell">
-              <Link href={`/warranties/${warranty.id}`}>{warranty.provider}</Link>
-            </td>
-            <td className="table-cell">{warranty.policyNumber ?? '—'}</td>
-            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
-              {warranty.startsOn.toISOString().slice(0, 10)}
-            </td>
-            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
-              {warranty.endsOn.toISOString().slice(0, 10)}
-            </td>
-            <td className="table-cell">
+          <TableRow key={warranty.id}>
+            <TableCell>
+              <Link href={`/warranties/${warranty.id}`} className="underline underline-offset-2">
+                {warranty.provider}
+              </Link>
+            </TableCell>
+            <TableCell>{warranty.policyNumber ?? '—'}</TableCell>
+            <TableCell>{warranty.startsOn.toISOString().slice(0, 10)}</TableCell>
+            <TableCell>{warranty.endsOn.toISOString().slice(0, 10)}</TableCell>
+            <TableCell>
               <WarrantyStatusBadge endsOn={warranty.endsOn} />
-            </td>
-            <td className="table-cell" style={{ whiteSpace: 'nowrap' }}>
+            </TableCell>
+            <TableCell className="text-right">
               {warranty.cost != null ? currencyFmt.format(warranty.cost.toNumber()) : '—'}
-            </td>
-            <td className="table-cell">
-              <WarrantyDeleteForm warrantyId={warranty.id} />
-            </td>
-          </tr>
+            </TableCell>
+            <TableCell>
+              <WarrantyRowActions warrantyId={warranty.id} />
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

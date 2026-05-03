@@ -2,12 +2,23 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { Controller, FormProvider, useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
 import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import {
   type CreateReminderInput,
   createReminderSchema,
@@ -30,7 +41,8 @@ type Props = {
 export function ReminderForm({ items, defaultValues, action, submitLabel }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const methods = useForm<FormValues>({
+
+  const form = useForm<FormValues>({
     resolver: zodResolver(createReminderSchema),
     defaultValues: {
       autoCreateServiceRecord: false,
@@ -39,13 +51,14 @@ export function ReminderForm({ items, defaultValues, action, submitLabel }: Prop
       ...defaultValues,
     },
   });
+
   const {
-    register,
     handleSubmit,
     control,
     setError,
     formState: { errors },
-  } = methods;
+  } = form;
+
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((data) => {
@@ -53,38 +66,68 @@ export function ReminderForm({ items, defaultValues, action, submitLabel }: Prop
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as CreateReminderInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as keyof FormValues, { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save reminder');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Reminder updated' : 'Reminder created');
       router.push(`/reminders/${result.data.id}`);
     });
   });
 
   return (
-    <FormProvider {...methods}>
-      <form
-        onSubmit={onSubmit}
-        style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
-      >
-        <ErrorBanner message={formError} />
-        <FormField label="Title" htmlFor="title" error={errors.title?.message}>
-          <input id="title" {...register('title')} required />
-        </FormField>
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
+
         <FormField
-          label="Description (markdown)"
-          htmlFor="description"
-          error={errors.description?.message}
-        >
-          <textarea id="description" rows={4} {...register('description')} />
-        </FormField>
-        <FormField label="Item" htmlFor="itemId" error={errors.itemId?.message}>
-          <ItemAutocomplete name="itemId" label="" options={items} />
-        </FormField>
+          control={control}
+          name="title"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Title</FormLabel>
+              <FormControl>
+                <Input {...field} required />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description (markdown)</FormLabel>
+              <FormControl>
+                <Textarea rows={4} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="itemId"
+          render={() => (
+            <FormItem>
+              <FormLabel>Item</FormLabel>
+              <FormControl>
+                <ItemAutocomplete name="itemId" label="" options={items} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <Controller
           control={control}
           name="recurrence"
@@ -95,35 +138,93 @@ export function ReminderForm({ items, defaultValues, action, submitLabel }: Prop
             />
           )}
         />
-        <FormField label="First due date" htmlFor="nextDueOn" error={errors.nextDueOn?.message}>
-          <input id="nextDueOn" type="date" {...register('nextDueOn')} required />
-        </FormField>
+
         <FormField
-          label="Lead time (days)"
-          htmlFor="leadTimeDays"
-          error={errors.leadTimeDays?.message}
-        >
-          <input
-            id="leadTimeDays"
-            type="number"
-            min={0}
-            max={365}
-            {...register('leadTimeDays', { valueAsNumber: true })}
-          />
-        </FormField>
+          control={control}
+          name="nextDueOn"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>First due date</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={
+                    field.value instanceof Date
+                      ? field.value.toISOString().slice(0, 10)
+                      : typeof field.value === 'string'
+                        ? field.value
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : v);
+                  }}
+                  required
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
-          label="Auto-create service record on completion"
-          htmlFor="autoCreateServiceRecord"
-          error={errors.autoCreateServiceRecord?.message}
-        >
-          <input
-            id="autoCreateServiceRecord"
-            type="checkbox"
-            {...register('autoCreateServiceRecord')}
-          />
-        </FormField>
-        <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
+          control={control}
+          name="leadTimeDays"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Lead time (days)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={0}
+                  max={365}
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={typeof field.value === 'number' ? field.value : ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : Number(v));
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="autoCreateServiceRecord"
+          render={({ field }) => (
+            <FormItem className="flex items-center gap-2">
+              <FormControl>
+                <Checkbox
+                  id="autoCreateServiceRecord"
+                  checked={!!field.value}
+                  onCheckedChange={field.onChange}
+                  ref={field.ref}
+                  name={field.name}
+                  disabled={field.disabled}
+                />
+              </FormControl>
+              <FormLabel htmlFor="autoCreateServiceRecord" className="!mt-0 cursor-pointer">
+                Auto-create service record on completion
+              </FormLabel>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
       </form>
-    </FormProvider>
+    </Form>
   );
 }

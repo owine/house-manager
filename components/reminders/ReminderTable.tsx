@@ -1,4 +1,12 @@
 import Link from 'next/link';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ReminderStatusBadge } from './ReminderStatusBadge';
 
 type Row = {
@@ -11,31 +19,39 @@ type Row = {
 
 export function ReminderTable({ reminders }: { reminders: Row[] }) {
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead>
-        <tr className="table-header">
-          <th className="table-cell">Title</th>
-          <th className="table-cell">Item</th>
-          <th className="table-cell">Next due</th>
-          <th className="table-cell">Status</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Title</TableHead>
+          <TableHead>Item</TableHead>
+          <TableHead>Next due</TableHead>
+          <TableHead>Status</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {reminders.map((r) => (
-          <tr key={r.id} className="table-row">
-            <td className="table-cell">
-              <Link href={`/reminders/${r.id}`}>{r.title}</Link>
-            </td>
-            <td className="table-cell">
-              {r.item ? <Link href={`/items/${r.item.id}`}>{r.item.name}</Link> : '—'}
-            </td>
-            <td className="table-cell">{r.nextDueOn.toISOString().slice(0, 10)}</td>
-            <td className="table-cell">
+          <TableRow key={r.id}>
+            <TableCell>
+              <Link href={`/reminders/${r.id}`} className="underline underline-offset-2">
+                {r.title}
+              </Link>
+            </TableCell>
+            <TableCell>
+              {r.item ? (
+                <Link href={`/items/${r.item.id}`} className="underline underline-offset-2">
+                  {r.item.name}
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </TableCell>
+            <TableCell>{r.nextDueOn.toISOString().slice(0, 10)}</TableCell>
+            <TableCell>
               <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

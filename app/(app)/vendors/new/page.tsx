@@ -1,11 +1,12 @@
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { VendorForm } from '@/components/vendors/VendorForm';
 import { createVendor } from '@/lib/vendors/actions';
 
 export default function NewVendorPage() {
   return (
-    <div>
-      <h1>New vendor</h1>
+    <FormPageShell header={<PageHeader title="New vendor" />}>
       <VendorForm action={createVendor} submitLabel="Create vendor" />
-    </div>
+    </FormPageShell>
   );
 }

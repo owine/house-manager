@@ -2,12 +2,21 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { Controller, FormProvider, useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
 import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { type CreateNoteInput, createNoteSchema } from '@/lib/notes/schema';
 import type { ActionResult } from '@/lib/result';
 import { NoteEditor } from './NoteEditor';
@@ -28,7 +37,7 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const methods = useForm<NoteFormValues>({
+  const form = useForm<NoteFormValues>({
     resolver: zodResolver(createNoteSchema),
     defaultValues: {
       title: '',
@@ -40,12 +49,11 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
   });
 
   const {
-    register,
     control,
     handleSubmit,
     setError,
     formState: { errors },
-  } = methods;
+  } = form;
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
@@ -54,79 +62,95 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as unknown as CreateNoteInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as Parameters<typeof setError>[0], { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save note');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Note updated' : 'Note created');
       router.push(`/notes/${result.data.id}`);
     });
   });
 
   return (
-    <FormProvider {...methods}>
-      <form onSubmit={onSubmit} style={{ maxWidth: 900 }}>
-        <ErrorBanner message={formError} />
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
         {/* Title */}
-        <FormField label="Title" htmlFor="title" error={errors.title?.message}>
-          <input
-            id="title"
-            {...register('title')}
-            required
-            style={{
-              width: '100%',
-              padding: '0.3rem 0.5rem',
-              border: '1px solid var(--border-strong)',
-              borderRadius: '4px',
-            }}
-          />
-        </FormField>
+        <FormField
+          control={control}
+          name="title"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Title</FormLabel>
+              <FormControl>
+                <Input {...field} required />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Item autocomplete */}
-        <ItemAutocomplete name="itemId" label="Attach to item (optional)" options={items} />
+        <FormField
+          control={control}
+          name="itemId"
+          render={() => (
+            <FormItem>
+              <FormLabel>Attach to item (optional)</FormLabel>
+              <FormControl>
+                <ItemAutocomplete name="itemId" label="" options={items} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Tags */}
         <FormField
-          label="Tags (comma-separated)"
-          htmlFor="tags"
-          error={errors.tags?.message as string | undefined}
-        >
-          <Controller
-            control={control}
-            name="tags"
-            render={({ field }) => (
-              <input
-                id="tags"
-                defaultValue={(field.value ?? []).join(', ')}
-                onChange={(e) =>
-                  field.onChange(
-                    e.target.value
-                      .split(',')
-                      .map((t) => t.trim())
-                      .filter(Boolean),
-                  )
-                }
-                style={{
-                  width: '100%',
-                  padding: '0.3rem 0.5rem',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: '4px',
-                }}
-              />
-            )}
-          />
-        </FormField>
+          control={control}
+          name="tags"
+          render={() => (
+            <FormItem>
+              <FormLabel>Tags (comma-separated)</FormLabel>
+              <FormControl>
+                <Controller
+                  control={control}
+                  name="tags"
+                  render={({ field }) => (
+                    <Input
+                      id="tags"
+                      defaultValue={(field.value ?? []).join(', ')}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value
+                            .split(',')
+                            .map((t) => t.trim())
+                            .filter(Boolean),
+                        )
+                      }
+                    />
+                  )}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Body (markdown editor with live preview) */}
-        <div style={{ marginBottom: '0.25rem', fontWeight: 500 }}>Body</div>
         <NoteEditor />
 
-        <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
       </form>
-    </FormProvider>
+    </Form>
   );
 }

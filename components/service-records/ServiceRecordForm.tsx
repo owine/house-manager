@@ -2,13 +2,23 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
 import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import {
   type CreateServiceRecordInput,
@@ -39,7 +49,7 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
       : String(defaultValues.performedOn)
     : ('' as unknown as Date);
 
-  const methods = useForm<ServiceRecordFormValues>({
+  const form = useForm<ServiceRecordFormValues>({
     resolver: zodResolver(createServiceRecordSchema),
     defaultValues: {
       itemId: undefined,
@@ -53,11 +63,11 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
   });
 
   const {
-    register,
+    control,
     handleSubmit,
     setError,
     formState: { errors },
-  } = methods;
+  } = form;
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
@@ -66,56 +76,147 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as unknown as CreateServiceRecordInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as Parameters<typeof setError>[0], { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save service record');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Service record updated' : 'Service record created');
       router.push(`/service/${result.data.id}`);
     });
   });
 
   return (
-    <FormProvider {...methods}>
-      <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-        <ErrorBanner message={formError} />
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
         {/* Item autocomplete */}
-        <ItemAutocomplete name="itemId" label="Item (optional)" options={items} />
+        <FormField
+          control={control}
+          name="itemId"
+          render={() => (
+            <FormItem>
+              <FormLabel>Item (optional)</FormLabel>
+              <FormControl>
+                <ItemAutocomplete name="itemId" label="" options={items} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {/* Vendor autocomplete */}
-        <VendorAutocomplete name="vendorId" label="Vendor (optional)" options={vendors} />
+        <FormField
+          control={control}
+          name="vendorId"
+          render={() => (
+            <FormItem>
+              <FormLabel>Vendor (optional)</FormLabel>
+              <FormControl>
+                <VendorAutocomplete name="vendorId" label="" options={vendors} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <FormField label="Performed on" htmlFor="performedOn" error={errors.performedOn?.message}>
-          <input id="performedOn" type="date" {...register('performedOn')} required />
-        </FormField>
+        <FormField
+          control={control}
+          name="performedOn"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Performed on</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={
+                    field.value instanceof Date
+                      ? field.value.toISOString().slice(0, 10)
+                      : typeof field.value === 'string'
+                        ? field.value
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : v);
+                  }}
+                  required
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <FormField label="Cost (USD)" htmlFor="cost" error={errors.cost?.message}>
-          <input
-            id="cost"
-            type="number"
-            step="0.01"
-            min="0"
-            {...register('cost', {
-              setValueAs: (v) =>
-                v === '' || v === null || v === undefined ? undefined : Number(v),
-            })}
-          />
-        </FormField>
+        <FormField
+          control={control}
+          name="cost"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cost (USD)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={typeof field.value === 'number' ? field.value : ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : Number(v));
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <FormField label="Summary" htmlFor="summary" error={errors.summary?.message}>
-          <input id="summary" {...register('summary')} required style={{ width: '100%' }} />
-        </FormField>
+        <FormField
+          control={control}
+          name="summary"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Summary</FormLabel>
+              <FormControl>
+                <Input {...field} required />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <FormField label="Notes (markdown)" htmlFor="notes" error={errors.notes?.message}>
-          <textarea id="notes" rows={6} {...register('notes')} style={{ width: '100%' }} />
-        </FormField>
+        <FormField
+          control={control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Notes (markdown)</FormLabel>
+              <FormControl>
+                <Textarea rows={6} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
       </form>
-    </FormProvider>
+    </Form>
   );
 }

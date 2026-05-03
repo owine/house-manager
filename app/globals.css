@@ -1,3 +1,24 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Redefine the `dark:` variant so it fires under EITHER signal:
+ *   1. OS-level prefers-color-scheme: dark
+ *   2. Manual override via [data-theme="dark"] on :root (set by ThemeToggle)
+ *
+ * Without this, Tailwind v4's default dark: only checks the media query,
+ * which breaks manually-toggled dark mode for all shadcn `dark:` utilities.
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    @slot;
+  }
+  &:where(:root[data-theme="dark"], :root[data-theme="dark"] *) {
+    @slot;
+  }
+}
+
 /*
  * Theme tokens defined once via the CSS light-dark() function. The active
  * value depends on the element's color-scheme: light, dark, or matching the
@@ -16,8 +37,8 @@
   --fg-muted: light-dark(#666666, #9a9a9a);
   --border: light-dark(#dddddd, #2a2a2d);
   --border-strong: light-dark(#999999, #444448);
-  --accent: light-dark(#0066cc, #4d9fff);
-  --accent-fg: light-dark(#ffffff, #0e0e10);
+  --app-accent: light-dark(#0066cc, #4d9fff);
+  --app-accent-fg: light-dark(#ffffff, #0e0e10);
   --danger: light-dark(#b00020, #ff6b6b);
   --danger-bg: light-dark(#fde8e8, #3a1818);
   --focus: light-dark(#0066cc, #4d9fff);
@@ -35,9 +56,44 @@
   color-scheme: dark;
 }
 
+@theme {
+  /* Surfaces */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--bg);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--fg);
+  --color-muted: var(--bg-elevated);
+  --color-muted-foreground: var(--fg-muted);
+
+  /* Interactive */
+  --color-primary: var(--app-accent);
+  --color-primary-foreground: var(--app-accent-fg);
+  --color-secondary: var(--bg-elevated);
+  --color-secondary-foreground: var(--fg);
+  --color-accent: var(--bg-elevated);
+  --color-accent-foreground: var(--fg);
+
+  /* Status */
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+
+  /* Borders + focus */
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--focus);
+
+  /* Typography + radius */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 0.5rem;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
+  font-family: var(--font-sans);
 }
 
 /* Visible focus ring on both light and dark backgrounds */
@@ -46,9 +102,10 @@ body {
   outline-offset: 2px;
 }
 
-/* Default link color */
-a {
-  color: var(--accent);
+/* Default link color — exclude shadcn primitives (they set data-slot) so
+   utility-class colors (e.g. text-primary-foreground on Button) win. */
+a:not([data-slot]) {
+  color: var(--app-accent);
 }
 
 /* Markdown code/pre/blockquote adapt to theme */
@@ -75,38 +132,4 @@ blockquote {
   margin-left: 0;
   padding-left: 1rem;
   color: var(--fg-muted);
-}
-
-/*
- * Utility classes for the most-repeated inline patterns. Centralizing here
- * means future theme tweaks (radius, padding, etc.) live in one place.
- * Keep this list small — it is not a design system, just a way to localize
- * recurrent style objects. Plan 5 may replace this with proper components.
- */
-.badge {
-  padding: 0.1rem 0.4rem;
-  background: var(--badge-bg);
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-/* Smaller variant for chips inside denser layouts (cards, headers, tag clouds) */
-.badge-sm {
-  padding: 0.1rem 0.35rem;
-  background: var(--badge-bg);
-  border-radius: 3px;
-  font-size: 0.8rem;
-}
-
-.table-row {
-  border-bottom: 1px solid var(--border);
-}
-
-.table-header {
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
-.table-cell {
-  padding: 0.5rem;
 }

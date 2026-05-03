@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
 import { listAllItemsForAutocomplete } from '@/lib/notes/queries';
 import { updateReminder } from '@/lib/reminders/actions';
@@ -13,8 +15,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
   if (!r) notFound();
 
   return (
-    <div>
-      <h1>Edit reminder</h1>
+    <FormPageShell header={<PageHeader title="Edit reminder" />}>
       <ReminderForm
         items={items}
         defaultValues={{
@@ -30,6 +31,6 @@ export default async function EditReminderPage({ params }: { params: Params }) {
         action={updateReminder}
         submitLabel="Save changes"
       />
-    </div>
+    </FormPageShell>
   );
 }

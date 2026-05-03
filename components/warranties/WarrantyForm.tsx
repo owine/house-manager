@@ -3,10 +3,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { z } from 'zod';
-import { ErrorBanner } from '@/components/forms/ErrorBanner';
-import { FormField } from '@/components/forms/FormField';
-import { SubmitButton } from '@/components/forms/SubmitButton';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import { type CreateWarrantyInput, createWarrantySchema } from '@/lib/warranties/schema';
 
@@ -32,12 +42,7 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const {
-    register,
-    handleSubmit,
-    setError,
-    formState: { errors },
-  } = useForm<WarrantyFormValues>({
+  const form = useForm<WarrantyFormValues>({
     resolver: zodResolver(createWarrantySchema),
     defaultValues: {
       itemId,
@@ -51,6 +56,14 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
     },
   });
 
+  const {
+    control,
+    handleSubmit,
+    register,
+    setError,
+    formState: { errors },
+  } = form;
+
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((data) => {
@@ -58,57 +71,165 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
       const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
       const result = await action(payload as unknown as CreateWarrantyInput);
       if (!result.ok) {
+        const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (result.fieldErrors) {
-          for (const [field, msgs] of Object.entries(result.fieldErrors)) {
-            setError(field as Parameters<typeof setError>[0], { message: msgs?.[0] });
-          }
-        }
+        if (!applied && !result.formError) toast.error('Failed to save warranty');
         return;
       }
+      const isEdit = !!defaultValues?.id;
+      toast.success(isEdit ? 'Warranty updated' : 'Warranty created');
       router.push(`/items/${itemId}?tab=warranties`);
     });
   });
 
   return (
-    <form onSubmit={onSubmit} style={{ maxWidth: 600 }}>
-      <ErrorBanner message={formError} />
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        {formError && (
+          <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
-      <input type="hidden" {...register('itemId')} value={itemId} />
+        <input type="hidden" {...register('itemId')} value={itemId} />
 
-      <FormField label="Provider" htmlFor="provider" error={errors.provider?.message}>
-        <input id="provider" {...register('provider')} required style={{ width: '100%' }} />
-      </FormField>
-
-      <FormField label="Policy number" htmlFor="policyNumber" error={errors.policyNumber?.message}>
-        <input id="policyNumber" {...register('policyNumber')} style={{ width: '100%' }} />
-      </FormField>
-
-      <FormField label="Starts on" htmlFor="startsOn" error={errors.startsOn?.message}>
-        <input id="startsOn" type="date" {...register('startsOn')} required />
-      </FormField>
-
-      <FormField label="Ends on" htmlFor="endsOn" error={errors.endsOn?.message}>
-        <input id="endsOn" type="date" {...register('endsOn')} required />
-      </FormField>
-
-      <FormField label="Coverage" htmlFor="coverage" error={errors.coverage?.message}>
-        <textarea id="coverage" rows={4} {...register('coverage')} style={{ width: '100%' }} />
-      </FormField>
-
-      <FormField label="Cost (USD)" htmlFor="cost" error={errors.cost?.message}>
-        <input
-          id="cost"
-          type="number"
-          step="0.01"
-          min="0"
-          {...register('cost', {
-            setValueAs: (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
-          })}
+        <FormField
+          control={control}
+          name="provider"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Provider</FormLabel>
+              <FormControl>
+                <Input {...field} required />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </FormField>
 
-      <SubmitButton>{pending ? 'Saving…' : submitLabel}</SubmitButton>
-    </form>
+        <FormField
+          control={control}
+          name="policyNumber"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Policy number</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="startsOn"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Starts on</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={
+                    field.value instanceof Date
+                      ? field.value.toISOString().slice(0, 10)
+                      : typeof field.value === 'string'
+                        ? field.value
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : v);
+                  }}
+                  required
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="endsOn"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ends on</FormLabel>
+              <FormControl>
+                <Input
+                  type="date"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={
+                    field.value instanceof Date
+                      ? field.value.toISOString().slice(0, 10)
+                      : typeof field.value === 'string'
+                        ? field.value
+                        : ''
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : v);
+                  }}
+                  required
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="coverage"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Coverage</FormLabel>
+              <FormControl>
+                <Textarea rows={4} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={control}
+          name="cost"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cost (USD)</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  disabled={field.disabled}
+                  value={typeof field.value === 'number' ? field.value : ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    field.onChange(v === '' ? undefined : Number(v));
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : submitLabel}
+        </Button>
+      </form>
+    </Form>
   );
 }

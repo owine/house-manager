@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { ServiceWorkerRegistrar } from '@/components/notifications/ServiceWorkerRegistrar';
 import { SearchBar } from '@/components/search/SearchBar';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { Toaster } from '@/components/ui/sonner';
 import { auth } from '@/lib/auth';
+import { AppSidebar } from './_components/AppSidebar';
 
 // SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
 // avoid an Auth.js v5 JWE-vs-database-session incompatibility, so authenticated
@@ -13,22 +16,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await auth();
   if (!session?.user) redirect('/api/auth/signin');
   return (
-    <div>
-      <header
-        style={{
-          padding: '1rem',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
+    <SidebarProvider>
+      <AppSidebar
+        user={{
+          name: session.user.name,
+          role: (session.user as { role?: string | null }).role,
         }}
-      >
-        <strong>House Manager</strong>
-        <SearchBar />
-        <span style={{ marginLeft: 'auto' }}>Signed in as {session.user.name}</span>
-      </header>
-      <main style={{ padding: '1rem' }}>{children}</main>
+      />
+      <SidebarInset>
+        <header className="flex h-14 items-center gap-2 border-b px-4">
+          <SidebarTrigger />
+          <div className="flex-1">
+            <SearchBar />
+          </div>
+        </header>
+        <main className="p-6">{children}</main>
+      </SidebarInset>
+      <Toaster />
       <ServiceWorkerRegistrar />
-    </div>
+    </SidebarProvider>
   );
 }

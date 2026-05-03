@@ -12,16 +12,23 @@ test('creates a reminder, marks it complete, sees it in history', async ({ page,
   // Create an item to attach the reminder to
   await page.goto('/items/new');
   await page.getByLabel('Name').fill('Furnace');
-  await page.getByLabel('Category').selectOption('hvac');
+  // Open the Category combobox and pick HVAC.
+  // Was a native <select> before Plan 4ab; now shadcn <Select> (Base UI listbox).
+  await page.getByRole('combobox', { name: 'Category' }).click();
+  await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
 
-  // Switch to Reminders tab
-  await page.getByRole('link', { name: 'Reminders' }).click();
+  // Switch to Reminders tab (scoped to avoid matching the sidebar nav link)
+  await page
+    .getByRole('navigation', { name: 'Item tabs' })
+    .getByRole('link', { name: 'Reminders' })
+    .click();
   await expect(page.locator('text=No reminders yet')).toBeVisible();
 
-  // Add a reminder
-  await page.getByRole('link', { name: '+ Add reminder' }).click();
+  // Add a reminder. Base UI's Button keeps role="button" even when render={<Link>}
+  // produces an <a>; query by role=button, not role=link.
+  await page.getByRole('button', { name: '+ Add reminder' }).click();
   await page.getByLabel('Title').fill('Replace HVAC filter');
   await page
     .getByLabel('First due date')

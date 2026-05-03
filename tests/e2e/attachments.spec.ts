@@ -12,7 +12,10 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   // Create a fresh item.
   await page.goto('/items/new');
   await page.getByLabel('Name').fill('Furnace');
-  await page.getByLabel('Category').selectOption('hvac');
+  // Open the Category combobox and pick HVAC.
+  // Was a native <select> before Plan 4ab; now shadcn <Select> (Base UI listbox).
+  await page.getByRole('combobox', { name: 'Category' }).click();
+  await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
 

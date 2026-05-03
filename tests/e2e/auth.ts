@@ -20,7 +20,7 @@ export async function resetAuth(): Promise<void> {
   // the same DB serially; without clearing items/services/etc. between specs,
   // dashboard assertions hit "strict mode violation" from accumulated rows.
   // CASCADE handles FK ordering so we don't have to enumerate child-first.
-  // Categories stay (seeded by `prisma seed`; tests rely on selectOption('hvac')).
+  // Categories stay (seeded by `prisma seed`; tests open the Category combobox and pick "HVAC" by visible text).
   // house_profile is a per-house singleton; not per-spec state, leave it.
   await prisma.$executeRawUnsafe(`
     TRUNCATE

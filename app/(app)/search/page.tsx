@@ -1,7 +1,13 @@
 import Link from 'next/link';
+import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { SearchResults } from '@/components/search/SearchResults';
+import { badgeVariants } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { type SearchResult, searchAll } from '@/lib/search/queries';
 import { SEARCH_KINDS, type SearchKind, searchQuerySchema } from '@/lib/search/schema';
+import { cn } from '@/lib/utils';
 
 type SearchParams = Promise<{
   q?: string;
@@ -37,28 +43,20 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const activeKind = parsed.success ? parsed.data.kind : undefined;
 
   return (
-    <div>
-      <h1>Search</h1>
-      <form method="GET" action="/search" style={{ marginBottom: '1rem' }}>
-        <input
+    <ListPageShell header={<PageHeader title="Search" />}>
+      <form method="GET" action="/search" className="mb-4">
+        <Input
           type="search"
           name="q"
           defaultValue={q}
           placeholder="Search across items, reminders, notes…"
-          style={{ padding: '0.4rem', width: '100%', maxWidth: 480 }}
+          className="max-w-xl"
         />
       </form>
 
       {q && (
         <>
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.4rem',
-              flexWrap: 'wrap',
-              marginBottom: '1rem',
-            }}
-          >
+          <div className="mb-4 flex flex-wrap gap-2">
             <FacetPill href={`/search?q=${encodeURIComponent(q)}`} active={!activeKind}>
               All {result.total}
             </FacetPill>
@@ -84,7 +82,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           )}
         </>
       )}
-    </div>
+    </ListPageShell>
   );
 }
 
@@ -100,15 +98,10 @@ function FacetPill({
   return (
     <Link
       href={href}
-      style={{
-        padding: '0.3rem 0.7rem',
-        border: '1px solid var(--border)',
-        borderRadius: '999px',
-        background: active ? 'var(--bg-elevated)' : 'transparent',
-        color: 'inherit',
-        textDecoration: 'none',
-        fontSize: '0.85rem',
-      }}
+      className={cn(
+        badgeVariants({ variant: active ? 'default' : 'outline' }),
+        'cursor-pointer hover:opacity-80',
+      )}
     >
       {children}
     </Link>
@@ -130,12 +123,20 @@ function Pagination({
   const buildHref = (p: number) =>
     `/search?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ''}&page=${p}`;
   return (
-    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-      {page > 1 && <Link href={buildHref(page - 1)}>← Prev</Link>}
-      <span style={{ color: 'var(--fg-muted)' }}>
+    <div className="mt-4 flex items-center gap-3">
+      {page > 1 && (
+        <Button variant="outline" size="sm" render={<Link href={buildHref(page - 1)} />}>
+          ← Prev
+        </Button>
+      )}
+      <span className="text-sm text-muted-foreground">
         Page {page} of {lastPage}
       </span>
-      {page < lastPage && <Link href={buildHref(page + 1)}>Next →</Link>}
+      {page < lastPage && (
+        <Button variant="outline" size="sm" render={<Link href={buildHref(page + 1)} />}>
+          Next →
+        </Button>
+      )}
     </div>
   );
 }

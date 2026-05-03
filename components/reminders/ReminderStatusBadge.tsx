@@ -1,33 +1,23 @@
+import { Badge } from '@/components/ui/badge';
+
 const DAY_MS = 86_400_000;
 
 type Props = { nextDueOn: Date; active: boolean };
 
 export function ReminderStatusBadge({ nextDueOn, active }: Props) {
   if (!active) {
-    return (
-      <span className="badge" style={{ color: 'var(--fg-muted)' }}>
-        Inactive
-      </span>
-    );
+    return <Badge variant="secondary">Inactive</Badge>;
   }
   const days = Math.floor((nextDueOn.getTime() - Date.now()) / DAY_MS);
   if (days < 0) {
-    return (
-      <span className="badge" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
-        Overdue
-      </span>
-    );
+    return <Badge variant="destructive">Overdue</Badge>;
   }
   if (days <= 3) {
     return (
-      <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--warning)' }}>
+      <Badge variant="outline" className="text-amber-700 dark:text-amber-400">
         Due soon
-      </span>
+      </Badge>
     );
   }
-  return (
-    <span className="badge" style={{ color: 'var(--fg-muted)' }}>
-      In {days}d
-    </span>
-  );
+  return <Badge variant="outline">In {days}d</Badge>;
 }

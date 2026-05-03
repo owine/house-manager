@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files' | 'reminders';
 
@@ -18,34 +19,19 @@ type Props = {
 
 export function ItemTabs({ active, itemId }: Props) {
   return (
-    <nav
-      style={{
-        display: 'flex',
-        gap: '0',
-        borderBottom: '1px solid var(--border)',
-        marginBottom: '1.5rem',
-      }}
-    >
-      {TABS.map(({ slug, label }) => {
-        const isActive = slug === active;
-        return (
-          <Link
-            key={slug}
-            href={`/items/${itemId}?tab=${slug}`}
-            style={{
-              padding: '0.5rem 1rem',
-              textDecoration: 'none',
-              fontSize: '0.9rem',
-              color: isActive ? 'var(--fg)' : 'var(--fg-muted)',
-              fontWeight: isActive ? 600 : 400,
-              borderBottom: isActive ? '2px solid var(--fg)' : '2px solid transparent',
-              marginBottom: '-1px',
-            }}
-          >
-            {label}
-          </Link>
-        );
-      })}
+    <nav aria-label="Item tabs" className="-mb-px flex gap-1 border-b">
+      {TABS.map(({ slug, label }) => (
+        <Link
+          key={slug}
+          href={`/items/${itemId}?tab=${slug}`}
+          className={cn(
+            'inline-flex h-9 items-center border-b-2 border-transparent px-3 text-sm text-muted-foreground transition-colors hover:text-foreground',
+            slug === active && 'border-foreground font-medium text-foreground',
+          )}
+        >
+          {label}
+        </Link>
+      ))}
     </nav>
   );
 }
