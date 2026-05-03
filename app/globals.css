@@ -102,8 +102,9 @@ body {
   outline-offset: 2px;
 }
 
-/* Default link color */
-a {
+/* Default link color — exclude shadcn primitives (they set data-slot) so
+   utility-class colors (e.g. text-primary-foreground on Button) win. */
+a:not([data-slot]) {
   color: var(--app-accent);
 }
 
