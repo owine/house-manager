@@ -14,13 +14,16 @@ test('creates a reminder, marks it complete, sees it in history', async ({ page,
   await page.getByLabel('Name').fill('Furnace');
   // Open the Category combobox and pick HVAC.
   // Was a native <select> before Plan 4ab; now shadcn <Select> (Base UI listbox).
-  await page.getByLabel('Category').click();
+  await page.getByRole('combobox', { name: 'Category' }).click();
   await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
 
-  // Switch to Reminders tab
-  await page.getByRole('link', { name: 'Reminders' }).click();
+  // Switch to Reminders tab (scoped to avoid matching the sidebar nav link)
+  await page
+    .getByRole('navigation', { name: 'Item tabs' })
+    .getByRole('link', { name: 'Reminders' })
+    .click();
   await expect(page.locator('text=No reminders yet')).toBeVisible();
 
   // Add a reminder

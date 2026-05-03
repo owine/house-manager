@@ -14,7 +14,7 @@ test('searches across kinds, filters by facet', async ({ page, context }) => {
   await page.getByLabel('Name').fill('Furnace');
   // Open the Category combobox and pick HVAC.
   // Was a native <select> before Plan 4ab; now shadcn <Select> (Base UI listbox).
-  await page.getByLabel('Category').click();
+  await page.getByRole('combobox', { name: 'Category' }).click();
   await page.getByRole('option', { name: /HVAC/i }).click();
   await page.getByRole('button', { name: 'Create item' }).click();
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);

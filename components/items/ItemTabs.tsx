@@ -19,7 +19,7 @@ type Props = {
 
 export function ItemTabs({ active, itemId }: Props) {
   return (
-    <nav className="-mb-px flex gap-1 border-b">
+    <nav aria-label="Item tabs" className="-mb-px flex gap-1 border-b">
       {TABS.map(({ slug, label }) => (
         <Link
           key={slug}
