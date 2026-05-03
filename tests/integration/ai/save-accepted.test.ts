@@ -1,14 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from '../helpers';
+import { signInAs } from './_mock-auth';
 
-let _currentUserId: string | null = null;
-function signInAs(id: string | null) {
-  _currentUserId = id;
-}
-
-vi.mock('@/lib/auth', () => ({
-  auth: vi.fn(async () => (_currentUserId ? { user: { id: _currentUserId } } : null)),
-}));
+vi.mock('@/lib/auth', async () => {
+  const { currentUserId } = await import('./_mock-auth');
+  return {
+    auth: vi.fn(async () => {
+      const id = currentUserId();
+      return id ? { user: { id } } : null;
+    }),
+  };
+});
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 // Spy on search-index enqueue. Both saveAcceptedReminders (existing) and

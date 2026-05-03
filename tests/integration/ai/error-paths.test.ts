@@ -1,38 +1,26 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from '../helpers';
+import { mockParseError, resetMock } from './_mock-ai-client';
+import { signInAs } from './_mock-auth';
 
-let _currentUserId: string | null = null;
-function signInAs(id: string | null) {
-  _currentUserId = id;
-}
-
-vi.mock('@/lib/auth', () => ({
-  auth: vi.fn(async () => (_currentUserId ? { user: { id: _currentUserId } } : null)),
-}));
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
-
-let _nextResponse: unknown = null;
-const _mockParseFn = vi.fn(async (..._args: unknown[]) => {
-  if (_nextResponse === null) throw new Error('No response queued');
-  const r = _nextResponse;
-  _nextResponse = null;
-  if (r instanceof Error) throw r;
-  return r;
+vi.mock('@/lib/auth', async () => {
+  const { currentUserId } = await import('./_mock-auth');
+  return {
+    auth: vi.fn(async () => {
+      const id = currentUserId();
+      return id ? { user: { id } } : null;
+    }),
+  };
 });
-
-vi.mock('@/lib/ai/client', () => ({
-  getAnthropic: vi.fn(() => ({ messages: { parse: _mockParseFn } })),
-  ANTHROPIC_MODEL: 'claude-haiku-4-5',
-  ANTHROPIC_MAX_TOKENS: 2048,
-}));
-
-function mockParseError(err: Error) {
-  _nextResponse = err;
-}
-function resetMock() {
-  _nextResponse = null;
-  _mockParseFn.mockClear();
-}
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/ai/client', async () => {
+  const { mockParseFn } = await import('./_mock-ai-client');
+  return {
+    getAnthropic: vi.fn(() => ({ messages: { parse: mockParseFn } })),
+    ANTHROPIC_MODEL: 'claude-haiku-4-5',
+    ANTHROPIC_MAX_TOKENS: 2048,
+  };
+});
 
 describe('proposeReminders error paths', () => {
   let ctx: IntegrationContext;
