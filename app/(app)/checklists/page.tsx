@@ -1,6 +1,10 @@
 import { Plus } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+
+export const metadata: Metadata = { title: 'Checklists' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';

@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+
+export const metadata: Metadata = { title: 'AI suggestions' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { prisma } from '@/lib/db';

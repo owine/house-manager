@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -10,6 +11,12 @@ import { Markdown } from '@/lib/markdown';
 import { getNote } from '@/lib/notes/queries';
 
 type Params = Promise<{ id: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const note = await getNote(id);
+  return { title: note?.title ?? 'Not found' };
+}
 
 export default async function NoteDetailPage({ params }: { params: Params }) {
   const { id } = await params;

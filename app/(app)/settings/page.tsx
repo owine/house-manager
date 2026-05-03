@@ -1,4 +1,8 @@
+import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
+
+export const metadata: Metadata = { title: 'Settings' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { HouseProfileForm } from '@/components/house-profile/HouseProfileForm';
 import { CalendarPanel } from '@/components/notifications/CalendarPanel';

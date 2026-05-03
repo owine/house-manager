@@ -1,4 +1,5 @@
 import { CheckCircle2 } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
@@ -6,6 +7,16 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { GenerateRemindersButton } from '@/components/ai/GenerateRemindersButton';
 import { Button } from '@/components/ui/button';
 import { prisma } from '@/lib/db';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const item = await prisma.item.findUnique({ where: { id }, select: { name: true } });
+  return { title: item?.name ?? 'Not found' };
+}
 
 export default async function SuggestAfterCreate({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

@@ -1,5 +1,9 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
+
+export const metadata: Metadata = { title: 'Search' };
+
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { SearchResults } from '@/components/search/SearchResults';
 import { badgeVariants } from '@/components/ui/badge';

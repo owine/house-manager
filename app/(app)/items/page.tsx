@@ -1,5 +1,8 @@
 import { Plus } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = { title: 'Items' };
 
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';

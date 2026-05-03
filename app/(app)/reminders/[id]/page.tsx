@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -11,6 +12,12 @@ import { previewOccurrences } from '@/lib/reminders/recurrence';
 import type { Recurrence } from '@/lib/reminders/schema';
 
 type Params = Promise<{ id: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const r = await getReminder(id);
+  return { title: r?.title ?? 'Not found' };
+}
 
 export default async function ReminderDetailPage({ params }: { params: Params }) {
   const { id } = await params;

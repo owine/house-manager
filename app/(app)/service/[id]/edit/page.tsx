@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -8,6 +9,8 @@ import { getServiceRecord } from '@/lib/service-records/queries';
 import { listVendors } from '@/lib/vendors/queries';
 
 type Params = Promise<{ id: string }>;
+
+export const metadata: Metadata = { title: 'Edit service record' };
 
 export default async function EditServiceRecordPage({ params }: { params: Params }) {
   const { id } = await params;

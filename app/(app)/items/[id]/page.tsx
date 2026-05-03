@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ItemHeader } from '@/components/items/ItemHeader';
 import { ItemMetaCard } from '@/components/items/ItemMetaCard';
@@ -14,6 +15,12 @@ import { WarrantiesTab } from './tabs/WarrantiesTab';
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { id } = await params;
+  const item = await getItem(id);
+  return { title: item?.name ?? 'Not found' };
+}
 
 const VALID_TABS = ['overview', 'warranties', 'service', 'notes', 'files', 'reminders'] as const;
 

@@ -1,4 +1,22 @@
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
+
+export const metadata: Metadata = {
+  title: {
+    template: '%s · House Manager',
+    default: 'House Manager',
+  },
+  description: 'Track home inventory, maintenance, warranties, and reminders.',
+  // Private self-hosted app — never want to be indexed if accidentally exposed.
+  robots: { index: false, follow: false },
+  // Stop iOS Safari from auto-linking serial numbers / model IDs as phone numbers.
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
 
 // Inline script executed synchronously before first paint to apply the stored
 // theme. This prevents a flash of the light theme when the user has selected
