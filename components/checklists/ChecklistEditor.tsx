@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { SuggestChecklistItemsButton } from '@/components/ai/SuggestChecklistItemsButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -109,7 +110,10 @@ export function ChecklistEditor({ checklist }: Props) {
       />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Items</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Items</h2>
+          <SuggestChecklistItemsButton checklistId={checklist.id} checklistName={checklist.name} />
+        </div>
         {orderedItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">No items yet. Add one below.</p>
         ) : (
