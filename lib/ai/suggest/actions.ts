@@ -1,13 +1,20 @@
 'use server';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { z } from 'zod';
 import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext, type FocusedItem } from '../context-builder';
 import { createSuggestionLog } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
-import { type ProposedReminder, proposeRemindersResponseSchema } from '../schemas';
+import {
+  type ProposedChecklistItem,
+  type ProposedReminder,
+  proposeChecklistResponseSchema,
+  proposeRemindersResponseSchema,
+} from '../schemas';
 
 export type ProposeRemindersData = {
   logId: string;
@@ -145,4 +152,168 @@ function userFacingMessage(reason: string): string {
     default:
       return 'Something went wrong generating suggestions.';
   }
+}
+
+// ─── proposeChecklist ────────────────────────────────────────────────────────
+
+const proposeChecklistInputSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('seasonal'), season: z.enum(['spring', 'summer', 'fall', 'winter']) }),
+  z.object({ mode: z.literal('freeform'), freeFormPrompt: z.string().min(3).max(2000) }),
+  z.object({ mode: z.literal('append'), forChecklistId: z.string().min(1) }),
+]);
+export type ProposeChecklistInput = z.infer<typeof proposeChecklistInputSchema>;
+
+export type ProposeChecklistData = {
+  logId: string;
+  name: string;
+  description?: string;
+  items: ProposedChecklistItem[];
+};
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildChecklistUserMessage(input: ProposeChecklistInput, appendingTo?: string): string {
+  if (input.mode === 'seasonal') {
+    return `Generate a ${input.season} maintenance checklist (5–15 items) tailored to the inventory and house profile. Pick a name like "${capitalize(input.season)} ${new Date().getUTCFullYear()} Maintenance".`;
+  }
+  if (input.mode === 'freeform') {
+    return `${input.freeFormPrompt}\n\nReturn a checklist with a clear name and 1–15 items. Include rationale per item.`;
+  }
+  return `Suggest 3–10 additional items for the existing checklist "${appendingTo ?? input.forChecklistId}". Keep the existing name in your response — only suggest new items.`;
+}
+
+export async function proposeChecklist(
+  rawInput: unknown,
+): Promise<ActionResult<ProposeChecklistData>> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+  const userId = session.user.id;
+
+  const parsed = proposeChecklistInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const input = parsed.data;
+
+  let appendingTo: { id: string; name: string } | null = null;
+  if (input.mode === 'append') {
+    const found = await prisma.checklist.findUnique({
+      where: { id: input.forChecklistId },
+      select: { id: true, name: true },
+    });
+    if (!found) return { ok: false, formError: 'Checklist not found.' };
+    appendingTo = found;
+  }
+
+  const rl = await checkRateLimit(userId);
+  if (!rl.allowed) {
+    await createSuggestionLog({
+      userId,
+      kind: 'checklist',
+      userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
+      inventorySnapshotIds: [],
+      response: null,
+      errorReason: 'user_rate_limit',
+      model: ANTHROPIC_MODEL,
+    });
+    console.log(
+      JSON.stringify({
+        event: 'ai.suggest',
+        kind: 'checklist',
+        userId,
+        ok: false,
+        errorReason: 'user_rate_limit',
+      }),
+    );
+    return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
+  }
+
+  const ctx = await buildSuggestContext({ today: new Date() });
+
+  const start = Date.now();
+  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
+  try {
+    result = await getAnthropic().messages.parse({
+      model: ANTHROPIC_MODEL,
+      max_tokens: ANTHROPIC_MAX_TOKENS,
+      system: buildSystemBlocks({
+        profile: ctx.profile,
+        today: new Date(),
+        inventory: ctx.inventory,
+      }),
+      messages: [{ role: 'user', content: buildChecklistUserMessage(input, appendingTo?.name) }],
+      output_config: { format: zodOutputFormat(proposeChecklistResponseSchema) },
+    } as never);
+  } catch (e) {
+    const errorReason = classifyAnthropicError(e);
+    await createSuggestionLog({
+      userId,
+      kind: 'checklist',
+      userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
+      inventorySnapshotIds: ctx.inventorySnapshotIds,
+      response: null,
+      errorReason,
+      model: ANTHROPIC_MODEL,
+      latencyMs: Date.now() - start,
+    });
+    console.log(
+      JSON.stringify({
+        event: 'ai.suggest',
+        kind: 'checklist',
+        userId,
+        ok: false,
+        errorReason,
+      }),
+    );
+    return { ok: false, formError: userFacingMessage(errorReason) };
+  }
+
+  const parsedResp = (
+    result as {
+      parsed_output: { name: string; description?: string; items: ProposedChecklistItem[] };
+    }
+  ).parsed_output;
+  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
+
+  const log = await createSuggestionLog({
+    userId,
+    kind: 'checklist',
+    userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
+    inventorySnapshotIds: ctx.inventorySnapshotIds,
+    response: parsedResp,
+    model: ANTHROPIC_MODEL,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens,
+    cacheCreationTokens: usage.cache_creation_input_tokens,
+    latencyMs: Date.now() - start,
+  });
+
+  console.log(
+    JSON.stringify({
+      event: 'ai.suggest',
+      kind: 'checklist',
+      userId,
+      latencyMs: Date.now() - start,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadTokens: usage.cache_read_input_tokens,
+      ok: true,
+    }),
+  );
+
+  return {
+    ok: true,
+    data: {
+      logId: log.id,
+      name: parsedResp.name,
+      description: parsedResp.description,
+      items: parsedResp.items,
+    },
+  };
 }
