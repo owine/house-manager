@@ -24,8 +24,13 @@ const EnvSchema = z.object({
   FORWARDEMAIL_FROM_ADDRESS: z.string().min(1),
   APP_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
-  SENTRY_DSN: z.string().url().optional(),
-  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+  // Empty string is tolerated alongside undefined: the Dockerfile's
+  // `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN` pattern produces an
+  // empty-string ENV when no --build-arg is passed, which a bare
+  // `.url().optional()` would reject. Consumer code already truthy-checks
+  // (`if (process.env.SENTRY_DSN)`), so empty string degrades cleanly.
+  SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
   SENTRY_AUTH_TOKEN: z.string().optional(),
 });
 
