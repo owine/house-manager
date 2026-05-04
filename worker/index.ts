@@ -7,6 +7,8 @@ import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
 import { handleNotify, type NotifyJob } from './jobs/notify';
+import { handleNotifyLogSweep } from './jobs/notify-log-sweep';
+import { handlePgDump } from './jobs/pg-dump';
 import { handleRemindersTick } from './jobs/reminders-tick';
 import { handleSearchIndex, type SearchIndexJob } from './jobs/search-index';
 import { handleSearchReindex } from './jobs/search-reindex';
@@ -85,7 +87,21 @@ async function main() {
     await handleSearchReindex();
   });
 
-  logger.info('registered thumbnail, reminders.tick + notify, search.index + search.reindex jobs');
+  // Notification-log sweeper — runs every 5 min, deletes stale 'queued' rows.
+  await boss.schedule(Queue.NotifyLogSweep, '*/5 * * * *');
+  await boss.work(Queue.NotifyLogSweep, { batchSize: 1 }, async () => {
+    await handleNotifyLogSweep();
+  });
+
+  // Postgres logical backup — runs daily at 03:00 UTC.
+  await boss.schedule(Queue.PgDump, '0 3 * * *');
+  await boss.work(Queue.PgDump, { batchSize: 1 }, async () => {
+    await handlePgDump();
+  });
+
+  logger.info(
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep jobs',
+  );
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'received shutdown signal');
