@@ -21,16 +21,25 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
 ARG GIT_SHA=unknown
 ENV NEXT_PUBLIC_GIT_SHA=$GIT_SHA
 
-# Sentry (optional — source-map upload during build, runtime DSN reporting)
+# Sentry (optional — non-secret DSNs as ARG/ENV; auth token via --secret mount).
+# The DSNs are public values that ship in the bundle anyway (NEXT_PUBLIC_*) or
+# only identify a project, so ARG/ENV is fine. SENTRY_AUTH_TOKEN is a write
+# token to the Sentry project — buildkit's SecretsUsedInArgOrEnv lint
+# correctly flagged using ARG/ENV for it (the value would land in image
+# history). We mount it inline on the build RUN below so it's available as an
+# env var ONLY during that step and never persisted in any layer.
 ARG SENTRY_DSN
 ARG NEXT_PUBLIC_SENTRY_DSN
-ARG SENTRY_AUTH_TOKEN
 ENV SENTRY_DSN=$SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 ENV LOG_LEVEL=info
 
-RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
+# To enable source-map upload during build, pass:
+#   docker build --secret id=sentry_auth_token,src=/path/to/token ...
+# When the secret is absent, buildkit just doesn't set the env var, so
+# withSentryConfig's authToken is undefined and source-map upload no-ops.
+RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
+    DATABASE_URL=postgresql://build:build@localhost:5432/build \
     AUTH_SECRET=buildsecretbuildsecretbuildsecretbuild \
     AUTH_OIDC_ISSUER=https://auth.example.com \
     AUTH_OIDC_CLIENT_ID=build \
