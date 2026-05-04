@@ -34,10 +34,18 @@ export function PushSubscribeButton() {
           applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         });
         const json = sub.toJSON();
+        // PushSubscriptionJSON types these as optional, but a real
+        // PushManager.subscribe() result always has them. Bail loudly if not —
+        // calling subscribePush with an empty endpoint or missing keys would
+        // silently break notifications down the line.
+        if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+          setStatus('Browser returned an incomplete push subscription.');
+          return;
+        }
         const result = await subscribePush({
-          endpoint: json.endpoint!,
-          p256dh: json.keys!.p256dh!,
-          auth: json.keys!.auth!,
+          endpoint: json.endpoint,
+          p256dh: json.keys.p256dh,
+          auth: json.keys.auth,
           userAgent: navigator.userAgent,
         });
         if (!result.ok) {
