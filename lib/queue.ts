@@ -17,6 +17,8 @@ export const Queue = {
   Notify: 'notify',
   SearchIndex: 'search.index',
   SearchReindex: 'search.reindex',
+  PgDump: 'pg-dump', // NEW
+  NotifyLogSweep: 'notify-log.sweep', // NEW
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];
