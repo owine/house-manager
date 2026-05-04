@@ -9,7 +9,7 @@
   "timezone": "America/Chicago",
   "schedule": ["* * * * 1"],
   "automergeSchedule": ["at any time"],
-  "rangeStrategy": "bump",
+  "rangeStrategy": "pin",
   "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm", "pre-commit"],
   "lockFileMaintenance": {
     "enabled": true,
