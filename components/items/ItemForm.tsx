@@ -6,6 +6,7 @@ import { useEffect, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
+import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { ItemMetadataFields } from '@/components/items/ItemMetadataFields';
 import { Button } from '@/components/ui/button';
 import {
@@ -130,8 +131,10 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
                 <SelectContent>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.slug}>
-                      {cat.icon ? `${cat.icon} ` : ''}
-                      {cat.name}
+                      <span className="flex items-center gap-2">
+                        <CategoryIcon name={cat.icon} />
+                        {cat.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

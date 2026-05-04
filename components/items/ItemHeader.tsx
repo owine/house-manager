@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
 import type { getItem } from '@/lib/items/queries';
 
@@ -17,8 +18,8 @@ export function ItemHeader({ item, actions }: Props) {
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{item.name}</h1>
-          <Badge variant="secondary">
-            {item.category.icon ? `${item.category.icon} ` : ''}
+          <Badge variant="secondary" className="flex items-center gap-1.5">
+            <CategoryIcon name={item.category.icon} className="h-3.5 w-3.5" />
             {item.category.name}
           </Badge>
           {isArchived && (

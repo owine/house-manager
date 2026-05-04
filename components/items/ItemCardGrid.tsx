@@ -1,6 +1,7 @@
 import type { Category, Item } from '@prisma/client';
 import Link from 'next/link';
 
+import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -20,8 +21,8 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
                 {item.name}
               </Link>
             </CardTitle>
-            <Badge variant="secondary" className="w-fit">
-              {item.category.icon ? `${item.category.icon} ` : ''}
+            <Badge variant="secondary" className="flex w-fit items-center gap-1.5">
+              <CategoryIcon name={item.category.icon} className="h-3.5 w-3.5" />
               {item.category.name}
             </Badge>
           </CardHeader>
