@@ -85,5 +85,8 @@ export async function listAllItemLocations() {
     where: { location: { not: null } },
     distinct: ['location'],
   });
-  return result.map((r) => r.location!).sort();
+  // Prisma can't narrow the result type from the where clause; r.location is
+  // still typed as `string | null`. flatMap drops nulls and produces a string[]
+  // without a non-null assertion.
+  return result.flatMap((r) => (r.location ? [r.location] : [])).sort();
 }

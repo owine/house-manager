@@ -20,5 +20,12 @@ export default withSentryConfig(nextConfig, {
   sourcemaps: {
     deleteSourcemapsAfterUpload: true,
   },
-  disableLogger: true,
+  // Tree-shake the SDK's debug logger out of the bundle. Replaces the
+  // deprecated top-level `disableLogger: true` (the old key still works
+  // but warns on every build).
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 });
