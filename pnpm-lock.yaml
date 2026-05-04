@@ -92,13 +92,13 @@ importers:
         specifier: 7.75.0
         version: 7.75.0(react@19.2.5)
       react-markdown:
-        specifier: ~10.1.0
+        specifier: 10.1.0
         version: 10.1.0(@types/react@19.2.14)(react@19.2.5)
       rehype-sanitize:
         specifier: 6.0.0
         version: 6.0.0
       remark-gfm:
-        specifier: ~4.0.1
+        specifier: 4.0.1
         version: 4.0.1
       rrule:
         specifier: 2.8.1
