@@ -15,6 +15,38 @@ env:
   NODE_VERSION: 24
 
 jobs:
+  # Detect whether any image-affecting paths changed. Used to gate the
+  # build-image job on PRs so we only burn CI time when the change could
+  # plausibly break the Docker build (e.g., Dockerfile, Next.js code,
+  # Prisma schema, deps), not on doc/test-only PRs. Negative-filter
+  # approach: default to "build" unless every changed file is something
+  # that demonstrably can't affect the image bytes.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            image:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!tests/**'
+              - '!**/*.test.ts'
+              - '!**/*.test.tsx'
+              - '!playwright.config.ts'
+              - '!vitest*.config.ts'
+              - '!.gitignore'
+              - '!.gitattributes'
+              - '!LICENSE'
+              - '!lefthook.yml'
+              - '!biome.json'
+              - '!renovate.json5'
+
   ggshield:
     runs-on: ubuntu-latest
     steps:
@@ -199,8 +231,14 @@ jobs:
           retention-days: 14
 
   build-image:
-    needs: [ggshield, lint, typecheck, migrate-check, unit, integration, e2e]
-    if: github.ref == 'refs/heads/main'
+    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e]
+    # Always build on main (so we can push + publish a manifest for every
+    # commit). On PRs, only build when image-affecting paths changed —
+    # this catches regressions like the Plan 5a SENTRY_DSN one (broken
+    # docker build that PR CI didn't surface) without burning CI on
+    # doc-only PRs. Push only on main; PR builds verify the build
+    # succeeds without polluting GHCR.
+    if: github.ref == 'refs/heads/main' || needs.changes.outputs.image == 'true'
     permissions:
       contents: read
       packages: write
@@ -234,15 +272,20 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          # On main: build by digest and push to GHCR; publish-manifest
+          # downstream consumes the digest. On PRs: build to verify the
+          # Dockerfile + bundle works, but don't push (no GHCR pollution).
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
       - name: Export digest
+        if: github.ref == 'refs/heads/main'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
       - name: Upload digest
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: digest-${{ strategy.job-index }}
@@ -281,9 +324,19 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+          # Build the args via arrays so shellcheck doesn't complain about
+          # unquoted command substitution (SC2046) — the original
+          # $(jq ...) / $(printf ...) form relied on word splitting,
+          # which is correct here but a real foot-gun pattern.
+          tags=()
+          while IFS= read -r tag; do
+            tags+=(-t "$tag")
+          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          images=()
+          for digest in *; do
+            images+=("ghcr.io/${{ github.repository }}@sha256:$digest")
+          done
+          docker buildx imagetools create "${tags[@]}" "${images[@]}"
       - name: Inspect image
         run: |
           docker buildx imagetools inspect \
