@@ -80,6 +80,7 @@ services:
     environment: *app-env
     volumes:
       - files:/data/files
+      - ${BACKUP_DIR:-./db-backups}:/backups
     command: pnpm worker:start
     # No healthcheck: the worker is a long-running process with no HTTP surface.
     # docker auto-restarts on crash via restart: unless-stopped.
