@@ -52,6 +52,26 @@ async function main() {
     }
   });
 
+  // Missed-tick recovery: process any reminders that came due during a worker
+  // outage. The existing handleRemindersTick scans past-due reminders and the
+  // NotificationLog unique constraint deduplicates anything already notified.
+  // Failure here is non-fatal: the next scheduled tick (within 5 min) will retry.
+  try {
+    const result = await handleRemindersTick({
+      enqueue: async (job) => {
+        await boss.send(Queue.Notify, job);
+      },
+    });
+    logger.info(
+      { event: 'startup.tick.recovery', enqueued: result.enqueued },
+      'missed-tick recovery complete',
+    );
+  } catch (e) {
+    Sentry.captureException(e);
+    logger.error({ err: e }, 'startup tick recovery failed');
+    // Do not exit; the next scheduled tick will retry.
+  }
+
   await ensureSearchIndex();
 
   await boss.work<SearchIndexJob>(Queue.SearchIndex, { batchSize: 4 }, async (jobs) => {
