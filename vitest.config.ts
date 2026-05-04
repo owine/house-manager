@@ -10,7 +10,12 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts', 'lib/**/*.test.ts'],
+    include: [
+      'tests/unit/**/*.test.ts',
+      'tests/integration/**/*.test.ts',
+      'lib/**/*.test.ts',
+      'worker/**/*.test.ts',
+    ],
     // Integration suites need long timeouts for Testcontainers cold start.
     // The unit-only run uses --testTimeout via the script, but defaults are
     // generous enough not to hurt.
