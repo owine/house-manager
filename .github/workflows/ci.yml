@@ -45,7 +45,7 @@ jobs:
               - '!LICENSE'
               - '!lefthook.yml'
               - '!biome.json'
-              - '!renovate.json5'
+              - '!renovate.json'
 
   ggshield:
     runs-on: ubuntu-latest
