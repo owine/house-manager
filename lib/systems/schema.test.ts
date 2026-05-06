@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SystemCreateSchema, SystemUpdateSchema } from './schema';
+import { createSystemSchema, updateSystemSchema } from './schema';
 
-describe('SystemCreateSchema', () => {
+describe('createSystemSchema', () => {
   it('accepts a valid create payload', () => {
-    const result = SystemCreateSchema.safeParse({
+    const result = createSystemSchema.safeParse({
       name: 'HVAC',
       kind: 'hvac',
       location: 'Basement',
@@ -15,37 +15,37 @@ describe('SystemCreateSchema', () => {
   });
 
   it('accepts the minimum required payload', () => {
-    const result = SystemCreateSchema.safeParse({ name: 'Boiler' });
+    const result = createSystemSchema.safeParse({ name: 'Boiler' });
     expect(result.success).toBe(true);
   });
 
   it('rejects when name is missing', () => {
-    const result = SystemCreateSchema.safeParse({});
+    const result = createSystemSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 
   it('rejects when name is empty', () => {
-    const result = SystemCreateSchema.safeParse({ name: '' });
+    const result = createSystemSchema.safeParse({ name: '' });
     expect(result.success).toBe(false);
   });
 
   it('rejects names longer than 120 characters', () => {
-    const result = SystemCreateSchema.safeParse({ name: 'x'.repeat(121) });
+    const result = createSystemSchema.safeParse({ name: 'x'.repeat(121) });
     expect(result.success).toBe(false);
   });
 
   it('rejects negative install cost', () => {
-    const result = SystemCreateSchema.safeParse({ name: 'HVAC', installCost: -1 });
+    const result = createSystemSchema.safeParse({ name: 'HVAC', installCost: -1 });
     expect(result.success).toBe(false);
   });
 
   it('accepts zero install cost', () => {
-    const result = SystemCreateSchema.safeParse({ name: 'HVAC', installCost: 0 });
+    const result = createSystemSchema.safeParse({ name: 'HVAC', installCost: 0 });
     expect(result.success).toBe(true);
   });
 
   it('allows optional fields to be null', () => {
-    const result = SystemCreateSchema.safeParse({
+    const result = createSystemSchema.safeParse({
       name: 'HVAC',
       kind: null,
       location: null,
@@ -57,24 +57,24 @@ describe('SystemCreateSchema', () => {
   });
 
   it('allows optional fields to be undefined', () => {
-    const result = SystemCreateSchema.safeParse({ name: 'HVAC' });
+    const result = createSystemSchema.safeParse({ name: 'HVAC' });
     expect(result.success).toBe(true);
   });
 });
 
-describe('SystemUpdateSchema', () => {
+describe('updateSystemSchema', () => {
   it('accepts an empty partial update', () => {
-    const result = SystemUpdateSchema.safeParse({});
+    const result = updateSystemSchema.safeParse({});
     expect(result.success).toBe(true);
   });
 
   it('accepts a single-field update', () => {
-    const result = SystemUpdateSchema.safeParse({ location: 'Garage' });
+    const result = updateSystemSchema.safeParse({ location: 'Garage' });
     expect(result.success).toBe(true);
   });
 
   it('still rejects an over-length name on update', () => {
-    const result = SystemUpdateSchema.safeParse({ name: 'x'.repeat(121) });
+    const result = updateSystemSchema.safeParse({ name: 'x'.repeat(121) });
     expect(result.success).toBe(false);
   });
 });
