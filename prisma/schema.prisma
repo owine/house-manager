@@ -90,6 +90,24 @@ model HouseProfile {
   @@map("house_profile")
 }
 
+model System {
+  id              String     @id @default(cuid())
+  name            String
+  kind            String?
+  location        String?
+  installDate     DateTime?
+  installCost     Decimal?   @db.Decimal(10, 2)
+  notes           String?    @db.Text
+  archivedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  items           Item[]
+
+  @@index([archivedAt])
+  @@map("systems")
+}
+
 model Category {
   id           String  @id @default(cuid())
   slug         String  @unique
@@ -107,6 +125,8 @@ model Item {
   name            String
   categoryId      String
   category        Category   @relation(fields: [categoryId], references: [id])
+  systemId        String?
+  system          System?    @relation(fields: [systemId], references: [id], onDelete: SetNull)
   location        String?
   manufacturer    String?
   model           String?
@@ -128,6 +148,7 @@ model Item {
   checklistItems  ChecklistItem[]
 
   @@index([categoryId])
+  @@index([systemId])
   @@index([archivedAt])
   @@map("items")
 }
