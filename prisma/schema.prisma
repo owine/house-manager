@@ -13,6 +13,15 @@ enum Role {
   MEMBER
 }
 
+enum VendorRole {
+  PURCHASE
+  INSTALLER
+  SERVICE
+  WARRANTY_PROVIDER
+  MANUFACTURER
+  OTHER
+}
+
 model User {
   id            String    @id @default(cuid())
   // Populated post-sign-in by an Auth.js createUser event (see Task 7).
@@ -106,6 +115,7 @@ model System {
   serviceRecordTargets   ServiceRecordTarget[]
   warrantyTargets        WarrantyTarget[]
   reminderTargets        ReminderTarget[]
+  systemVendors          SystemVendor[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -146,6 +156,7 @@ model Item {
   warrantyTargets        WarrantyTarget[]
   serviceRecordTargets   ServiceRecordTarget[]
   reminderTargets        ReminderTarget[]
+  itemVendors            ItemVendor[]
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
   checklistItems  ChecklistItem[]
@@ -170,8 +181,44 @@ model Vendor {
   updatedAt       DateTime   @updatedAt
 
   serviceRecords  ServiceRecord[]
+  itemVendors     ItemVendor[]
+  systemVendors   SystemVendor[]
 
   @@map("vendors")
+}
+
+model ItemVendor {
+  id            String      @id @default(cuid())
+  itemId        String
+  vendorId      String?
+  freeformName  String?
+  role          VendorRole
+  notes         String?     @db.Text
+  createdAt     DateTime    @default(now())
+
+  item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  vendor        Vendor?     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([itemId])
+  @@index([vendorId])
+  @@map("item_vendors")
+}
+
+model SystemVendor {
+  id            String      @id @default(cuid())
+  systemId      String
+  vendorId      String?
+  freeformName  String?
+  role          VendorRole
+  notes         String?     @db.Text
+  createdAt     DateTime    @default(now())
+
+  system        System      @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  vendor        Vendor?     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([systemId])
+  @@index([vendorId])
+  @@map("system_vendors")
 }
 
 model Warranty {
