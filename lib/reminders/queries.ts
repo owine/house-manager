@@ -135,7 +135,21 @@ export async function listUpcomingReminders(limit = 5) {
     take: limit * 4,
     include: {
       reminder: {
-        select: { id: true, title: true, autoCreateServiceRecord: true, active: true },
+        select: {
+          id: true,
+          title: true,
+          autoCreateServiceRecord: true,
+          active: true,
+          targets: {
+            select: {
+              id: true,
+              itemId: true,
+              systemId: true,
+              item: { select: { id: true, name: true } },
+              system: { select: { id: true, name: true } },
+            },
+          },
+        },
       },
       item: { select: { id: true, name: true } },
     },
@@ -149,6 +163,13 @@ export async function listUpcomingReminders(limit = 5) {
     autoCreateServiceRecord: boolean;
     itemId: string | null;
     item: { id: string; name: string } | null;
+    targets: {
+      id: string;
+      itemId: string | null;
+      systemId: string | null;
+      item: { id: string; name: string } | null;
+      system: { id: string; name: string } | null;
+    }[];
   }[] = [];
   for (const t of targets) {
     if (seen.has(t.reminderId)) continue;
@@ -160,6 +181,7 @@ export async function listUpcomingReminders(limit = 5) {
       autoCreateServiceRecord: t.reminder.autoCreateServiceRecord,
       itemId: t.itemId,
       item: t.item,
+      targets: t.reminder.targets,
     });
     if (out.length >= limit) break;
   }

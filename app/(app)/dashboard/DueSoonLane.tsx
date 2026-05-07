@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
+import { MarkCompleteButton } from '@/components/reminders/MarkCompleteButton';
+import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { QuickStats, upcomingReminders } from '@/lib/dashboard/queries';
@@ -57,11 +59,23 @@ export function DueSoonLane({ stats, reminders }: Props) {
                   </span>
                 </div>
                 <div className="mt-1">
-                  <CompleteReminderForm
-                    reminderId={r.id}
-                    autoCreateServiceRecord={r.autoCreateServiceRecord}
-                    hasItem={r.itemId != null}
-                  />
+                  {r.targets.length >= 2 ? (
+                    <MarkCompleteButton
+                      reminderId={r.id}
+                      reminderTitle={r.title}
+                      targets={r.targets.map<ReminderTargetSummary>((t) => ({
+                        id: t.id,
+                        label: t.item?.name ?? t.system?.name ?? '(unnamed target)',
+                        kind: t.systemId ? 'system' : 'item',
+                      }))}
+                    />
+                  ) : (
+                    <CompleteReminderForm
+                      reminderId={r.id}
+                      autoCreateServiceRecord={r.autoCreateServiceRecord}
+                      hasItem={r.itemId != null}
+                    />
+                  )}
                 </div>
               </li>
             ))}
