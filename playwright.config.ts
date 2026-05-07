@@ -2,7 +2,11 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 30_000,
+  timeout: 60_000,
+  // Default expect timeout is 5s. On CI's first hit to each route, dev-server
+  // JIT compile can take 5–10s, which makes post-form-submit URL assertions
+  // racy. Bump to 15s for breathing room.
+  expect: { timeout: 15_000 },
   retries: process.env.CI ? 2 : 0,
   // Serialize specs: they share auth tables in one DB, so concurrent OAuth
   // callbacks race on the User row's unique email constraint.
