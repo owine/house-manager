@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatCalendarDate } from '@/lib/format/date';
 
 export interface VendorLinkRow {
   id: string;
@@ -14,6 +15,8 @@ export interface VendorLinkRow {
   freeformName: string | null;
   role: VendorRole;
   notes: string | null;
+  serviceContract: boolean;
+  contractEndsOn: Date | null;
 }
 
 export interface VendorLinkChipsProps {
@@ -65,6 +68,18 @@ export function VendorLinkChips({
             <span data-testid={`vendor-link-chip-text-${link.id}`}>{label}</span>
           );
 
+          const contractBadge = link.serviceContract ? (
+            <Badge
+              variant="outline"
+              className="px-1 py-0 text-[10px]"
+              data-testid={`vendor-link-chip-contract-${link.id}`}
+            >
+              {link.contractEndsOn
+                ? `Contract → ${formatCalendarDate(link.contractEndsOn)}`
+                : 'Contract'}
+            </Badge>
+          ) : null;
+
           const inner = (
             <Badge
               variant="secondary"
@@ -75,6 +90,7 @@ export function VendorLinkChips({
                 {link.role}
               </span>
               {labelNode}
+              {contractBadge}
               {onEdit && (
                 <Button
                   type="button"

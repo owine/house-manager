@@ -32,3 +32,37 @@ describe('formatCalendarDate', () => {
     expect(formatCalendarDate('2000-02-29T00:00:00Z')).toBe('Feb 29, 2000');
   });
 });
+
+import { parseDateInput, toDateInputValue } from './date';
+
+describe('toDateInputValue', () => {
+  it('returns empty string for null/undefined', () => {
+    expect(toDateInputValue(null)).toBe('');
+    expect(toDateInputValue(undefined)).toBe('');
+  });
+
+  it('formats a Date as YYYY-MM-DD using UTC components', () => {
+    expect(toDateInputValue(new Date('2026-05-31T00:00:00Z'))).toBe('2026-05-31');
+  });
+
+  it('preserves UTC date even when the instant is non-midnight', () => {
+    // 23:30 UTC on Jun 20 — local-time formatting would shift to Jun 21 in Tokyo
+    expect(toDateInputValue(new Date('2026-06-20T23:30:00Z'))).toBe('2026-06-20');
+  });
+
+  it('passes through a YYYY-MM-DD string unchanged', () => {
+    expect(toDateInputValue('2026-05-31')).toBe('2026-05-31');
+  });
+});
+
+describe('parseDateInput', () => {
+  it('returns null for empty string', () => {
+    expect(parseDateInput('')).toBeNull();
+  });
+
+  it('parses YYYY-MM-DD as UTC midnight', () => {
+    const d = parseDateInput('2026-05-31');
+    expect(d).toBeInstanceOf(Date);
+    expect(d?.toISOString()).toBe('2026-05-31T00:00:00.000Z');
+  });
+});

@@ -2,6 +2,7 @@
 
 import type { VendorRole } from '@prisma/client';
 import { useId, useMemo, useState } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { parseDateInput, toDateInputValue } from '@/lib/format/date';
 import type { VendorLinkInput } from '@/lib/vendor-links/schema';
 
 export interface VendorOption {
@@ -66,11 +68,17 @@ export function VendorLinkEditor({
   const currentVendorId = value?.vendorId ?? '';
   const currentFreeform = value?.freeformName ?? '';
   const currentNotes = value?.notes ?? '';
+  const currentServiceContract = value?.serviceContract ?? false;
+  const currentContractEndsOn = value?.contractEndsOn ?? null;
 
   const emit = (patch: Partial<VendorLinkInput> & { mode?: Mode }) => {
     const nextMode = patch.mode ?? mode;
     const role = (patch.role as VendorRole | undefined) ?? currentRole;
     const notes = patch.notes !== undefined ? patch.notes : currentNotes ? currentNotes : null;
+    const serviceContract =
+      patch.serviceContract !== undefined ? patch.serviceContract : currentServiceContract;
+    const contractEndsOn =
+      patch.contractEndsOn !== undefined ? patch.contractEndsOn : currentContractEndsOn;
 
     if (nextMode === 'existing') {
       const vendorId = patch.vendorId !== undefined ? patch.vendorId : currentVendorId || null;
@@ -79,6 +87,8 @@ export function VendorLinkEditor({
         freeformName: null,
         role,
         notes: notes || null,
+        serviceContract,
+        contractEndsOn: contractEndsOn ?? null,
       });
     } else {
       const freeformName =
@@ -88,6 +98,8 @@ export function VendorLinkEditor({
         freeformName: freeformName || null,
         role,
         notes: notes || null,
+        serviceContract,
+        contractEndsOn: contractEndsOn ?? null,
       });
     }
   };
@@ -100,6 +112,8 @@ export function VendorLinkEditor({
         freeformName: null,
         role: currentRole,
         notes: currentNotes || null,
+        serviceContract: currentServiceContract,
+        contractEndsOn: currentContractEndsOn,
       });
     } else {
       onChange({
@@ -107,6 +121,8 @@ export function VendorLinkEditor({
         freeformName: currentFreeform || null,
         role: currentRole,
         notes: currentNotes || null,
+        serviceContract: currentServiceContract,
+        contractEndsOn: currentContractEndsOn,
       });
     }
   };
@@ -172,6 +188,33 @@ export function VendorLinkEditor({
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor={`${baseId}-service-contract`} className="flex items-center gap-2">
+          <Checkbox
+            id={`${baseId}-service-contract`}
+            checked={currentServiceContract}
+            onCheckedChange={(c) =>
+              emit({
+                serviceContract: c === true,
+                contractEndsOn: c === true ? currentContractEndsOn : null,
+              })
+            }
+          />
+          <span>Maintenance agreement</span>
+        </label>
+        {currentServiceContract && (
+          <div className="ml-6 space-y-1.5">
+            <Label htmlFor={`${baseId}-contract-ends`}>Contract ends</Label>
+            <Input
+              id={`${baseId}-contract-ends`}
+              type="date"
+              value={toDateInputValue(currentContractEndsOn)}
+              onChange={(e) => emit({ contractEndsOn: parseDateInput(e.target.value) })}
+            />
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">

@@ -53,6 +53,8 @@ export default async function ItemDetailPage({
     freeformName: iv.freeformName,
     role: iv.role,
     notes: iv.notes,
+    serviceContract: iv.serviceContract,
+    contractEndsOn: iv.contractEndsOn,
   }));
 
   async function doArchive() {

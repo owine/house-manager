@@ -87,4 +87,68 @@ describe('vendorLinkSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts serviceContract: true with a contractEndsOn date', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      serviceContract: true,
+      contractEndsOn: '2027-01-15',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts serviceContract: true with no contractEndsOn', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      serviceContract: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts serviceContract: false with no contractEndsOn', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      serviceContract: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects contractEndsOn when serviceContract is false (Zod refine)', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      serviceContract: false,
+      contractEndsOn: '2027-01-15',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('contractEndsOn');
+    }
+  });
+
+  it('rejects contractEndsOn when serviceContract is omitted (defaults to false)', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      contractEndsOn: '2027-01-15',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('normalizes contractEndsOn to UTC midnight (truncates non-midnight time)', () => {
+    const result = vendorLinkSchema.safeParse({
+      vendorId: 'v_1',
+      role: 'SERVICE',
+      serviceContract: true,
+      contractEndsOn: new Date('2027-01-15T17:30:00Z'),
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contractEndsOn?.toISOString()).toBe('2027-01-15T00:00:00.000Z');
+    }
+  });
 });
