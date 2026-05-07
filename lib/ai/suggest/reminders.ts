@@ -150,6 +150,18 @@ export async function saveAcceptedReminders(input: {
     return { ok: false, formError: 'No reminders selected.' };
   }
 
+  // Reminders must have at least one target — otherwise the worker (which
+  // queries reminder_targets) will silently never fire them. The AI flow
+  // only supports an itemId today; broader targeting requires the user to
+  // attach via the edit form post-save (which we don't expose here).
+  if (!input.itemId) {
+    return {
+      ok: false,
+      formError:
+        'AI-suggested reminders must be attached to an item. Open them from an item page, or attach a target via the edit form.',
+    };
+  }
+
   // Defence in depth — re-validate all rows at once through the AI schema
   // (the user may have edited title/recurrence inline before saving).
   const parsedAll = z.array(proposedReminderSchema).safeParse(input.accepted);
@@ -159,6 +171,7 @@ export async function saveAcceptedReminders(input: {
   const validated = parsedAll.data;
 
   const today = new Date();
+  const itemId = input.itemId;
 
   const savedIds = await prisma.$transaction(async (tx) => {
     const ids: string[] = [];
@@ -173,10 +186,7 @@ export async function saveAcceptedReminders(input: {
           notifyUserIds: [userId],
           autoCreateServiceRecord: false,
           active: true,
-          // If no itemId is supplied, the reminder is created without targets
-          // (an unattached suggestion). The caller is expected to wire
-          // targets later via the edit form.
-          ...(input.itemId ? { targets: { create: [{ itemId: input.itemId, nextDueOn }] } } : {}),
+          targets: { create: [{ itemId, nextDueOn }] },
         },
         select: { id: true },
       });
