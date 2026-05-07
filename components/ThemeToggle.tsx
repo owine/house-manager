@@ -37,7 +37,9 @@ const buttonBase: React.CSSProperties = {
   padding: '0.25rem 0.75rem',
   fontSize: '0.8125rem',
   cursor: 'pointer',
-  border: '1px solid var(--border-strong)',
+  borderWidth: '1px',
+  borderStyle: 'solid',
+  borderColor: 'var(--border-strong)',
   background: 'var(--bg-elevated)',
   color: 'var(--fg-muted)',
   lineHeight: 1.4,
@@ -97,7 +99,7 @@ export function ThemeToggle() {
             aria-pressed={mounted ? mode === value : undefined}
             style={{
               ...(isActive ? buttonActive : buttonBase),
-              borderLeft: i === 0 ? undefined : 'none',
+              borderLeftWidth: i === 0 ? '1px' : 0,
             }}
           >
             {label}

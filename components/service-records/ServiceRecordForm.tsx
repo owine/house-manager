@@ -233,7 +233,7 @@ export function ServiceRecordForm({
             <FormItem>
               <FormLabel>Summary</FormLabel>
               <FormControl>
-                <Input {...field} required />
+                <Input {...field} required value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>
