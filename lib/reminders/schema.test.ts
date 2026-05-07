@@ -20,11 +20,11 @@ describe('recurrenceSchema', () => {
 });
 
 describe('createReminderSchema', () => {
-  it('accepts a complete valid reminder', () => {
+  it('accepts a complete valid reminder with one item target', () => {
     const r = createReminderSchema.safeParse({
       title: 'Replace HVAC filter',
       description: 'use MERV 13',
-      itemId: 'cuid-1',
+      targets: [{ itemId: 'cuid-1' }],
       recurrence: { kind: 'interval', days: 60 },
       nextDueOn: new Date(),
       leadTimeDays: 3,
@@ -33,8 +33,49 @@ describe('createReminderSchema', () => {
     expect(r.success).toBe(true);
   });
 
+  it('accepts a reminder with multiple targets (item + system)', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'HVAC service',
+      targets: [{ itemId: 'cuid-1' }, { systemId: 'cuid-sys-1' }],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(true);
+  });
+
   it('rejects missing title', () => {
     const r = createReminderSchema.safeParse({
+      targets: [{ itemId: 'cuid-1' }],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects empty targets array', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'X',
+      targets: [],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects target with both itemId and systemId set', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'X',
+      targets: [{ itemId: 'i', systemId: 's' }],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects target with neither itemId nor systemId set', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'X',
+      targets: [{}],
       recurrence: { kind: 'interval', days: 60 },
       nextDueOn: new Date(),
     });
@@ -44,6 +85,7 @@ describe('createReminderSchema', () => {
   it('rejects negative leadTimeDays', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
+      targets: [{ itemId: 'cuid-1' }],
       recurrence: { kind: 'interval', days: 60 },
       nextDueOn: new Date(),
       leadTimeDays: -1,

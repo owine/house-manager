@@ -20,21 +20,54 @@ export async function handleRemindersTick(deps: {
   });
   const maxLead = Math.min(aggregateLeadTime._max.leadTimeDays ?? 3, 30);
 
-  const dueSoon = await prisma.reminder.findMany({
+  // Reminder due-state lives on ReminderTarget after Task 4. Query the
+  // per-target rows whose nextDueOn falls within the look-ahead window and
+  // whose owning reminder is still active. Group results by reminderId so
+  // notifications still go out as one digest per reminder regardless of how
+  // many targets it has — when a reminder has multiple targets all due
+  // around the same time, we use the earliest nextDueOn for the cycle key.
+  const dueTargets = await prisma.reminderTarget.findMany({
     where: {
-      active: true,
       nextDueOn: { lte: new Date(now.getTime() + maxLead * DAY_MS) },
+      reminder: { active: true },
     },
     select: {
-      id: true,
+      reminderId: true,
       nextDueOn: true,
-      leadTimeDays: true,
-      notifyUserIds: true,
+      reminder: {
+        select: {
+          id: true,
+          leadTimeDays: true,
+          notifyUserIds: true,
+        },
+      },
     },
   });
 
+  // Group by reminder, keep the earliest nextDueOn (drives the cycle key).
+  type Group = {
+    id: string;
+    nextDueOn: Date;
+    leadTimeDays: number;
+    notifyUserIds: string[];
+  };
+  const grouped = new Map<string, Group>();
+  for (const t of dueTargets) {
+    const existing = grouped.get(t.reminderId);
+    if (!existing) {
+      grouped.set(t.reminderId, {
+        id: t.reminder.id,
+        nextDueOn: t.nextDueOn,
+        leadTimeDays: t.reminder.leadTimeDays,
+        notifyUserIds: t.reminder.notifyUserIds,
+      });
+    } else if (t.nextDueOn < existing.nextDueOn) {
+      existing.nextDueOn = t.nextDueOn;
+    }
+  }
+
   let enqueued = 0;
-  for (const r of dueSoon) {
+  for (const r of grouped.values()) {
     const cycle = `reminder-${r.id}-${r.nextDueOn.toISOString().slice(0, 10)}`;
     const notifyAt = new Date(r.nextDueOn.getTime() - r.leadTimeDays * DAY_MS);
     if (notifyAt.getTime() > now.getTime()) continue; // not yet within lead window

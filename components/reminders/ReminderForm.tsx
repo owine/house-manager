@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,17 +21,31 @@ import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import {
   type CreateReminderInput,
-  createReminderSchema,
   type Recurrence,
+  recurrenceSchema,
 } from '@/lib/reminders/schema';
 import type { ActionResult } from '@/lib/result';
 import { RecurrencePicker } from './RecurrencePicker';
 
-type FormValues = z.input<typeof createReminderSchema>;
+// Single-target form shim: the form models a single `itemId` field; the
+// action receives a `targets` array. Task 14/15 will replace this with a
+// proper TargetsPicker.
+const reminderFormSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(20_000).optional().or(z.literal('')),
+  itemId: z.string().min(1).optional(),
+  recurrence: recurrenceSchema,
+  nextDueOn: z.coerce.date(),
+  leadTimeDays: z.number().int().min(0).max(365).default(3),
+  autoCreateServiceRecord: z.boolean().default(false),
+});
+
+type FormValues = z.input<typeof reminderFormSchema>;
+type ParsedFormValues = z.output<typeof reminderFormSchema>;
 
 type Props = {
   items: { id: string; name: string }[];
-  defaultValues?: Partial<CreateReminderInput & { id: string }>;
+  defaultValues?: Partial<ParsedFormValues & { id: string }>;
   action: (
     input: CreateReminderInput | (CreateReminderInput & { id: string }),
   ) => Promise<ActionResult<{ id: string }>>;
@@ -43,7 +57,7 @@ export function ReminderForm({ items, defaultValues, action, submitLabel }: Prop
   const [pending, startTransition] = useTransition();
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(createReminderSchema),
+    resolver: zodResolver(reminderFormSchema),
     defaultValues: {
       autoCreateServiceRecord: false,
       leadTimeDays: 3,
@@ -63,8 +77,11 @@ export function ReminderForm({ items, defaultValues, action, submitLabel }: Prop
 
   const onSubmit = handleSubmit((data) => {
     startTransition(async () => {
-      const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
-      const result = await action(payload as CreateReminderInput);
+      const { itemId, ...rest } = data as ParsedFormValues;
+      const targets = itemId ? [{ itemId }] : [];
+      const base = { ...rest, targets } as CreateReminderInput;
+      const payload = defaultValues?.id ? { ...base, id: defaultValues.id } : base;
+      const result = await action(payload);
       if (!result.ok) {
         const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });

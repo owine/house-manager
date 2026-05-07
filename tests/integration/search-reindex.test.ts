@@ -57,23 +57,21 @@ describe('handleSearchReindex', () => {
       ctx.prisma.item.create({ data: { name: 'B', categoryId } }),
       ctx.prisma.item.create({ data: { name: 'C', categoryId } }),
     ]);
-    await ctx.prisma.reminder.createMany({
-      data: [
-        {
-          title: 'r1',
-          recurrence: { kind: 'interval', days: 30 },
-          nextDueOn: new Date(),
-          notifyUserIds: [],
-          itemId: items[0].id,
-        },
-        {
-          title: 'r2',
-          recurrence: { kind: 'interval', days: 30 },
-          nextDueOn: new Date(),
-          notifyUserIds: [],
-          itemId: items[1].id,
-        },
-      ],
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'r1',
+        recurrence: { kind: 'interval', days: 30 },
+        notifyUserIds: [],
+        targets: { create: [{ itemId: items[0].id, nextDueOn: new Date() }] },
+      },
+    });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'r2',
+        recurrence: { kind: 'interval', days: 30 },
+        notifyUserIds: [],
+        targets: { create: [{ itemId: items[1].id, nextDueOn: new Date() }] },
+      },
     });
     await ctx.prisma.vendor.create({ data: { name: 'ACME' } });
 

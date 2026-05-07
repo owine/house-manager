@@ -25,15 +25,16 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   if (!r) notFound();
 
   const recurrence = r.recurrence as unknown as Recurrence;
-  const upcoming = previewOccurrences(recurrence, r.nextDueOn, 4);
-  const occurrences = [r.nextDueOn, ...upcoming];
+  const occurrences = r.nextDueOn
+    ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title={r.title} actions={<ReminderOverflowMenu reminderId={r.id} />} />
 
       <div className="mb-4 flex items-center gap-3 text-sm">
-        <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
+        {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
         {r.item && (
           <span className="text-muted-foreground">
             for{' '}

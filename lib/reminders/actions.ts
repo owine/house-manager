@@ -10,6 +10,7 @@ import {
   completeReminderSchema,
   createReminderSchema,
   type Recurrence,
+  type ReminderTargetInput,
   updateReminderSchema,
 } from './schema';
 
@@ -21,11 +22,38 @@ function ownedReminderWhere(id: string, userId: string) {
   return { id, notifyUserIds: { has: userId } } as const;
 }
 
-function revalidateReminderPaths(itemId: string | null | undefined, reminderId: string) {
+function revalidateReminderPaths(
+  targets: { itemId: string | null; systemId: string | null }[],
+  reminderId: string,
+) {
   revalidatePath('/reminders');
   revalidatePath(`/reminders/${reminderId}`);
   revalidatePath('/dashboard');
-  if (itemId) revalidatePath(`/items/${itemId}`);
+  for (const t of targets) {
+    if (t.itemId) revalidatePath(`/items/${t.itemId}`);
+    if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
+  }
+}
+
+async function validateTargets(targets: ReminderTargetInput[]): Promise<string | null> {
+  const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
+  const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
+
+  if (itemIds.length > 0) {
+    const found = await prisma.item.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(itemIds).size) return 'Item not found';
+  }
+  if (systemIds.length > 0) {
+    const found = await prisma.system.findMany({
+      where: { id: { in: systemIds } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(systemIds).size) return 'System not found';
+  }
+  return null;
 }
 
 export async function createReminder(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -39,25 +67,34 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { itemId, description, notifyUserIds, ...rest } = parsed.data;
+  const { targets, description, notifyUserIds, nextDueOn, recurrence, ...rest } = parsed.data;
 
-  if (itemId) {
-    const item = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } });
-    if (!item) return { ok: false, formError: 'Item not found' };
-  }
+  const targetErr = await validateTargets(targets);
+  if (targetErr) return { ok: false, formError: targetErr };
 
   const reminder = await prisma.reminder.create({
     data: {
       ...rest,
+      recurrence,
       description: description || null,
-      itemId: itemId ?? null,
       notifyUserIds: notifyUserIds && notifyUserIds.length > 0 ? notifyUserIds : [session.user.id],
+      targets: {
+        create: targets.map((t) => ({
+          itemId: t.itemId ?? null,
+          systemId: t.systemId ?? null,
+          nextDueOn,
+          // lastCompletedOn is null on creation
+        })),
+      },
     },
-    select: { id: true, itemId: true },
+    select: {
+      id: true,
+      targets: { select: { itemId: true, systemId: true } },
+    },
   });
   await enqueueSearchIndex('reminder', reminder.id, 'upsert');
 
-  revalidateReminderPaths(reminder.itemId, reminder.id);
+  revalidateReminderPaths(reminder.targets, reminder.id);
   return { ok: true, data: { id: reminder.id } };
 }
 
@@ -72,7 +109,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { id, itemId, description, notifyUserIds, ...rest } = parsed.data;
+  const { id, targets, description, notifyUserIds, nextDueOn, ...rest } = parsed.data;
 
   // Ownership-gated lookup: a user can only update reminders they're notified
   // on. findFirst (not findUnique) so we can compose the `notifyUserIds.has`
@@ -80,25 +117,78 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   // reminders that belong to other users.
   const existing = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, session.user.id),
-    select: { id: true, itemId: true },
+    select: {
+      id: true,
+      targets: { select: { id: true, itemId: true, systemId: true } },
+    },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
-  if (itemId !== undefined && itemId !== null) {
-    const item = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } });
-    if (!item) return { ok: false, formError: 'Item not found' };
+  if (targets !== undefined) {
+    const targetErr = await validateTargets(targets);
+    if (targetErr) return { ok: false, formError: targetErr };
   }
 
   const data: Record<string, unknown> = { ...rest };
-  if ('itemId' in parsed.data) data.itemId = itemId ?? null;
   if ('description' in parsed.data) data.description = description || null;
   if (notifyUserIds !== undefined) data.notifyUserIds = notifyUserIds;
 
-  await prisma.reminder.update({ where: { id }, data });
+  await prisma.$transaction(async (tx) => {
+    await tx.reminder.update({ where: { id }, data });
+
+    if (targets !== undefined) {
+      const key = (t: { itemId?: string | null; systemId?: string | null }) =>
+        `${t.itemId ?? ''}|${t.systemId ?? ''}`;
+      const wantSet = new Set(targets.map(key));
+      const haveSet = new Set(existing.targets.map(key));
+
+      const toDelete = existing.targets.filter((e) => !wantSet.has(key(e))).map((e) => e.id);
+      const toAdd = targets.filter((t) => !haveSet.has(key(t)));
+
+      if (toDelete.length > 0) {
+        await tx.reminderTarget.deleteMany({ where: { id: { in: toDelete } } });
+      }
+      if (toAdd.length > 0) {
+        // For new targets, seed nextDueOn from the request value, or — if not
+        // provided — fall back to the earliest existing target's nextDueOn.
+        let seedNextDueOn = nextDueOn;
+        if (!seedNextDueOn) {
+          const anyExisting = await tx.reminderTarget.findFirst({
+            where: { reminderId: id },
+            orderBy: { nextDueOn: 'asc' },
+            select: { nextDueOn: true },
+          });
+          seedNextDueOn = anyExisting?.nextDueOn ?? new Date();
+        }
+        await tx.reminderTarget.createMany({
+          data: toAdd.map((t) => ({
+            reminderId: id,
+            itemId: t.itemId ?? null,
+            systemId: t.systemId ?? null,
+            nextDueOn: seedNextDueOn,
+          })),
+        });
+      }
+    }
+
+    // If nextDueOn is provided WITHOUT a targets change, propagate it to all
+    // existing target rows (matches the single-target form semantics).
+    if (nextDueOn !== undefined && targets === undefined) {
+      await tx.reminderTarget.updateMany({
+        where: { reminderId: id },
+        data: { nextDueOn },
+      });
+    }
+  });
+
   await enqueueSearchIndex('reminder', id, 'upsert');
-  revalidateReminderPaths(existing.itemId, id);
-  if (itemId !== undefined && itemId !== existing.itemId && existing.itemId)
-    revalidatePath(`/items/${existing.itemId}`);
+  // Revalidate previous + new target paths
+  revalidateReminderPaths(existing.targets, id);
+  if (targets)
+    revalidateReminderPaths(
+      targets.map((t) => ({ itemId: t.itemId ?? null, systemId: t.systemId ?? null })),
+      id,
+    );
 
   return { ok: true, data: { id } };
 }
@@ -107,16 +197,15 @@ export async function deleteReminder(id: string): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
 
-  // Ownership-gated lookup — see updateReminder for rationale.
   const existing = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, session.user.id),
-    select: { itemId: true },
+    select: { targets: { select: { itemId: true, systemId: true } } },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
   await prisma.reminder.delete({ where: { id } });
   await enqueueSearchIndex('reminder', id, 'delete');
-  revalidateReminderPaths(existing.itemId, id);
+  revalidateReminderPaths(existing.targets, id);
   return { ok: true, data: undefined };
 }
 
@@ -127,22 +216,15 @@ export async function setReminderActive(
   const session = await auth();
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
 
-  // Ownership-gated lookup — previously this action had no auth check at all,
-  // so any authed user could toggle any reminder's active flag. See
-  // updateReminder for the findFirst-with-composite-where rationale.
   const existing = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, session.user.id),
-    select: { id: true },
+    select: { id: true, targets: { select: { itemId: true, systemId: true } } },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
-  const updated = await prisma.reminder.update({
-    where: { id },
-    data: { active },
-    select: { id: true, itemId: true },
-  });
+  await prisma.reminder.update({ where: { id }, data: { active } });
   await enqueueSearchIndex('reminder', id, 'upsert');
-  revalidateReminderPaths(updated.itemId, id);
+  revalidateReminderPaths(existing.targets, id);
   return { ok: true, data: { id } };
 }
 
@@ -158,63 +240,96 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { id, notes, serviceRecord } = parsed.data;
+  const { id, targetIds, notes, serviceRecord } = parsed.data;
 
   // Ownership-gated lookup — see updateReminder for rationale. Completing a
-  // reminder writes a ReminderCompletion attributed to userId + advances
-  // nextDueOn for everyone notified on it; only users in notifyUserIds can do
-  // either.
+  // reminder writes ReminderCompletion rows attributed to userId + advances
+  // each named target's nextDueOn.
   const reminder = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, userId),
     select: {
       id: true,
-      itemId: true,
       recurrence: true,
       autoCreateServiceRecord: true,
+      targets: { select: { id: true, itemId: true, systemId: true } },
     },
   });
   if (!reminder) return { ok: false, formError: 'Not found' };
+  if (reminder.targets.length === 0) return { ok: false, formError: 'Reminder has no targets' };
+
+  // Default to all targets if the caller didn't specify (back-compat with the
+  // single-target callers — the old action completed "the reminder" wholesale).
+  const targetById = new Map(reminder.targets.map((t) => [t.id, t]));
+  const selectedIds =
+    targetIds && targetIds.length > 0 ? targetIds : reminder.targets.map((t) => t.id);
+  for (const tid of selectedIds) {
+    if (!targetById.has(tid)) return { ok: false, formError: 'Target not found' };
+  }
 
   const now = new Date();
   const recurrence = reminder.recurrence as unknown as Recurrence;
   const nextDueOn = computeNextDueOn(recurrence, now);
 
-  const completion = await prisma.reminderCompletion.create({
-    data: {
-      id: createId(),
-      reminderId: id,
-      completedById: userId,
-      completedOn: now,
-      notes: notes || null,
-    },
-    select: { id: true },
+  const completionToServiceRecord = new Map<string, string>();
+
+  await prisma.$transaction(async (tx) => {
+    for (const tid of selectedIds) {
+      const target = targetById.get(tid);
+      if (!target) continue;
+
+      const completion = await tx.reminderCompletion.create({
+        data: {
+          id: createId(),
+          reminderId: id,
+          targetId: tid,
+          completedById: userId,
+          completedOn: now,
+          notes: notes || null,
+        },
+        select: { id: true },
+      });
+
+      await tx.reminderTarget.update({
+        where: { id: tid },
+        data: { lastCompletedOn: now, nextDueOn },
+      });
+
+      if (reminder.autoCreateServiceRecord && serviceRecord) {
+        // Mirror the target's parent (item or system) onto a fresh
+        // ServiceRecord + ServiceRecordTarget so the multi-target shape
+        // stays consistent post-Task-2.
+        const sr = await tx.serviceRecord.create({
+          data: {
+            performedOn: now,
+            summary: serviceRecord.summary,
+            notes: serviceRecord.notes || null,
+            cost: serviceRecord.cost,
+            vendorId: serviceRecord.vendorId ?? null,
+            targets: {
+              create: [
+                {
+                  itemId: target.itemId ?? null,
+                  systemId: target.systemId ?? null,
+                },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        await tx.reminderCompletion.update({
+          where: { id: completion.id },
+          data: { createdServiceRecordId: sr.id },
+        });
+        completionToServiceRecord.set(completion.id, sr.id);
+      }
+    }
   });
 
-  if (reminder.autoCreateServiceRecord && reminder.itemId && serviceRecord) {
-    const sr = await prisma.serviceRecord.create({
-      data: {
-        performedOn: now,
-        summary: serviceRecord.summary,
-        notes: serviceRecord.notes || null,
-        cost: serviceRecord.cost,
-        vendorId: serviceRecord.vendorId ?? null,
-        targets: { create: [{ itemId: reminder.itemId }] },
-      },
-      select: { id: true },
-    });
-    await enqueueSearchIndex('service', sr.id, 'upsert');
-    await prisma.reminderCompletion.update({
-      where: { id: completion.id },
-      data: { createdServiceRecordId: sr.id },
-    });
+  for (const srId of completionToServiceRecord.values()) {
+    await enqueueSearchIndex('service', srId, 'upsert');
   }
-
-  await prisma.reminder.update({
-    where: { id },
-    data: { lastCompletedOn: now, nextDueOn },
-  });
   await enqueueSearchIndex('reminder', id, 'upsert');
 
-  revalidateReminderPaths(reminder.itemId, id);
+  revalidateReminderPaths(reminder.targets, id);
   return { ok: true, data: { id } };
 }

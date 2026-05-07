@@ -292,10 +292,15 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           title: true,
           description: true,
           updatedAt: true,
-          item: { select: { id: true, name: true } },
+          targets: {
+            select: { item: { select: { id: true, name: true } } },
+          },
         },
       });
-      return row ? toDocument('reminder', row) : null;
+      if (!row) return null;
+      const item = row.targets.find((t) => t.item !== null)?.item ?? null;
+      const { targets: _targets, ...rest } = row;
+      return toDocument('reminder', { ...rest, item });
     }
     case 'attachment': {
       const row = await prisma.attachment.findUnique({
@@ -341,7 +346,10 @@ export async function listChildIdsForItem(
       where: { targets: { some: { itemId } } },
       select: { id: true },
     }),
-    prisma.reminder.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.reminder.findMany({
+      where: { targets: { some: { itemId } } },
+      select: { id: true },
+    }),
     prisma.attachment.findMany({ where: { itemId }, select: { id: true } }),
   ]);
   return [

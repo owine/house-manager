@@ -31,7 +31,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
           description: r.description ?? '',
           itemId: r.itemId ?? undefined,
           recurrence: r.recurrence as unknown as Recurrence,
-          nextDueOn: r.nextDueOn,
+          nextDueOn: r.nextDueOn ?? new Date(),
           leadTimeDays: r.leadTimeDays,
           autoCreateServiceRecord: r.autoCreateServiceRecord,
         }}

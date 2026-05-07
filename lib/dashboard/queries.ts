@@ -73,7 +73,7 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
         id: true,
         completedOn: true,
         reminder: {
-          select: { id: true, title: true, itemId: true, item: { select: { name: true } } },
+          select: { id: true, title: true },
         },
       },
     }),

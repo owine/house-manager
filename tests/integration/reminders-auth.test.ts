@@ -25,10 +25,14 @@ afterAll(async () => {
   await teardownIntegration(ctx);
 });
 
+let categoryId: string;
+let itemId: string;
+
 beforeEach(async () => {
   await ctx.prisma.reminderCompletion.deleteMany();
   await ctx.prisma.notificationLog.deleteMany();
   await ctx.prisma.reminder.deleteMany();
+  await ctx.prisma.item.deleteMany();
   await ctx.prisma.session.deleteMany();
   await ctx.prisma.account.deleteMany();
   await ctx.prisma.user.deleteMany();
@@ -39,14 +43,22 @@ beforeEach(async () => {
       { id: 'u3', email: 'u3@example.com', name: 'U3' },
     ],
   });
+  const cat = await ctx.prisma.category.upsert({
+    where: { slug: 'auth-test' },
+    create: { slug: 'auth-test', name: 'Auth test', sortOrder: 99 },
+    update: {},
+  });
+  categoryId = cat.id;
+  const item = await ctx.prisma.item.create({ data: { name: 'Furnace', categoryId } });
+  itemId = item.id;
 
   // Reminder owned by u1 only.
   const r = await ctx.prisma.reminder.create({
     data: {
       title: 'Replace HVAC filter',
       recurrence: { kind: 'interval', days: 60 },
-      nextDueOn: new Date('2026-06-30'),
       notifyUserIds: ['u1'],
+      targets: { create: [{ itemId, nextDueOn: new Date('2026-06-30') }] },
     },
   });
   reminderId = r.id;
@@ -139,8 +151,8 @@ describe('per-resource auth — multi-owner reminders', () => {
       data: {
         title: 'Shared reminder',
         recurrence: { kind: 'interval', days: 60 },
-        nextDueOn: new Date('2026-06-30'),
         notifyUserIds: ['u1', 'u3'],
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-06-30') }] },
       },
     });
 

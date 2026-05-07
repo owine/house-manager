@@ -163,17 +163,20 @@ export async function saveAcceptedReminders(input: {
   const savedIds = await prisma.$transaction(async (tx) => {
     const ids: string[] = [];
     for (const r of validated) {
+      const nextDueOn = computeNextDueOn(r.recurrence, today);
       const created = await tx.reminder.create({
         data: {
           title: r.title,
           description: r.description ?? null,
-          itemId: input.itemId ?? null,
           recurrence: r.recurrence,
           leadTimeDays: r.leadTimeDays,
-          nextDueOn: computeNextDueOn(r.recurrence, today),
           notifyUserIds: [userId],
           autoCreateServiceRecord: false,
           active: true,
+          // If no itemId is supplied, the reminder is created without targets
+          // (an unattached suggestion). The caller is expected to wire
+          // targets later via the edit form.
+          ...(input.itemId ? { targets: { create: [{ itemId: input.itemId, nextDueOn }] } } : {}),
         },
         select: { id: true },
       });

@@ -83,9 +83,8 @@ describe('handleSearchIndex', () => {
       data: {
         title: 'Filter',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [],
-        itemId: item.id,
+        targets: { create: [{ itemId: item.id, nextDueOn: new Date() }] },
       },
     });
     await ctx.meili.tasks.waitForTask(
@@ -110,9 +109,8 @@ describe('handleSearchIndex', () => {
       data: {
         title: 'r1',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [],
-        itemId: item.id,
+        targets: { create: [{ itemId: item.id, nextDueOn: new Date() }] },
       },
     });
     await ctx.meili.tasks.waitForTask(

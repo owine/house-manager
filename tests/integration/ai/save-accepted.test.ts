@@ -124,8 +124,10 @@ describe('saveAcceptedReminders', () => {
     if (!result.ok) throw new Error();
     const r = await ctx.prisma.reminder.findUniqueOrThrow({
       where: { id: result.data.savedIds[0] },
+      include: { targets: true },
     });
-    expect(r.itemId).toBe(item.id);
+    expect(r.targets).toHaveLength(1);
+    expect(r.targets[0].itemId).toBe(item.id);
   });
 
   it('rejects empty accepted list', async () => {

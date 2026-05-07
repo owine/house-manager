@@ -73,22 +73,32 @@ export async function getItem(id: string) {
           thumbnailPath: true,
         },
       },
-      reminders: {
-        where: { active: true },
+      reminderTargets: {
+        where: { reminder: { active: true } },
         orderBy: { nextDueOn: 'asc' },
-        select: { id: true, title: true, nextDueOn: true, active: true },
+        select: {
+          id: true,
+          nextDueOn: true,
+          reminder: { select: { id: true, title: true, active: true } },
+        },
       },
     },
   });
   if (!row) return null;
-  // Surface flat `serviceRecords` and `warranties` shapes derived from the
-  // per-item target rows. Tactical compatibility with the existing per-item
-  // ServiceTab/WarrantiesTab; the multi-target rendering arrives in a later
+  // Surface flat `serviceRecords`, `warranties`, and `reminders` shapes
+  // derived from the per-item target rows. Tactical compatibility with the
+  // existing per-item tabs; the multi-target rendering arrives in a later
   // task.
-  const { serviceRecordTargets, warrantyTargets, ...rest } = row;
+  const { serviceRecordTargets, warrantyTargets, reminderTargets, ...rest } = row;
   const serviceRecords = serviceRecordTargets.map((t) => t.serviceRecord);
   const warranties = warrantyTargets.map((t) => t.warranty);
-  return { ...rest, serviceRecords, warranties };
+  const reminders = reminderTargets.map((t) => ({
+    id: t.reminder.id,
+    title: t.reminder.title,
+    active: t.reminder.active,
+    nextDueOn: t.nextDueOn,
+  }));
+  return { ...rest, serviceRecords, warranties, reminders };
 }
 
 export async function listAllCategories() {

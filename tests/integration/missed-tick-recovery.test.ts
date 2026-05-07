@@ -13,13 +13,23 @@ afterAll(async () => {
   await teardownIntegration(ctx);
 });
 
+let recoveryItemId: string;
+
 beforeEach(async () => {
   await ctx.prisma.notificationLog.deleteMany();
   await ctx.prisma.reminder.deleteMany();
+  await ctx.prisma.item.deleteMany();
   await ctx.prisma.user.deleteMany();
   await ctx.prisma.user.create({
     data: { id: 'r1u', email: 'recovery@example.com', name: 'R' },
   });
+  const cat = await ctx.prisma.category.upsert({
+    where: { slug: 'recovery-test' },
+    create: { slug: 'recovery-test', name: 'Recovery test', sortOrder: 99 },
+    update: {},
+  });
+  const item = await ctx.prisma.item.create({ data: { name: 'F', categoryId: cat.id } });
+  recoveryItemId = item.id;
 });
 
 describe('missed-tick recovery', () => {
@@ -30,9 +40,9 @@ describe('missed-tick recovery', () => {
         id: 'past-due-r1',
         title: 'Furnace filter',
         recurrence: { kind: 'interval', days: 90 },
-        nextDueOn: twoHoursAgo,
         leadTimeDays: 0,
         notifyUserIds: ['r1u'],
+        targets: { create: [{ nextDueOn: twoHoursAgo, itemId: recoveryItemId }] },
       },
     });
 
@@ -56,9 +66,9 @@ describe('missed-tick recovery', () => {
         id: 'past-due-r2',
         title: 'Already notified',
         recurrence: { kind: 'interval', days: 90 },
-        nextDueOn: twoHoursAgo,
         leadTimeDays: 0,
         notifyUserIds: ['r1u'],
+        targets: { create: [{ nextDueOn: twoHoursAgo, itemId: recoveryItemId }] },
       },
     });
     await ctx.prisma.notificationLog.create({

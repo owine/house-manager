@@ -39,50 +39,67 @@ beforeEach(async () => {
 });
 
 describe('Reminder CRUD', () => {
-  it('creates a reminder with interval recurrence', async () => {
+  it('creates a reminder with interval recurrence + one item target', async () => {
     const r = await ctx.prisma.reminder.create({
       data: {
         title: 'Replace HVAC filter',
         recurrence: { kind: 'interval', days: 60 },
-        nextDueOn: new Date('2026-06-30'),
         notifyUserIds: [userId],
-        itemId,
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-06-30') }] },
       },
+      include: { targets: true },
     });
     expect(r.title).toBe('Replace HVAC filter');
     expect(r.notifyUserIds).toEqual([userId]);
+    expect(r.targets).toHaveLength(1);
+    expect(r.targets[0].itemId).toBe(itemId);
   });
 
-  it('cascade-deletes completions when reminder is deleted', async () => {
+  it('cascade-deletes completions and targets when reminder is deleted', async () => {
     const r = await ctx.prisma.reminder.create({
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [userId],
+        targets: { create: [{ itemId, nextDueOn: new Date() }] },
       },
+      include: { targets: true },
     });
     const c = await ctx.prisma.reminderCompletion.create({
-      data: { reminderId: r.id, completedById: userId, completedOn: new Date() },
+      data: {
+        reminderId: r.id,
+        targetId: r.targets[0].id,
+        completedById: userId,
+        completedOn: new Date(),
+      },
     });
     await ctx.prisma.reminder.delete({ where: { id: r.id } });
     const orphan = await ctx.prisma.reminderCompletion.findUnique({ where: { id: c.id } });
     expect(orphan).toBeNull();
+    const orphanTarget = await ctx.prisma.reminderTarget.findUnique({
+      where: { id: r.targets[0].id },
+    });
+    expect(orphanTarget).toBeNull();
   });
 
-  it('SetNulls itemId when parent Item is hard-deleted', async () => {
+  it('cascade-deletes target rows when parent Item is hard-deleted', async () => {
     const r = await ctx.prisma.reminder.create({
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [userId],
-        itemId,
+        targets: { create: [{ itemId, nextDueOn: new Date() }] },
       },
+      include: { targets: true },
     });
     await ctx.prisma.item.delete({ where: { id: itemId } });
-    const r2 = await ctx.prisma.reminder.findUnique({ where: { id: r.id } });
-    expect(r2?.itemId).toBeNull();
+    const r2 = await ctx.prisma.reminder.findUnique({
+      where: { id: r.id },
+      include: { targets: true },
+    });
+    // Reminder row remains; its item-targeting target row was cascaded out.
+    expect(r2).not.toBeNull();
+    expect(r2?.targets).toHaveLength(0);
   });
 });
 
@@ -92,11 +109,11 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [userId],
         autoCreateServiceRecord: true,
-        itemId,
+        targets: { create: [{ itemId, nextDueOn: new Date() }] },
       },
+      include: { targets: true },
     });
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
@@ -108,6 +125,7 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
     const c = await ctx.prisma.reminderCompletion.create({
       data: {
         reminderId: r.id,
+        targetId: r.targets[0].id,
         completedById: userId,
         completedOn: new Date(),
         createdServiceRecordId: sr.id,
@@ -125,9 +143,10 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [userId],
+        targets: { create: [{ itemId, nextDueOn: new Date() }] },
       },
+      include: { targets: true },
     });
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
@@ -139,6 +158,7 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
     const c = await ctx.prisma.reminderCompletion.create({
       data: {
         reminderId: r.id,
+        targetId: r.targets[0].id,
         completedById: userId,
         completedOn: new Date(),
         createdServiceRecordId: sr.id,

@@ -105,6 +105,7 @@ model System {
   items           Item[]
   serviceRecordTargets   ServiceRecordTarget[]
   warrantyTargets        WarrantyTarget[]
+  reminderTargets        ReminderTarget[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -144,9 +145,9 @@ model Item {
 
   warrantyTargets        WarrantyTarget[]
   serviceRecordTargets   ServiceRecordTarget[]
+  reminderTargets        ReminderTarget[]
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
-  reminders       Reminder[]
   checklistItems  ChecklistItem[]
 
   @@index([categoryId])
@@ -308,13 +309,9 @@ model Attachment {
 
 model Reminder {
   id                      String              @id @default(cuid())
-  itemId                  String?
-  item                    Item?               @relation(fields: [itemId], references: [id], onDelete: SetNull)
   title                   String
   description             String?             @db.Text
   recurrence              Json
-  lastCompletedOn         DateTime?
-  nextDueOn               DateTime
   leadTimeDays            Int                 @default(3)
   notifyUserIds           String[]
   autoCreateServiceRecord Boolean             @default(false)
@@ -322,19 +319,44 @@ model Reminder {
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
+  targets                 ReminderTarget[]
   completions             ReminderCompletion[]
   notificationLogs        NotificationLog[]
 
-  @@index([nextDueOn])
-  @@index([active, nextDueOn])
-  @@index([itemId])
   @@map("reminders")
+}
+
+model ReminderTarget {
+  id              String    @id @default(cuid())
+  reminderId      String
+  itemId          String?
+  systemId        String?
+  lastCompletedOn DateTime?
+  nextDueOn       DateTime
+
+  reminder        Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  item            Item?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  system          System?   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  completions     ReminderCompletion[]
+
+  // NOTE: the underlying unique index uses NULLS NOT DISTINCT (set in the
+  // migration directly) so duplicates like (r, itemId, NULL) are rejected.
+  // Prisma 7.8 doesn't model that on @@unique, but the index is enforced at
+  // the DB level and runtime queries still see it.
+  @@unique([reminderId, itemId, systemId])
+  @@index([itemId])
+  @@index([systemId])
+  @@index([nextDueOn])
+  @@index([reminderId])
+  @@map("reminder_targets")
 }
 
 model ReminderCompletion {
   id                      String         @id @default(cuid())
   reminderId              String
   reminder                Reminder       @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  targetId                String
+  target                  ReminderTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
   completedById           String
   completedBy             User           @relation(fields: [completedById], references: [id], onDelete: Cascade)
   completedOn             DateTime
@@ -344,6 +366,7 @@ model ReminderCompletion {
   createdAt               DateTime       @default(now())
 
   @@index([reminderId, completedOn])
+  @@index([targetId, completedOn])
   @@map("reminder_completions")
 }
 

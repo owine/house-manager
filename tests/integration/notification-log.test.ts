@@ -27,7 +27,6 @@ beforeEach(async () => {
     data: {
       title: 'X',
       recurrence: { kind: 'interval', days: 30 },
-      nextDueOn: new Date('2026-06-30'),
       notifyUserIds: [userId],
     },
   });
