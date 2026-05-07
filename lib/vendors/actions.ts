@@ -66,14 +66,14 @@ export async function updateVendor(input: unknown): Promise<ActionResult<{ id: s
   return { ok: true, data: { id } };
 }
 
-export async function deleteVendor(id: string): Promise<ActionResult> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
-
-  await prisma.vendor.delete({ where: { id } });
-  await enqueueSearchIndex('vendor', id, 'delete');
-  revalidatePath('/vendors');
-  return { ok: true, data: undefined };
+/**
+ * Legacy delete entry-point. The UI now uses `tryDeleteVendor` + the mediated
+ * resolution flows (convert-to-freeform, delete-with-links). This thin wrapper
+ * is kept for any non-UI callers (tests, future scripts) and delegates to
+ * `tryDeleteVendor` so it can never surface a raw P2003 on linked vendors.
+ */
+export async function deleteVendor(id: string): Promise<TryDeleteVendorResult> {
+  return tryDeleteVendor(id);
 }
 
 /**
