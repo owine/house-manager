@@ -45,9 +45,9 @@ export function SystemHeader({ system, onArchive, onUnarchive }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{system.name}</h1>
           {system.kind && <Badge variant="secondary">{system.kind}</Badge>}
-          {isArchived && (
+          {system.archivedAt && (
             <Badge variant="destructive">
-              Archived <LocalDate iso={system.archivedAt?.toISOString() ?? ''} />
+              Archived <LocalDate iso={system.archivedAt.toISOString()} />
             </Badge>
           )}
         </div>

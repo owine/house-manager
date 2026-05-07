@@ -13,8 +13,6 @@ type Props = {
 };
 
 export function ItemHeader({ item, actions }: Props) {
-  const isArchived = item.archivedAt !== null;
-
   return (
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="flex flex-col gap-2">
@@ -24,9 +22,9 @@ export function ItemHeader({ item, actions }: Props) {
             <CategoryIcon name={item.category.icon} className="h-3.5 w-3.5" />
             {item.category.name}
           </Badge>
-          {isArchived && (
+          {item.archivedAt && (
             <Badge variant="destructive">
-              Archived <LocalDate iso={item.archivedAt?.toISOString() ?? ''} />
+              Archived <LocalDate iso={item.archivedAt.toISOString()} />
             </Badge>
           )}
         </div>

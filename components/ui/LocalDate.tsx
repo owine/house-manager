@@ -19,7 +19,9 @@ export function LocalDate({ iso, mode = 'date' }: Props) {
     setIsHydrated(true);
   }, []);
 
+  if (!iso) return null;
   const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
 
   let displayText: string;
   if (isHydrated) {
