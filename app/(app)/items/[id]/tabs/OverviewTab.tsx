@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
 import { Markdown } from '@/lib/markdown';
 
@@ -65,7 +66,7 @@ export function OverviewTab({ item }: Props) {
             {item.purchaseDate && (
               <>
                 <dt className="font-medium">Purchase date</dt>
-                <dd>{item.purchaseDate.toISOString().slice(0, 10)}</dd>
+                <dd>{formatCalendarDate(item.purchaseDate)}</dd>
               </>
             )}
             {item.purchasePrice !== null && item.purchasePrice !== undefined && (

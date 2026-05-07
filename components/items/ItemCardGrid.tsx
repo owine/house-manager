@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 
 type ItemWithRelations = Item & {
   category: Category;
@@ -32,7 +33,7 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
             )}
             {item.purchaseDate && (
               <span className="text-xs text-muted-foreground">
-                Purchased: {new Date(item.purchaseDate).toLocaleDateString()}
+                Purchased: {formatCalendarDate(item.purchaseDate)}
               </span>
             )}
           </CardContent>

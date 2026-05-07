@@ -7,6 +7,7 @@ import { AttachmentUploader } from '@/components/attachments/AttachmentUploader'
 import { ServiceRecordOverflowMenu } from '@/components/service-records/ServiceRecordOverflowMenu';
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getServiceRecord } from '@/lib/service-records/queries';
 
@@ -40,7 +41,7 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
         <CardContent className="pt-6">
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
             <dt className="font-semibold">Performed on</dt>
-            <dd>{record.performedOn.toISOString().slice(0, 10)}</dd>
+            <dd>{formatCalendarDate(record.performedOn)}</dd>
 
             <dt className="font-semibold">Targets</dt>
             <dd>

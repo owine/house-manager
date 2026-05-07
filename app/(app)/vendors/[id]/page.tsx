@@ -18,6 +18,7 @@ import { VendorLinkedItemsSection } from '@/components/vendors/VendorLinkedItems
 import { VendorLinkedSystemsSection } from '@/components/vendors/VendorLinkedSystemsSection';
 import { VendorMetaCard } from '@/components/vendors/VendorMetaCard';
 import { VendorOverflowMenu } from '@/components/vendors/VendorOverflowMenu';
+import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getVendor, getVendorWithLinks } from '@/lib/vendors/queries';
 
@@ -138,7 +139,7 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
               <TableRow key={sr.id}>
                 <TableCell>
                   <Link href={`/service/${sr.id}`} className="underline underline-offset-2">
-                    {sr.performedOn.toISOString().slice(0, 10)}
+                    {formatCalendarDate(sr.performedOn)}
                   </Link>
                 </TableCell>
                 <TableCell>

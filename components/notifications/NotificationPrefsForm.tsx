@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { LocalDate } from '@/components/ui/LocalDate';
 import {
   Select,
   SelectContent,
@@ -207,7 +208,7 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
                   <div className="text-sm">
                     <div>{sub.userAgent || 'Unknown device'}</div>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(sub.createdAt).toLocaleDateString()}
+                      <LocalDate iso={sub.createdAt.toISOString()} />
                     </div>
                   </div>
                   <Button

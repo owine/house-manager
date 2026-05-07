@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 import { listSystems } from '@/lib/systems/queries';
 
 export const metadata: Metadata = { title: 'Systems' };
@@ -89,9 +90,7 @@ export default async function SystemsPage({ searchParams }: { searchParams: Sear
             <CardContent className="flex flex-col gap-1 text-sm text-muted-foreground">
               {s.location && <span>{s.location}</span>}
               {s.installDate && (
-                <span className="text-xs">
-                  Installed: {new Date(s.installDate).toLocaleDateString()}
-                </span>
+                <span className="text-xs">Installed: {formatCalendarDate(s.installDate)}</span>
               )}
             </CardContent>
             <CardFooter className="mt-auto text-xs text-muted-foreground">

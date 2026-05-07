@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 
 export type TimelineTargetChip = {
   kind: 'item' | 'system';
@@ -118,7 +119,7 @@ export function SystemTimeline({ events, systemId }: Props) {
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">{TYPE_LABELS[e.type]}</Badge>
                         <span className="text-xs text-muted-foreground">
-                          {e.date.toISOString().slice(0, 10)}
+                          {formatCalendarDate(e.date)}
                         </span>
                       </div>
                       <span className="text-sm font-medium">{e.summary}</span>

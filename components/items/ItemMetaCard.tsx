@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
@@ -30,7 +31,7 @@ export function ItemMetaCard({ item }: Props) {
   if (item.model) rows.push({ label: 'Model', value: item.model });
   if (item.serialNumber) rows.push({ label: 'Serial', value: item.serialNumber });
   if (item.purchaseDate)
-    rows.push({ label: 'Purchased', value: item.purchaseDate.toISOString().slice(0, 10) });
+    rows.push({ label: 'Purchased', value: formatCalendarDate(item.purchaseDate) });
   if (item.purchasePrice !== null && item.purchasePrice !== undefined)
     rows.push({ label: 'Price', value: currencyFmt.format(Number(item.purchasePrice)) });
 

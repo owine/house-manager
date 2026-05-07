@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatCalendarDate } from '@/lib/format/date';
 import { ReminderStatusBadge } from './ReminderStatusBadge';
 
 type Row = {
@@ -45,7 +46,7 @@ export function ReminderTable({ reminders }: { reminders: Row[] }) {
                 <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
-            <TableCell>{r.nextDueOn ? r.nextDueOn.toISOString().slice(0, 10) : '—'}</TableCell>
+            <TableCell>{r.nextDueOn ? formatCalendarDate(r.nextDueOn) : '—'}</TableCell>
             <TableCell>
               {r.nextDueOn ? (
                 <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />

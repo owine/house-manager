@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatCalendarDate } from '@/lib/format/date';
 
 // Structural interface matching Prisma's Decimal for display purposes
 interface DecimalLike {
@@ -45,7 +46,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
           <TableRow key={record.id}>
             <TableCell>
               <Link href={`/service/${record.id}`} className="underline underline-offset-2">
-                {record.performedOn.toISOString().slice(0, 10)}
+                {formatCalendarDate(record.performedOn)}
               </Link>
             </TableCell>
             <TableCell>

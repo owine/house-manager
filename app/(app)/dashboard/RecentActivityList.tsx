@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ActivityEvent } from '@/lib/dashboard/queries';
+import { formatCalendarDate } from '@/lib/format/date';
 
 function relativeTime(date: Date): string {
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
@@ -9,7 +10,7 @@ function relativeTime(date: Date): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
   if (seconds < 86400 * 7) return `${Math.round(seconds / 86400)}d ago`;
-  return date.toISOString().slice(0, 10);
+  return formatCalendarDate(date);
 }
 
 type Props = {

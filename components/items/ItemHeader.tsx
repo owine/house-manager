@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
+import { LocalDate } from '@/components/ui/LocalDate';
 import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
@@ -25,7 +26,7 @@ export function ItemHeader({ item, actions }: Props) {
           </Badge>
           {isArchived && (
             <Badge variant="destructive">
-              Archived {item.archivedAt?.toISOString().slice(0, 10)}
+              Archived <LocalDate iso={item.archivedAt?.toISOString() ?? ''} />
             </Badge>
           )}
         </div>

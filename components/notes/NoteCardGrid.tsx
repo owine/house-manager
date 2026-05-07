@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { LocalDate } from '@/components/ui/LocalDate';
 
 type NoteRow = {
   id: string;
@@ -31,7 +32,9 @@ export function NoteCardGrid({ notes }: { notes: NoteRow[] }) {
               </Link>
             </CardTitle>
             <CardDescription className="flex flex-wrap items-center gap-1.5">
-              <span>{note.updatedAt.toISOString().slice(0, 10)}</span>
+              <span>
+                <LocalDate iso={note.updatedAt.toISOString()} />
+              </span>
               {note.item && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
