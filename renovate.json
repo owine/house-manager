@@ -13,7 +13,7 @@
   "schedule": ["* * * * 1"],
   "automergeSchedule": ["at any time"],
   "rangeStrategy": "pin",
-  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm", "pre-commit"],
+  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm", "pre-commit", "custom.regex"],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["* * * * 1"]
