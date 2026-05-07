@@ -19,13 +19,12 @@ describe('formatCalendarDate', () => {
     expect(formatCalendarDate('2024-01-15T00:00:00Z')).toBe('Jan 15, 2024');
   });
 
-  it('formats a date consistently regardless of TZ environment', () => {
-    // Create a date at UTC midnight; verify it formats as the UTC date
-    // regardless of how the system timezone might interpret it.
-    const utcDate = new Date('2024-06-20T00:00:00Z');
-    const formatted = formatCalendarDate(utcDate);
-    // Should always be June 20, because the Date was created at UTC midnight
-    expect(formatted).toBe('Jun 20, 2024');
+  it('anchors to UTC even when the instant straddles midnight in other TZs', () => {
+    // 23:30 UTC on Jun 20 is Jun 21 in Tokyo (UTC+9) and Jun 20 in LA (UTC-8).
+    // A non-UTC formatter would yield Jun 21 in Tokyo. Forcing UTC must yield Jun 20.
+    expect(formatCalendarDate('2024-06-20T23:30:00Z')).toBe('Jun 20, 2024');
+    // 00:30 UTC on Jun 20 is Jun 19 in LA (UTC-8). Forcing UTC must yield Jun 20.
+    expect(formatCalendarDate('2024-06-20T00:30:00Z')).toBe('Jun 20, 2024');
   });
 
   it('handles dates from different months and years', () => {
