@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
+import { stripMarkdown } from '@/lib/strip-markdown';
 
 type NoteRow = {
   id: string;
@@ -51,7 +52,7 @@ export function NoteCardGrid({ notes }: { notes: NoteRow[] }) {
           {note.body && (
             <CardContent>
               <p className="line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">
-                {note.body}
+                {stripMarkdown(note.body)}
               </p>
             </CardContent>
           )}
