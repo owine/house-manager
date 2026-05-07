@@ -171,6 +171,7 @@ export async function addSystemVendor(input: unknown): Promise<ActionResult<{ id
     },
   });
   revalidateSystemPaths(parsed.data.systemId);
+  if (parsed.data.vendorId) revalidatePath(`/vendors/${parsed.data.vendorId}`);
   return { ok: true, data: { id: link.id } };
 }
 
@@ -198,6 +199,7 @@ export async function updateSystemVendor(input: unknown): Promise<ActionResult<{
     },
   });
   revalidateSystemPaths(updated.systemId);
+  if (updated.vendorId) revalidatePath(`/vendors/${updated.vendorId}`);
   return { ok: true, data: { id: updated.id } };
 }
 
@@ -217,5 +219,6 @@ export async function removeSystemVendor(input: { id: string }): Promise<ActionR
 
   const removed = await prisma.systemVendor.delete({ where: { id: parsed.data.id } });
   revalidateSystemPaths(removed.systemId);
+  if (removed.vendorId) revalidatePath(`/vendors/${removed.vendorId}`);
   return { ok: true, data: undefined };
 }

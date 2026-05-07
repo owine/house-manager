@@ -155,6 +155,7 @@ export async function addItemVendor(input: unknown): Promise<ActionResult<{ id: 
   });
   revalidatePath(`/items/${parsed.data.itemId}`);
   revalidatePath('/vendors');
+  if (parsed.data.vendorId) revalidatePath(`/vendors/${parsed.data.vendorId}`);
   return { ok: true, data: { id: link.id } };
 }
 
@@ -183,6 +184,7 @@ export async function updateItemVendor(input: unknown): Promise<ActionResult<{ i
   });
   revalidatePath(`/items/${updated.itemId}`);
   revalidatePath('/vendors');
+  if (updated.vendorId) revalidatePath(`/vendors/${updated.vendorId}`);
   return { ok: true, data: { id: updated.id } };
 }
 
@@ -203,6 +205,7 @@ export async function removeItemVendor(input: { id: string }): Promise<ActionRes
   const removed = await prisma.itemVendor.delete({ where: { id: parsed.data.id } });
   revalidatePath(`/items/${removed.itemId}`);
   revalidatePath('/vendors');
+  if (removed.vendorId) revalidatePath(`/vendors/${removed.vendorId}`);
   return { ok: true, data: undefined };
 }
 
