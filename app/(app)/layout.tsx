@@ -31,8 +31,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <SearchBar />
           </div>
         </header>
-        <main className="flex-1 p-6">{children}</main>
-        <footer className="border-t px-6 py-3 text-xs text-muted-foreground">
+        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <footer className="border-t px-4 py-3 text-xs text-muted-foreground sm:px-6">
           v{APP_VERSION} · {APP_GIT_SHA}
         </footer>
       </SidebarInset>

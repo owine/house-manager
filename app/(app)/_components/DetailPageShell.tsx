@@ -20,7 +20,7 @@ export function DetailPageShell({ header, meta, tabs, defaultTab }: Props) {
     <div className="mx-auto max-w-7xl">
       {header}
       <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2">
+        <div className="min-w-0 md:col-span-2">
           <Tabs defaultValue={defaultTab ?? tabs[0]?.value}>
             <TabsList>
               {tabs.map((t) => (
