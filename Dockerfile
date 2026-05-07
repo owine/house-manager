@@ -2,7 +2,7 @@
 
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS base
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=10.33.4
+ARG PNPM_VERSION=11.0.8
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 RUN apk add --no-cache postgresql16-client
 WORKDIR /app
@@ -62,7 +62,7 @@ RUN pnpm prune --prod
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=10.33.4
+ARG PNPM_VERSION=11.0.8
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate && apk add --no-cache curl vips vips-heif
 WORKDIR /app
 ENV NODE_ENV=production
