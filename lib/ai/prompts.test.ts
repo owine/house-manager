@@ -3,6 +3,7 @@ import {
   buildHouseProfileBlock,
   buildInventoryBlock,
   buildSystemBlocks,
+  coarsenLocation,
   formatInventoryLine,
   SYSTEM_PROMPT,
   SYSTEM_PROMPT_VERSION,
@@ -34,6 +35,67 @@ describe('seasonForDate', () => {
     ['2026-01-05', 'winter'],
   ] as const)('%s → %s', (date, expected) => {
     expect(seasonForDate(new Date(date))).toBe(expected);
+  });
+});
+
+describe('coarsenLocation', () => {
+  it('returns null for null input', () => {
+    expect(coarsenLocation(null)).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(coarsenLocation('')).toBeNull();
+    expect(coarsenLocation('   ')).toBeNull();
+  });
+
+  it('leaves city/region unchanged', () => {
+    expect(coarsenLocation('Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('drops street address prefix with numbers', () => {
+    expect(coarsenLocation('1234 Elm St, Austin, TX 78701')).toBe('Austin, TX');
+  });
+
+  it('drops apartment markers with numbers', () => {
+    expect(coarsenLocation('Apt 5, 1234 Elm St, Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('drops PO Box addresses', () => {
+    expect(coarsenLocation('PO Box 123, Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('drops trailing ZIP codes', () => {
+    expect(coarsenLocation('Austin, TX 78701')).toBe('Austin, TX');
+  });
+
+  it('drops trailing ZIP+4 codes', () => {
+    expect(coarsenLocation('Austin, TX 78701-1234')).toBe('Austin, TX');
+  });
+
+  it('drops street suffixes from segments starting with numbers', () => {
+    expect(coarsenLocation('1234 Elm St, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('123 Main Blvd, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('999 Oak Dr, Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('returns null when everything is stripped', () => {
+    expect(coarsenLocation('1234 Elm St')).toBeNull();
+    expect(coarsenLocation('Apt 5, PO Box 123')).toBeNull();
+  });
+
+  it('handles extra whitespace', () => {
+    expect(coarsenLocation('  Austin  ,  TX  ')).toBe('Austin, TX');
+    expect(coarsenLocation('1234 Elm St  ,  Austin  ,  TX  ')).toBe('Austin, TX');
+  });
+
+  it('handles Unit and Suite markers', () => {
+    expect(coarsenLocation('Unit 12, 1234 Elm St, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('Suite 100, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('Ste 5, Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('handles # abbreviation for unit', () => {
+    expect(coarsenLocation('#5, 1234 Elm St, Austin, TX')).toBe('Austin, TX');
   });
 });
 

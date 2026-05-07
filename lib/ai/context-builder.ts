@@ -5,11 +5,8 @@ export type FocusedItem = {
   id: string;
   name: string;
   categoryName: string;
-  location: string | null;
   manufacturer: string | null;
   model: string | null;
-  serialNumber: string | null;
-  metadata: unknown;
 };
 
 export type SuggestContext = {
@@ -43,11 +40,8 @@ export async function buildSuggestContext(input: {
           select: {
             id: true,
             name: true,
-            location: true,
             manufacturer: true,
             model: true,
-            serialNumber: true,
-            metadata: true,
             category: { select: { name: true } },
           },
         })
@@ -76,11 +70,8 @@ export async function buildSuggestContext(input: {
         id: focused.id,
         name: focused.name,
         categoryName: focused.category?.name ?? 'Uncategorized',
-        location: focused.location,
         manufacturer: focused.manufacturer,
         model: focused.model,
-        serialNumber: focused.serialNumber,
-        metadata: focused.metadata,
       }
     : null;
 
