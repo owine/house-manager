@@ -11,6 +11,7 @@ import {
   Shield,
   StickyNote,
   Users,
+  Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -35,6 +36,7 @@ const PRIMARY: NavItem[] = [
   { href: '/items', label: 'Items', icon: Package },
   { href: '/systems', label: 'Systems', icon: Layers },
   { href: '/vendors', label: 'Vendors', icon: Users },
+  { href: '/service', label: 'Service', icon: Wrench },
   { href: '/reminders', label: 'Reminders', icon: Calendar },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
   { href: '/notes', label: 'Notes', icon: StickyNote },
