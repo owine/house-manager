@@ -61,8 +61,10 @@ export function coarsenLocation(input: string | null): string | null {
         return false;
       }
 
-      // Drop segments starting with digits followed by space (e.g., "1234 Elm St", "Apt 5")
-      if (/^\d+\s/.test(segment)) {
+      // Drop segments starting with a house number followed by a space.
+      // \S* after the digits catches "123B Elm St" (alpha suffix) and
+      // "12-14 Main St" (hyphenated range) — both still encode street-level detail.
+      if (/^\d+\S*\s/.test(segment)) {
         return false;
       }
 
@@ -76,8 +78,8 @@ export function coarsenLocation(input: string | null): string | null {
         return false;
       }
 
-      // Drop segments starting with "PO Box"
-      if (/^PO\s+Box\b/i.test(segment)) {
+      // Drop segments starting with "PO Box" — also matches "P.O. Box" and "P O Box".
+      if (/^P\.?\s*O\.?\s+Box\b/i.test(segment)) {
         return false;
       }
 

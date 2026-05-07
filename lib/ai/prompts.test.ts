@@ -60,8 +60,15 @@ describe('coarsenLocation', () => {
     expect(coarsenLocation('Apt 5, 1234 Elm St, Austin, TX')).toBe('Austin, TX');
   });
 
-  it('drops PO Box addresses', () => {
+  it('drops PO Box addresses in common typographical variants', () => {
     expect(coarsenLocation('PO Box 123, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('P.O. Box 123, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('P O Box 123, Austin, TX')).toBe('Austin, TX');
+  });
+
+  it('drops house numbers with letter suffixes or hyphenated ranges', () => {
+    expect(coarsenLocation('123B Elm St, Austin, TX')).toBe('Austin, TX');
+    expect(coarsenLocation('12-14 Main St, Austin, TX')).toBe('Austin, TX');
   });
 
   it('drops trailing ZIP codes', () => {
