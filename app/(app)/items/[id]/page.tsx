@@ -80,18 +80,18 @@ export default async function ItemDetailPage({
         }
       />
       <div className="grid gap-6 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <ItemTabs active={tab} itemId={item.id} />
-          <div className="mt-6 space-y-6">
-            {tab === 'overview' && <OverviewTab item={item} />}
-            {tab === 'warranties' && <WarrantiesTab item={item} />}
-            {tab === 'service' && <ServiceTab item={item} />}
-            {tab === 'reminders' && <RemindersTab item={item} />}
-            {tab === 'notes' && <NotesTab item={item} />}
-            {tab === 'files' && <FilesTab item={item} />}
-            {tab === 'overview' && (
-              <ItemVendorsSection itemId={item.id} links={vendorLinks} vendors={vendors} />
-            )}
+        <div className="space-y-6 md:col-span-2">
+          <ItemVendorsSection itemId={item.id} links={vendorLinks} vendors={vendors} />
+          <div>
+            <ItemTabs active={tab} itemId={item.id} />
+            <div className="mt-6 space-y-6">
+              {tab === 'overview' && <OverviewTab item={item} />}
+              {tab === 'warranties' && <WarrantiesTab item={item} />}
+              {tab === 'service' && <ServiceTab item={item} />}
+              {tab === 'reminders' && <RemindersTab item={item} />}
+              {tab === 'notes' && <NotesTab item={item} />}
+              {tab === 'files' && <FilesTab item={item} />}
+            </div>
           </div>
         </div>
         <aside className="md:col-span-1">
