@@ -193,6 +193,54 @@ describe('checklist CRUD', () => {
   });
 });
 
+describe('toggleChecklistItem', () => {
+  it('sets completedAt when done=true', async () => {
+    const before = new Date();
+    const checklist = await ctx.prisma.checklist.create({ data: { name: 'Toggle Test' } });
+    const item = await ctx.prisma.checklistItem.create({
+      data: { checklistId: checklist.id, title: 'Step 1', position: 0 },
+    });
+
+    const result = await actions.toggleChecklistItem({ id: item.id, done: true });
+    expect(result.ok).toBe(true);
+
+    const row = await ctx.prisma.checklistItem.findUnique({ where: { id: item.id } });
+    expect(row?.completedAt).not.toBeNull();
+    expect(row?.completedAt?.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it('clears completedAt when done=false', async () => {
+    const checklist = await ctx.prisma.checklist.create({ data: { name: 'Toggle Clear Test' } });
+    const item = await ctx.prisma.checklistItem.create({
+      data: { checklistId: checklist.id, title: 'Step 1', position: 0, completedAt: new Date() },
+    });
+
+    const result = await actions.toggleChecklistItem({ id: item.id, done: false });
+    expect(result.ok).toBe(true);
+
+    const row = await ctx.prisma.checklistItem.findUnique({ where: { id: item.id } });
+    expect(row?.completedAt).toBeNull();
+  });
+
+  it('rejects unauthenticated', async () => {
+    signInAs(null);
+    const checklist = await ctx.prisma.checklist.create({ data: { name: 'Auth Test' } });
+    const item = await ctx.prisma.checklistItem.create({
+      data: { checklistId: checklist.id, title: 'Step 1', position: 0 },
+    });
+
+    const result = await actions.toggleChecklistItem({ id: item.id, done: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.formError).toBe('Unauthorized');
+  });
+
+  it('rejects invalid input (missing id)', async () => {
+    const result = await actions.toggleChecklistItem({ done: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.fieldErrors?.id).toBeDefined();
+  });
+});
+
 describe('checklist queries', () => {
   it('listChecklists returns active only, ordered by updatedAt desc, with item counts', async () => {
     // Create two active and one inactive checklist

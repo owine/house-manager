@@ -464,16 +464,18 @@ model Checklist {
 }
 
 model ChecklistItem {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   checklistId String
   position    Int
   title       String
   itemId      String?
+  completedAt DateTime?
 
   checklist Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([checklistId, position])
+  @@index([checklistId, completedAt])
   @@index([itemId])
 }
 
