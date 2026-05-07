@@ -16,6 +16,11 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     headless: true,
+    // Capture on first failure (and the retry) so CI artifacts have something
+    // useful when a test misbehaves only on the runner.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   webServer: {
     command: 'pnpm dev',
@@ -25,5 +30,6 @@ export default defineConfig({
     // The webServer inherits env vars from the process that spawns Playwright,
     // so AUTH_OIDC_ISSUER=http://localhost:9999 must be set when invoking pnpm test:e2e.
   },
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });
