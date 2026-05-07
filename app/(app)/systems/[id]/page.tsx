@@ -118,6 +118,8 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
     freeformName: sv.freeformName,
     role: sv.role,
     notes: sv.notes,
+    serviceContract: sv.serviceContract,
+    contractEndsOn: sv.contractEndsOn,
   }));
 
   async function doArchive() {

@@ -15,7 +15,7 @@ import {
 import { VendorLinkChips, type VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { VendorLinkEditor, type VendorOption } from '@/components/vendor-links/VendorLinkEditor';
 import { addItemVendor, removeItemVendor, updateItemVendor } from '@/lib/items/actions';
-import type { VendorLinkInput } from '@/lib/vendor-links/schema';
+import { emptyVendorLinkInput, type VendorLinkInput } from '@/lib/vendor-links/schema';
 
 type Props = {
   itemId: string;
@@ -23,22 +23,15 @@ type Props = {
   vendors: VendorOption[];
 };
 
-const EMPTY_LINK: VendorLinkInput = {
-  vendorId: null,
-  freeformName: null,
-  role: 'INSTALLER',
-  notes: null,
-};
-
 export function ItemVendorsSection({ itemId, links, vendors }: Props) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<VendorLinkInput>(EMPTY_LINK);
+  const [draft, setDraft] = useState<VendorLinkInput>(emptyVendorLinkInput());
   const [pending, startTransition] = useTransition();
 
   function openCreate() {
     setEditingId(null);
-    setDraft(EMPTY_LINK);
+    setDraft(emptyVendorLinkInput());
     setOpen(true);
   }
 
@@ -51,6 +44,8 @@ export function ItemVendorsSection({ itemId, links, vendors }: Props) {
       freeformName: link.freeformName,
       role: link.role,
       notes: link.notes,
+      serviceContract: link.serviceContract,
+      contractEndsOn: link.contractEndsOn,
     });
     setOpen(true);
   }
@@ -78,7 +73,7 @@ export function ItemVendorsSection({ itemId, links, vendors }: Props) {
       toast.success(editingId ? 'Vendor link updated' : 'Vendor link added');
       setOpen(false);
       setEditingId(null);
-      setDraft(EMPTY_LINK);
+      setDraft(emptyVendorLinkInput());
     });
   }
 

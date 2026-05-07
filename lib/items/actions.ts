@@ -151,6 +151,8 @@ export async function addItemVendor(input: unknown): Promise<ActionResult<{ id: 
       freeformName: parsed.data.freeformName ?? null,
       role: parsed.data.role as VendorRole,
       notes: parsed.data.notes ?? null,
+      serviceContract: parsed.data.serviceContract,
+      contractEndsOn: parsed.data.contractEndsOn ?? null,
     },
   });
   revalidatePath(`/items/${parsed.data.itemId}`);
@@ -180,6 +182,8 @@ export async function updateItemVendor(input: unknown): Promise<ActionResult<{ i
       freeformName: parsed.data.freeformName ?? null,
       role: parsed.data.role as VendorRole,
       notes: parsed.data.notes ?? null,
+      serviceContract: parsed.data.serviceContract,
+      contractEndsOn: parsed.data.contractEndsOn ?? null,
     },
   });
   revalidatePath(`/items/${updated.itemId}`);
