@@ -19,18 +19,23 @@ export function DueSoonLane({ stats, reminders }: Props) {
         <CardTitle>Overview</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="flex flex-col items-center gap-1 text-center">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="flex min-w-0 flex-col items-center gap-1 text-center">
             <span className="text-2xl font-semibold">{stats.activeItems}</span>
-            <span className="text-xs text-muted-foreground">active items</span>
+            <span className="text-xs break-words text-muted-foreground">active items</span>
           </div>
-          <div className="flex flex-col items-center gap-1 text-center">
+          <div className="flex min-w-0 flex-col items-center gap-1 text-center">
             <span className="text-2xl font-semibold">{stats.vendors}</span>
-            <span className="text-xs text-muted-foreground">vendors</span>
+            <span className="text-xs break-words text-muted-foreground">vendors</span>
           </div>
-          <div className="flex flex-col items-center gap-1 text-center">
+          <div className="flex min-w-0 flex-col items-center gap-1 text-center">
             <span className="text-2xl font-semibold">{stats.serviceThisYear}</span>
-            <span className="text-xs text-muted-foreground">service this year</span>
+            <span
+              className="text-xs break-words text-muted-foreground"
+              title="Services performed this year"
+            >
+              services
+            </span>
           </div>
         </div>
       </CardContent>
@@ -51,8 +56,11 @@ export function DueSoonLane({ stats, reminders }: Props) {
           <ul className="space-y-3">
             {reminders.map((r) => (
               <li key={r.id} className="border-b pb-3 last:border-b-0 last:pb-0">
-                <div className="flex items-center justify-between gap-2">
-                  <Link href={`/reminders/${r.id}`} className="min-w-0 flex-1 truncate text-sm">
+                <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                  <Link
+                    href={`/reminders/${r.id}`}
+                    className="min-w-0 max-w-full truncate text-sm sm:flex-1"
+                  >
                     {r.title}
                   </Link>
                   <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
