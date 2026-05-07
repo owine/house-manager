@@ -47,7 +47,9 @@ export function NoteCardGrid({ notes }: { notes: NoteRow[] }) {
           </CardHeader>
           {note.body && (
             <CardContent>
-              <p className="line-clamp-3 text-sm text-muted-foreground">{note.body}</p>
+              <p className="line-clamp-3 whitespace-pre-line text-sm text-muted-foreground">
+                {note.body}
+              </p>
             </CardContent>
           )}
           {note.tags.length > 0 && (
