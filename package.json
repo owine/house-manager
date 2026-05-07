@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "node": "v24.15.0",
-    "pnpm": "10.33.2"
+    "pnpm": "10.33.3"
   },
   "scripts": {
     "dev": "next dev",
@@ -35,7 +35,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.92.0",
+    "@anthropic-ai/sdk": "0.93.0",
     "@auth/prisma-adapter": "2.11.2",
     "@base-ui/react": "1.4.1",
     "@hookform/resolvers": "5.2.2",
@@ -100,7 +100,7 @@
   },
   "pnpm": {
     "overrides": {
-      "postcss@<8.5.12": "8.5.13",
+      "postcss@<8.5.12": "8.5.14",
       "uuid@<14.0.0": "14.0.0",
       "@hono/node-server@<2.0.1": "2.0.1"
     }
