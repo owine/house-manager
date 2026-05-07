@@ -97,7 +97,7 @@ export function HouseProfileForm({ defaultValues }: Props) {
             <FormItem>
               <FormLabel>City or region</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} value={field.value ?? ''} />
               </FormControl>
               <FormDescription>
                 Used to tailor AI maintenance suggestions. Keep it general (e.g., &apos;Austin,

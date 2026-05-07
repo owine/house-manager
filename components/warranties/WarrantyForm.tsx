@@ -178,7 +178,7 @@ export function WarrantyForm({
             <FormItem>
               <FormLabel>Provider</FormLabel>
               <FormControl>
-                <Input {...field} required />
+                <Input {...field} required value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>

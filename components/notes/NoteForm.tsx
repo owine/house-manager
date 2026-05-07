@@ -90,7 +90,7 @@ export function NoteForm({ items, defaultValues, action, submitLabel }: Props) {
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input {...field} required />
+                <Input {...field} required value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>

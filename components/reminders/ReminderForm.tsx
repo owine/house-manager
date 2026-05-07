@@ -130,7 +130,7 @@ export function ReminderForm({
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input {...field} required />
+                <Input {...field} required value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>

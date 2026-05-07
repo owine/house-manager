@@ -81,7 +81,7 @@ export function ChecklistMetaForm({ defaultValues, action, submitLabel }: Props)
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input {...field} value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>
