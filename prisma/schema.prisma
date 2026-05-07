@@ -188,36 +188,42 @@ model Vendor {
 }
 
 model ItemVendor {
-  id            String      @id @default(cuid())
-  itemId        String
-  vendorId      String?
-  freeformName  String?
-  role          VendorRole
-  notes         String?     @db.Text
-  createdAt     DateTime    @default(now())
+  id               String      @id @default(cuid())
+  itemId           String
+  vendorId         String?
+  freeformName     String?
+  role             VendorRole
+  notes            String?     @db.Text
+  serviceContract  Boolean     @default(false)
+  contractEndsOn   DateTime?   @db.Date
+  createdAt        DateTime    @default(now())
 
   item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
   vendor        Vendor?     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
 
   @@index([itemId])
   @@index([vendorId])
+  @@index([contractEndsOn])
   @@map("item_vendors")
 }
 
 model SystemVendor {
-  id            String      @id @default(cuid())
-  systemId      String
-  vendorId      String?
-  freeformName  String?
-  role          VendorRole
-  notes         String?     @db.Text
-  createdAt     DateTime    @default(now())
+  id               String      @id @default(cuid())
+  systemId         String
+  vendorId         String?
+  freeformName     String?
+  role             VendorRole
+  notes            String?     @db.Text
+  serviceContract  Boolean     @default(false)
+  contractEndsOn   DateTime?   @db.Date
+  createdAt        DateTime    @default(now())
 
   system        System      @relation(fields: [systemId], references: [id], onDelete: Cascade)
   vendor        Vendor?     @relation(fields: [vendorId], references: [id], onDelete: Restrict)
 
   @@index([systemId])
   @@index([vendorId])
+  @@index([contractEndsOn])
   @@map("system_vendors")
 }
 

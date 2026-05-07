@@ -16,6 +16,8 @@ const LINKS: VendorLinkRow[] = [
     freeformName: null,
     role: 'PURCHASE',
     notes: null,
+    serviceContract: false,
+    contractEndsOn: null,
   },
   {
     id: 'l2',
@@ -24,6 +26,8 @@ const LINKS: VendorLinkRow[] = [
     freeformName: 'Local handyman',
     role: 'INSTALLER',
     notes: 'Cash only',
+    serviceContract: false,
+    contractEndsOn: null,
   },
 ];
 
@@ -92,5 +96,27 @@ describe('VendorLinkChips', () => {
   it('shows empty state when no links provided', () => {
     render(<VendorLinkChips links={[]} />);
     expect(screen.getByTestId('vendor-link-chips-empty')).toBeInTheDocument();
+  });
+
+  it('does not show a contract badge when serviceContract is false', () => {
+    render(<VendorLinkChips links={LINKS} />);
+    expect(screen.queryByTestId('vendor-link-chip-contract-l1')).not.toBeInTheDocument();
+  });
+
+  it('shows "Contract" badge when serviceContract is true and no end date', () => {
+    const links: VendorLinkRow[] = [{ ...LINKS[0], serviceContract: true, contractEndsOn: null }];
+    render(<VendorLinkChips links={links} />);
+    const badge = screen.getByTestId('vendor-link-chip-contract-l1');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('Contract');
+  });
+
+  it('shows "Contract → <date>" badge when serviceContract is true with an end date', () => {
+    const links: VendorLinkRow[] = [
+      { ...LINKS[0], serviceContract: true, contractEndsOn: new Date('2027-06-30T00:00:00.000Z') },
+    ];
+    render(<VendorLinkChips links={links} />);
+    const badge = screen.getByTestId('vendor-link-chip-contract-l1');
+    expect(badge).toHaveTextContent('Contract → Jun 30, 2027');
   });
 });

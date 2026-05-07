@@ -168,6 +168,8 @@ export async function addSystemVendor(input: unknown): Promise<ActionResult<{ id
       freeformName: parsed.data.freeformName ?? null,
       role: parsed.data.role as VendorRole,
       notes: parsed.data.notes ?? null,
+      serviceContract: parsed.data.serviceContract,
+      contractEndsOn: parsed.data.contractEndsOn ?? null,
     },
   });
   revalidateSystemPaths(parsed.data.systemId);
@@ -196,6 +198,8 @@ export async function updateSystemVendor(input: unknown): Promise<ActionResult<{
       freeformName: parsed.data.freeformName ?? null,
       role: parsed.data.role as VendorRole,
       notes: parsed.data.notes ?? null,
+      serviceContract: parsed.data.serviceContract,
+      contractEndsOn: parsed.data.contractEndsOn ?? null,
     },
   });
   revalidateSystemPaths(updated.systemId);

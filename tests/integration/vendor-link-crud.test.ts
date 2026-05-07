@@ -151,6 +151,66 @@ describe('SystemVendor', () => {
   });
 });
 
+describe('ItemVendor — service contract fields', () => {
+  it('persists serviceContract and contractEndsOn on an ItemVendor', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Boiler', categoryId } });
+    const link = await ctx.prisma.itemVendor.create({
+      data: {
+        itemId: item.id,
+        freeformName: 'BoilerCo',
+        role: 'SERVICE',
+        serviceContract: true,
+        contractEndsOn: new Date('2027-01-15T00:00:00.000Z'),
+      },
+    });
+
+    const found = await ctx.prisma.itemVendor.findUnique({ where: { id: link.id } });
+    expect(found?.serviceContract).toBe(true);
+    expect(found?.contractEndsOn).toEqual(new Date('2027-01-15T00:00:00.000Z'));
+  });
+
+  it('defaults serviceContract to false when not supplied', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Boiler2', categoryId } });
+    const link = await ctx.prisma.itemVendor.create({
+      data: { itemId: item.id, freeformName: 'SomeCo', role: 'INSTALLER' },
+    });
+
+    const found = await ctx.prisma.itemVendor.findUnique({ where: { id: link.id } });
+    expect(found?.serviceContract).toBe(false);
+    expect(found?.contractEndsOn).toBeNull();
+  });
+});
+
+describe('SystemVendor — service contract fields', () => {
+  it('persists serviceContract and contractEndsOn on a SystemVendor', async () => {
+    const sys = await ctx.prisma.system.create({ data: { name: 'Plumbing' } });
+    const link = await ctx.prisma.systemVendor.create({
+      data: {
+        systemId: sys.id,
+        freeformName: 'PipeCo',
+        role: 'SERVICE',
+        serviceContract: true,
+        contractEndsOn: new Date('2027-01-15T00:00:00.000Z'),
+      },
+    });
+
+    const found = await ctx.prisma.systemVendor.findUnique({ where: { id: link.id } });
+    expect(found?.serviceContract).toBe(true);
+    expect(found?.contractEndsOn).toEqual(new Date('2027-01-15T00:00:00.000Z'));
+  });
+
+  it('defaults serviceContract to false when not supplied', async () => {
+    const sys = await ctx.prisma.system.create({ data: { name: 'Electrical' } });
+    const link = await ctx.prisma.systemVendor.create({
+      data: { systemId: sys.id, freeformName: 'WireCo', role: 'INSTALLER' },
+    });
+
+    const found = await ctx.prisma.systemVendor.findUnique({ where: { id: link.id } });
+    expect(found?.serviceContract).toBe(false);
+    expect(found?.contractEndsOn).toBeNull();
+  });
+});
+
 describe('Vendor delete (Restrict)', () => {
   it('blocks deleting a Vendor that has linked ItemVendor rows', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'Furnace', categoryId } });
