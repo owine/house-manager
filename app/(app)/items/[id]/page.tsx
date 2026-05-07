@@ -80,7 +80,7 @@ export default async function ItemDetailPage({
         }
       />
       <div className="grid gap-6 md:grid-cols-3">
-        <div className="space-y-6 md:col-span-2">
+        <div className="min-w-0 space-y-6 md:col-span-2">
           <ItemVendorsSection itemId={item.id} links={vendorLinks} vendors={vendors} />
           <div>
             <ItemTabs active={tab} itemId={item.id} />

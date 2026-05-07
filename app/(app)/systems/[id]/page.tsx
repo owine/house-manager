@@ -146,7 +146,7 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
         onUnarchive={doUnarchive}
       />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="space-y-6 md:col-span-2">
+        <div className="min-w-0 space-y-6 md:col-span-2">
           <ComponentsList
             systemId={system.id}
             components={system.items.map((i) => ({
