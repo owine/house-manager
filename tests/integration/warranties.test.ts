@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
-// NOTE: Cascade delete from Item → Warranty is already covered in tests/integration/items.test.ts
+// NOTE: Cascade delete from Item → WarrantyTarget is covered in
+// tests/integration/items.test.ts. WarrantyTarget XOR + uniqueness is covered
+// in warranty-multi-target.test.ts.
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -35,18 +37,20 @@ describe('Warranty CRUD', () => {
   it('creates a warranty with all fields', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Samsung Extended Care',
         policyNumber: 'POL-2024-001',
         startsOn: new Date('2024-01-15'),
         endsOn: new Date('2027-01-15'),
         coverage: 'Parts and labour, excluding cosmetic damage',
         cost: 249.99,
+        targets: { create: [{ itemId }] },
       },
+      include: { targets: true },
     });
 
     expect(w.id).toBeTruthy();
-    expect(w.itemId).toBe(itemId);
+    expect(w.targets).toHaveLength(1);
+    expect(w.targets[0].itemId).toBe(itemId);
     expect(w.provider).toBe('Samsung Extended Care');
     expect(w.policyNumber).toBe('POL-2024-001');
     expect(w.coverage).toBe('Parts and labour, excluding cosmetic damage');
@@ -58,15 +62,16 @@ describe('Warranty CRUD', () => {
   it('creates a warranty with only required fields', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Basic Warranty',
         startsOn: new Date('2024-06-01'),
         endsOn: new Date('2026-06-01'),
+        targets: { create: [{ itemId }] },
       },
+      include: { targets: true },
     });
 
     expect(w.id).toBeTruthy();
-    expect(w.itemId).toBe(itemId);
+    expect(w.targets[0].itemId).toBe(itemId);
     expect(w.policyNumber).toBeNull();
     expect(w.coverage).toBeNull();
     expect(w.cost).toBeNull();
@@ -75,10 +80,10 @@ describe('Warranty CRUD', () => {
   it('updates endsOn; re-reads and confirms', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Original Warranty',
         startsOn: new Date('2024-01-01'),
         endsOn: new Date('2026-01-01'),
+        targets: { create: [{ itemId }] },
       },
     });
 
@@ -94,10 +99,10 @@ describe('Warranty CRUD', () => {
   it('deletes a warranty; findUnique returns null', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'To Be Deleted',
         startsOn: new Date('2024-01-01'),
         endsOn: new Date('2026-01-01'),
+        targets: { create: [{ itemId }] },
       },
     });
 
@@ -110,31 +115,33 @@ describe('Warranty CRUD', () => {
 
 describe('Warranty queries', () => {
   it('lists warranties for an item ordered by endsOn descending', async () => {
-    await ctx.prisma.warranty.createMany({
-      data: [
-        {
-          itemId,
-          provider: 'Early Expiry',
-          startsOn: new Date('2024-01-01'),
-          endsOn: new Date('2025-01-01'),
-        },
-        {
-          itemId,
-          provider: 'Late Expiry',
-          startsOn: new Date('2024-01-01'),
-          endsOn: new Date('2029-01-01'),
-        },
-        {
-          itemId,
-          provider: 'Mid Expiry',
-          startsOn: new Date('2024-01-01'),
-          endsOn: new Date('2027-01-01'),
-        },
-      ],
+    await ctx.prisma.warranty.create({
+      data: {
+        provider: 'Early Expiry',
+        startsOn: new Date('2024-01-01'),
+        endsOn: new Date('2025-01-01'),
+        targets: { create: [{ itemId }] },
+      },
+    });
+    await ctx.prisma.warranty.create({
+      data: {
+        provider: 'Late Expiry',
+        startsOn: new Date('2024-01-01'),
+        endsOn: new Date('2029-01-01'),
+        targets: { create: [{ itemId }] },
+      },
+    });
+    await ctx.prisma.warranty.create({
+      data: {
+        provider: 'Mid Expiry',
+        startsOn: new Date('2024-01-01'),
+        endsOn: new Date('2027-01-01'),
+        targets: { create: [{ itemId }] },
+      },
     });
 
     const warranties = await ctx.prisma.warranty.findMany({
-      where: { itemId },
+      where: { targets: { some: { itemId } } },
       orderBy: { endsOn: 'desc' },
     });
 
@@ -143,21 +150,23 @@ describe('Warranty queries', () => {
     expect(warranties[2].provider).toBe('Early Expiry');
   });
 
-  it('includes item relation when fetching a single warranty', async () => {
+  it('includes target.item relation when fetching a single warranty', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Relation Test Warranty',
         startsOn: new Date('2024-01-01'),
         endsOn: new Date('2026-01-01'),
+        targets: { create: [{ itemId }] },
       },
     });
 
     const fetched = await ctx.prisma.warranty.findUnique({
       where: { id: w.id },
-      include: { item: { select: { id: true, name: true } } },
+      include: {
+        targets: { include: { item: { select: { id: true, name: true } } } },
+      },
     });
 
-    expect(fetched?.item).toEqual({ id: itemId, name: 'Refrigerator' });
+    expect(fetched?.targets[0].item).toEqual({ id: itemId, name: 'Refrigerator' });
   });
 });

@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
+// Inline target schema. Task 6 will extract a shared one.
+const targetSchema = z
+  .object({
+    itemId: z.string().min(1).optional().nullable(),
+    systemId: z.string().min(1).optional().nullable(),
+  })
+  .refine((t) => Boolean(t.itemId) !== Boolean(t.systemId), {
+    message: 'exactly one of itemId / systemId must be set',
+  });
+
 const warrantyBase = z.object({
-  itemId: z.string().min(1),
+  targets: z.array(targetSchema).min(1),
   provider: z.string().min(1, 'Provider is required').max(200),
   policyNumber: z.string().max(200).optional(),
   startsOn: z.coerce.date(),
@@ -31,5 +41,6 @@ export const updateWarrantySchema = warrantyBase
     },
   );
 
+export type WarrantyTargetInput = z.infer<typeof targetSchema>;
 export type CreateWarrantyInput = z.infer<typeof createWarrantySchema>;
 export type UpdateWarrantyInput = z.infer<typeof updateWarrantySchema>;

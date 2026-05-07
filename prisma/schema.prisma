@@ -104,6 +104,7 @@ model System {
 
   items           Item[]
   serviceRecordTargets   ServiceRecordTarget[]
+  warrantyTargets        WarrantyTarget[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -141,7 +142,7 @@ model Item {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  warranties      Warranty[]
+  warrantyTargets        WarrantyTarget[]
   serviceRecordTargets   ServiceRecordTarget[]
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
@@ -174,8 +175,6 @@ model Vendor {
 
 model Warranty {
   id              String     @id @default(cuid())
-  itemId          String
-  item            Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
   provider        String
   policyNumber    String?
   startsOn        DateTime
@@ -185,11 +184,31 @@ model Warranty {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  targets         WarrantyTarget[]
   attachments     Attachment[]
 
-  @@index([itemId])
   @@index([endsOn])
   @@map("warranties")
+}
+
+model WarrantyTarget {
+  id           String     @id @default(cuid())
+  warrantyId   String
+  itemId       String?
+  systemId     String?
+
+  warranty     Warranty   @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
+  item         Item?      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  system       System?    @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  // NOTE: the underlying unique index uses NULLS NOT DISTINCT (set in the
+  // migration directly) so duplicates like (w, itemId, NULL) are rejected.
+  // Prisma 7.8 doesn't model that on @@unique, but the index is enforced at
+  // the DB level and runtime queries still see it.
+  @@unique([warrantyId, itemId, systemId])
+  @@index([itemId])
+  @@index([systemId])
+  @@map("warranty_targets")
 }
 
 model ServiceRecord {

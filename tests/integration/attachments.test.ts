@@ -51,10 +51,10 @@ describe('Attachment CHECK constraint', () => {
   it('rejects an INSERT with two FKs set', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Acme',
         startsOn: new Date(),
         endsOn: new Date(Date.now() + 86_400_000),
+        targets: { create: [{ itemId }] },
       },
     });
     await expect(

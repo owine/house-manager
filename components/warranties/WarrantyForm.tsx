@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -18,14 +18,42 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
-import { type CreateWarrantyInput, createWarrantySchema } from '@/lib/warranties/schema';
+import type { CreateWarrantyInput } from '@/lib/warranties/schema';
 
-// Use z.input so date fields stay as strings in form state (resolver coerces via z.coerce.date)
-type WarrantyFormValues = z.input<typeof createWarrantySchema>;
+// Tactical single-target form schema. Wider multi-target picker arrives in
+// Task 14; the action accepts the multi-target shape from any caller.
+const formSchema = z
+  .object({
+    itemId: z.string().min(1),
+    provider: z.string().min(1, 'Provider is required').max(200),
+    policyNumber: z.string().max(200).optional(),
+    startsOn: z.coerce.date(),
+    endsOn: z.coerce.date(),
+    coverage: z.string().max(20_000).optional(),
+    cost: z.coerce.number().nonnegative().optional(),
+  })
+  .refine((data) => data.endsOn >= data.startsOn, {
+    message: 'End date must be on or after start date',
+    path: ['endsOn'],
+  });
+
+// Use z.input so date fields stay as strings in form state
+type WarrantyFormValues = z.input<typeof formSchema>;
+
+type FormDefaults = {
+  id?: string;
+  itemId?: string;
+  provider?: string;
+  policyNumber?: string;
+  startsOn?: Date | string;
+  endsOn?: Date | string;
+  coverage?: string;
+  cost?: number;
+};
 
 type Props = {
   itemId: string;
-  defaultValues?: Partial<CreateWarrantyInput & { id: string }>;
+  defaultValues?: FormDefaults;
   action: (
     input: CreateWarrantyInput | (CreateWarrantyInput & { id: string }),
   ) => Promise<ActionResult<{ id: string }>>;
@@ -43,16 +71,15 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
   const [pending, startTransition] = useTransition();
 
   const form = useForm<WarrantyFormValues>({
-    resolver: zodResolver(createWarrantySchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
-      itemId,
-      provider: '',
-      policyNumber: '',
+      itemId: defaultValues?.itemId ?? itemId,
+      provider: defaultValues?.provider ?? '',
+      policyNumber: defaultValues?.policyNumber ?? '',
       startsOn: dateToInputString(defaultValues?.startsOn) as unknown as Date,
       endsOn: dateToInputString(defaultValues?.endsOn) as unknown as Date,
-      coverage: '',
-      cost: undefined,
-      ...defaultValues,
+      coverage: defaultValues?.coverage ?? '',
+      cost: defaultValues?.cost ?? undefined,
     },
   });
 
@@ -66,10 +93,15 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
-  const onSubmit = handleSubmit((data) => {
+  const onSubmit = handleSubmit((formData) => {
     startTransition(async () => {
-      const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
-      const result = await action(payload as unknown as CreateWarrantyInput);
+      const { itemId: formItemId, ...rest } = formData as WarrantyFormValues;
+      const payload: CreateWarrantyInput & { id?: string } = {
+        ...(rest as Omit<WarrantyFormValues, 'itemId'> as CreateWarrantyInput),
+        targets: [{ itemId: formItemId }],
+        ...(defaultValues?.id ? { id: defaultValues.id } : {}),
+      };
+      const result = await action(payload as CreateWarrantyInput & { id: string });
       if (!result.ok) {
         const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
