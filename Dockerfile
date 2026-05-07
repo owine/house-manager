@@ -9,7 +9,7 @@ WORKDIR /app
 
 # --- deps stage: install all deps (including dev) for build ---
 FROM base AS deps
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # --- build stage: compile Next.js, generate Prisma client, prune devDeps ---
@@ -87,7 +87,7 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 
 # Manifests
 COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/.npmrc ./.npmrc
+COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Re-declare GIT_SHA in this stage; placed AFTER all COPYs so only this final
 # tiny layer rebuilds per commit (the COPY layers stay cached as long as the
