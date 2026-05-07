@@ -11,8 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PNPM_VERSION: 10
-  NODE_VERSION: 24
+  # Kept in lockstep with package.json `packageManager`/`engines`, .nvmrc,
+  # and Dockerfile via Renovate (see renovate.json customManagers + the
+  # toolchain-versions packageRule).
+  # renovate: datasource=npm depName=pnpm
+  PNPM_VERSION: 10.33.4
+  # renovate: datasource=node-version depName=node
+  NODE_VERSION: 24.15.0
 
 jobs:
   # Detect whether any image-affecting paths changed. Used to gate the

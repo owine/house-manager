@@ -4,7 +4,10 @@
     "config:recommended",
     ":dependencyDashboard",
     ":semanticCommits",
-    "group:allNonMajor"
+    "group:allNonMajor",
+    "customManagers:dockerfileVersions",
+    "customManagers:githubActionsVersions",
+    "customManagers:biomeVersions"
   ],
   "timezone": "America/Chicago",
   "schedule": ["* * * * 1"],
@@ -104,6 +107,11 @@
       "description": "Pin Docker image digests in Dockerfile and GitHub Actions service images (compose is excluded via enabledManagers)",
       "matchManagers": ["dockerfile", "github-actions"],
       "pinDigests": true
+    },
+    {
+      "description": "Group every toolchain pin (Node + pnpm) so engines, packageManager, .nvmrc, ci.yml env vars, Dockerfile FROM, and Dockerfile corepack-prepared pnpm all move in lockstep",
+      "matchPackageNames": ["node", "pnpm"],
+      "groupName": "toolchain-versions"
     }
   ]
 }
