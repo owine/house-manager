@@ -43,6 +43,10 @@ export async function getSystemDetail(id: string) {
           model: true,
         },
       },
+      systemVendors: {
+        orderBy: { createdAt: 'asc' },
+        include: { vendor: { select: { id: true, name: true } } },
+      },
     },
   });
   if (!system) return null;

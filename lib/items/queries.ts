@@ -105,6 +105,24 @@ export async function listAllCategories() {
   return prisma.category.findMany({ orderBy: { sortOrder: 'asc' } });
 }
 
+/**
+ * Items not assigned to any system and not archived. Used by the
+ * "Add component" picker on the system detail page.
+ */
+export async function listOrphanItems() {
+  return prisma.item.findMany({
+    where: { systemId: null, archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      manufacturer: true,
+      model: true,
+      category: { select: { name: true, icon: true } },
+    },
+  });
+}
+
 export async function listAllItemLocations() {
   const result = await prisma.item.findMany({
     select: { location: true },

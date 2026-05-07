@@ -58,6 +58,18 @@ export async function getVendor(id: string) {
   return { ...row, serviceRecords };
 }
 
+/**
+ * Lightweight `{ id, name }[]` list of all vendors, ordered by name. Used by
+ * vendor pickers (e.g. VendorLinkEditor) where the full ListParams machinery
+ * is overkill.
+ */
+export async function listAllVendors() {
+  return prisma.vendor.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  });
+}
+
 export async function listAllVendorKinds() {
   const result = await prisma.vendor.findMany({
     select: { kind: true },

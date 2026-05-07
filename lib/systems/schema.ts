@@ -11,5 +11,10 @@ export const createSystemSchema = z.object({
 
 export const updateSystemSchema = createSystemSchema.partial();
 
+export const updateSystemWithIdSchema = createSystemSchema.partial().extend({
+  id: z.string().min(1),
+});
+
 export type SystemCreateInput = z.infer<typeof createSystemSchema>;
 export type SystemUpdateInput = z.infer<typeof updateSystemSchema>;
+export type SystemUpdateWithIdInput = z.infer<typeof updateSystemWithIdSchema>;
