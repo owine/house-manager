@@ -31,8 +31,12 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
   await expect(page.locator('h1')).toContainText('Furnace');
 
-  // Switch to the Service tab
-  await page.getByRole('link', { name: 'Service' }).click();
+  // Switch to the Service tab. Scope to the per-item tabs nav so we don't
+  // accidentally hit the global sidebar's "Service" link.
+  await page
+    .getByRole('navigation', { name: 'Item tabs' })
+    .getByRole('link', { name: 'Service' })
+    .click();
   // Click the "+ Log service" button. Base UI's Button keeps role="button" even
   // when render={<Link>} produces an <a>; query by role=button, not role=link.
   await page.getByRole('button', { name: '+ Log service' }).click();

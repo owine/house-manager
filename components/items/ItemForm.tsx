@@ -141,7 +141,19 @@ export function ItemForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Category</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value ?? ''}>
+              <Select
+                items={categories.map((cat) => ({
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <CategoryIcon name={cat.icon} />
+                      {cat.name}
+                    </span>
+                  ),
+                  value: cat.slug,
+                }))}
+                onValueChange={field.onChange}
+                value={field.value ?? ''}
+              >
                 <FormControl>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="— select category —" />
@@ -169,10 +181,24 @@ export function ItemForm({
           render={({ field }) => {
             const current = typeof field.value === 'string' ? field.value : null;
             const selectValue = current ?? NO_SYSTEM_VALUE;
+            const systemItems: Array<{ label: string; value: string; disabled?: boolean }> = [
+              { label: '(none)', value: NO_SYSTEM_VALUE },
+              ...(currentArchivedSystem
+                ? [
+                    {
+                      label: `${currentArchivedSystem.name} (archived)`,
+                      value: currentArchivedSystem.id,
+                      disabled: true,
+                    },
+                  ]
+                : []),
+              ...systems.map((s) => ({ label: s.name, value: s.id })),
+            ];
             return (
               <FormItem>
                 <FormLabel>System (optional)</FormLabel>
                 <Select
+                  items={systemItems}
                   onValueChange={(v) => field.onChange(v === NO_SYSTEM_VALUE ? null : v)}
                   value={selectValue}
                 >
@@ -182,15 +208,9 @@ export function ItemForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value={NO_SYSTEM_VALUE}>(none)</SelectItem>
-                    {currentArchivedSystem && (
-                      <SelectItem value={currentArchivedSystem.id} disabled>
-                        {currentArchivedSystem.name} (archived)
-                      </SelectItem>
-                    )}
-                    {systems.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
+                    {systemItems.map((it) => (
+                      <SelectItem key={it.value} value={it.value} disabled={it.disabled}>
+                        {it.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

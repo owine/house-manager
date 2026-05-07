@@ -127,7 +127,11 @@ export function VendorLinkEditor({
       {mode === 'existing' ? (
         <div className="space-y-1.5">
           <Label htmlFor={`${baseId}-vendor`}>Vendor</Label>
-          <Select value={currentVendorId} onValueChange={(v) => emit({ vendorId: v })}>
+          <Select
+            items={vendors.map((v) => ({ label: v.name, value: v.id }))}
+            value={currentVendorId}
+            onValueChange={(v) => emit({ vendorId: v })}
+          >
             <SelectTrigger id={`${baseId}-vendor`} className="w-full">
               <SelectValue placeholder="— select vendor —" />
             </SelectTrigger>
