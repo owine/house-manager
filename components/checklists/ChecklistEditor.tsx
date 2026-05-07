@@ -5,12 +5,14 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { SuggestChecklistItemsButton } from '@/components/ai/SuggestChecklistItemsButton';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   addChecklistItem,
   deleteChecklist,
   deleteChecklistItem,
   reorderChecklistItems,
+  toggleChecklistItem,
   updateChecklist,
 } from '@/lib/checklists/actions';
 import { ChecklistMetaForm } from './ChecklistMetaForm';
@@ -19,6 +21,7 @@ type ItemRow = {
   id: string;
   title: string;
   position: number;
+  completedAt: Date | null;
   item: { id: string; name: string } | null;
 };
 
@@ -83,6 +86,17 @@ export function ChecklistEditor({ checklist }: Props) {
     });
   }
 
+  function onToggle(itemId: string, done: boolean) {
+    startTransition(async () => {
+      const r = await toggleChecklistItem({ id: itemId, done });
+      if (!r.ok) {
+        toast.error(r.formError ?? 'Failed to update item');
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   function onDeleteChecklist() {
     startTransition(async () => {
       const r = await deleteChecklist(checklist.id);
@@ -120,8 +134,18 @@ export function ChecklistEditor({ checklist }: Props) {
           <ul className="divide-y rounded-md border">
             {orderedItems.map((row, i) => (
               <li key={row.id} className="flex items-center gap-2 p-3">
+                <Checkbox
+                  checked={row.completedAt !== null}
+                  onCheckedChange={(checked) => onToggle(row.id, checked)}
+                  disabled={pending}
+                  aria-label={`Mark "${row.title}" as ${row.completedAt ? 'not done' : 'done'}`}
+                />
                 <div className="flex-1">
-                  <p className="font-medium">{row.title}</p>
+                  <p
+                    className={`font-medium${row.completedAt ? ' text-muted-foreground line-through' : ''}`}
+                  >
+                    {row.title}
+                  </p>
                   {row.item && <p className="text-sm text-muted-foreground">→ {row.item.name}</p>}
                 </div>
                 <Button

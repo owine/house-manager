@@ -26,3 +26,8 @@ export const reorderChecklistItemsSchema = z.object({
   checklistId: z.string().min(1),
   orderedItemIds: z.array(z.string().min(1)).min(1),
 });
+
+export const toggleChecklistItemSchema = z.object({
+  id: z.string().min(1),
+  done: z.boolean(),
+});
