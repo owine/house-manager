@@ -17,11 +17,13 @@ type Props = {
 export function VendorOverflowMenu({ vendorId }: Props) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="ghost" size="icon" aria-label="Vendor actions">
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon" aria-label="Vendor actions">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        }
+      />
       <DropdownMenuContent align="end">
         <DropdownMenuItem render={<Link href={`/vendors/${vendorId}/edit`} />}>
           <PencilLine className="mr-2 h-4 w-4" />
