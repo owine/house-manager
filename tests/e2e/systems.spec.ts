@@ -272,3 +272,146 @@ test('vendor link round-trip: create, render on both sides, convert-to-freeform'
     await expect(page.getByTestId(`vendor-link-chip-link-${acmeLink.id}`)).toHaveCount(0);
   }
 });
+
+// ─── Test 4: System archive flow ────────────────────────────────────────────
+
+test('archive flow: system disappears from active, items keep systemId, restore reappears', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
+  await signIn(page);
+
+  const systemId = await createSystem(page, {
+    name: 'Archive Target System',
+    kind: 'Plumbing',
+  });
+  const itemAId = await createItem(page, {
+    name: 'Linked Item A',
+    systemName: 'Archive Target System',
+  });
+  const itemBId = await createItem(page, {
+    name: 'Linked Item B',
+    systemName: 'Archive Target System',
+  });
+
+  // Sanity: both items wired in, before archive.
+  const before = await prisma.item.findMany({
+    where: { id: { in: [itemAId, itemBId] } },
+    select: { id: true, systemId: true },
+  });
+  expect(before.every((c) => c.systemId === systemId)).toBe(true);
+
+  // Archive via the system header.
+  await page.goto(`/systems/${systemId}`);
+  await page.getByRole('button', { name: 'Archive' }).click();
+  // Header swaps to "Archived <date>" badge once the action completes.
+  await expect(page.getByText(/Archived \d{4}-\d{2}-\d{2}/)).toBeVisible();
+
+  // Active list omits the archived system.
+  await page.goto('/systems');
+  await expect(page.getByRole('link', { name: 'Archive Target System' })).toHaveCount(0);
+
+  // Items still have systemId set (per corrected spec semantics).
+  const afterArchive = await prisma.item.findMany({
+    where: { id: { in: [itemAId, itemBId] } },
+    select: { id: true, systemId: true },
+  });
+  expect(afterArchive.every((c) => c.systemId === systemId)).toBe(true);
+
+  // Archived view shows the system.
+  await page.goto('/systems?archived=true');
+  await expect(page.getByRole('link', { name: 'Archive Target System' })).toBeVisible();
+
+  // Unarchive via header (label is "Restore").
+  await page.goto(`/systems/${systemId}`);
+  await page.getByRole('button', { name: 'Restore' }).click();
+  // Wait for the archived badge to disappear.
+  await expect(page.getByText(/Archived \d{4}-\d{2}-\d{2}/)).toHaveCount(0);
+
+  // Active list includes the system again.
+  await page.goto('/systems');
+  await expect(page.getByRole('link', { name: 'Archive Target System' })).toBeVisible();
+});
+
+// ─── Test 5: Vendor delete-and-links cascade round-trip ─────────────────────
+
+test('vendor cascade delete: removes vendor + ItemVendor + SystemVendor links cleanly', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
+  await signIn(page);
+
+  // Vendor.
+  await page.goto('/vendors/new');
+  await page.getByLabel('Name').fill('Cascade Vendor Co');
+  await page.getByRole('button', { name: /Create vendor|Save/i }).click();
+  await expect(page).toHaveURL(/\/vendors\/c[a-z0-9]+$/);
+  const vendorId = page.url().match(/\/vendors\/(c[a-z0-9]+)$/)?.[1];
+  if (!vendorId) throw new Error('vendor id not found in URL');
+
+  // System (for the SystemVendor link).
+  const systemId = await createSystem(page, { name: 'Cascade System' });
+
+  // Item (for the ItemVendor link).
+  const itemId = await createItem(page, { name: 'Cascade Item' });
+
+  // ItemVendor link with role SERVICE.
+  await page.goto(`/items/${itemId}`);
+  await page.getByTestId('item-vendors-add-trigger').click();
+  await expect(page.getByTestId('vendor-link-editor')).toBeVisible();
+  await page.getByTestId('vendor-link-editor').getByLabel('Vendor', { exact: true }).click();
+  await page.getByRole('option', { name: 'Cascade Vendor Co' }).click();
+  await page.getByTestId('vendor-link-editor').getByLabel('Role').click();
+  await page.getByRole('option', { name: 'SERVICE', exact: true }).click();
+  await page.getByTestId('item-vendors-save').click();
+  await expect(page.getByTestId('vendor-link-chips').getByText('Cascade Vendor Co')).toBeVisible();
+
+  // SystemVendor link with role INSTALLER on the separate system.
+  await page.goto(`/systems/${systemId}`);
+  await page.getByTestId('system-vendors-add-trigger').click();
+  await expect(page.getByTestId('vendor-link-editor')).toBeVisible();
+  await page.getByTestId('vendor-link-editor').getByLabel('Vendor', { exact: true }).click();
+  await page.getByRole('option', { name: 'Cascade Vendor Co' }).click();
+  await page.getByTestId('vendor-link-editor').getByLabel('Role').click();
+  await page.getByRole('option', { name: 'INSTALLER', exact: true }).click();
+  await page.getByTestId('system-vendors-save').click();
+  await expect(page.getByTestId('vendor-link-chips').getByText('Cascade Vendor Co')).toBeVisible();
+
+  // Sanity: link counts before delete.
+  const itemLinksBefore = await prisma.itemVendor.count({ where: { vendorId } });
+  const systemLinksBefore = await prisma.systemVendor.count({ where: { vendorId } });
+  expect(itemLinksBefore).toBe(1);
+  expect(systemLinksBefore).toBe(1);
+
+  // Open vendor detail and trigger the cascade-delete path. Force a fresh
+  // render — the add-link actions revalidate /items and /systems paths but
+  // not /vendors/<id>, so a hard reload ensures the latest link counts are
+  // read for the dialog's hasLinks branch.
+  await page.goto(`/vendors/${vendorId}`);
+  await page.reload();
+  await page.getByTestId('delete-vendor-trigger').click();
+  const dialog = page.getByTestId('delete-vendor-has-links');
+  await expect(dialog).toBeVisible();
+  // First click arms the double-confirm.
+  await page.getByTestId('delete-vendor-cascade').click();
+  await expect(page.getByTestId('delete-vendor-confirm-cascade')).toBeVisible();
+  // Second click commits.
+  await page.getByTestId('delete-vendor-cascade').click();
+  await expect(page).toHaveURL(/\/vendors\/?$/);
+
+  // Backend: vendor row gone, both link rows gone (no orphans).
+  const vendorAfter = await prisma.vendor.findUnique({ where: { id: vendorId } });
+  expect(vendorAfter).toBeNull();
+  const itemLinksAfter = await prisma.itemVendor.count({ where: { vendorId } });
+  const systemLinksAfter = await prisma.systemVendor.count({ where: { vendorId } });
+  expect(itemLinksAfter).toBe(0);
+  expect(systemLinksAfter).toBe(0);
+
+  // No orphans left referencing the deleted vendor on either side.
+  const orphanItems = await prisma.itemVendor.findMany({ where: { itemId } });
+  const orphanSystems = await prisma.systemVendor.findMany({ where: { systemId } });
+  expect(orphanItems).toHaveLength(0);
+  expect(orphanSystems).toHaveLength(0);
+});
