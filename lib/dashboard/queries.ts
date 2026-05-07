@@ -4,6 +4,14 @@ import { listUpcomingReminders } from '@/lib/reminders/queries';
 // NOTE: "item-restored" events are deferred until an event log table exists.
 // Plan 3 reminders/notifications work may introduce one; add the 5th event type then.
 
+export type ActivityTarget = {
+  id: string;
+  itemId: string | null;
+  systemId: string | null;
+  item: { id: string; name: string } | null;
+  system: { id: string; name: string } | null;
+};
+
 export type ActivityEvent = {
   kind:
     | 'item-created'
@@ -16,6 +24,8 @@ export type ActivityEvent = {
   label: string;
   href: string;
   icon: string; // emoji
+  /** Optional targets for richer rendering (currently set for service-logged). */
+  targets?: ActivityTarget[];
 };
 
 export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
@@ -34,9 +44,13 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
         summary: true,
         createdAt: true,
         targets: {
-          where: { itemId: { not: null } },
-          select: { item: { select: { name: true } } },
-          take: 1,
+          select: {
+            id: true,
+            itemId: true,
+            systemId: true,
+            item: { select: { id: true, name: true } },
+            system: { select: { id: true, name: true } },
+          },
         },
       },
     }),
@@ -104,18 +118,14 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       href: `/items/${i.id}`,
       icon: '📦',
     })),
-    ...services.map((s) => {
-      const itemName = s.targets[0]?.item?.name;
-      return {
-        kind: 'service-logged' as const,
-        occurredAt: s.createdAt,
-        label: itemName
-          ? `Logged service for ${itemName}: ${s.summary}`
-          : `Logged service: ${s.summary}`,
-        href: `/service/${s.id}`,
-        icon: '🔧',
-      };
-    }),
+    ...services.map((s) => ({
+      kind: 'service-logged' as const,
+      occurredAt: s.createdAt,
+      label: `Logged service: ${s.summary}`,
+      href: `/service/${s.id}`,
+      icon: '🔧',
+      targets: s.targets,
+    })),
     ...notes.map((n) => ({
       kind: 'note-added' as const,
       occurredAt: n.createdAt,

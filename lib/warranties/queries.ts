@@ -2,17 +2,6 @@
 // UI components should call .toNumber() or .toString() as needed for display.
 import { prisma } from '@/lib/db';
 
-// Helper: derive a single primary `item` field from a warranty's targets so
-// that existing per-item-page rendering (one item-target per warranty after
-// backfill) keeps working tactically. Multi-target rendering is introduced in
-// a later task.
-function withDerivedItem<W extends { targets: { item: { id: string; name: string } | null }[] }>(
-  warranty: W,
-): W & { item: { id: string; name: string } | null } {
-  const itemTarget = warranty.targets.find((t) => t.item !== null);
-  return { ...warranty, item: itemTarget?.item ?? null };
-}
-
 export async function getWarranty(id: string) {
   const row = await prisma.warranty.findUnique({
     where: { id },
@@ -38,8 +27,7 @@ export async function getWarranty(id: string) {
       },
     },
   });
-  if (!row) return null;
-  return withDerivedItem(row);
+  return row;
 }
 
 export async function listWarrantiesForItem(itemId: string) {

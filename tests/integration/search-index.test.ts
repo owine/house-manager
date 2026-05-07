@@ -41,6 +41,7 @@ beforeEach(async () => {
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.note.deleteMany();
   await ctx.prisma.item.deleteMany();
+  await ctx.prisma.system.deleteMany();
   await ctx.prisma.vendor.deleteMany();
   const idx = ctx.meili.index(SEARCH_INDEX_NAME);
   await ctx.meili.tasks.waitForTask((await idx.deleteAllDocuments()).taskUid);
@@ -101,6 +102,33 @@ describe('handleSearchIndex', () => {
       .index(SEARCH_INDEX_NAME)
       .getDocument(`reminder-${reminder.id}`);
     expect((reminderDoc as { itemName: string }).itemName).toBe('NewName');
+  });
+
+  it('upsert service: multi-target record is searchable by item name and system name', async () => {
+    const system = await ctx.prisma.system.create({
+      data: { name: 'HVAC System', kind: 'HVAC' },
+    });
+    const item = await ctx.prisma.item.create({
+      data: { name: 'Heat Pump', categoryId, systemId: system.id },
+    });
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: {
+        summary: 'Annual maintenance',
+        performedOn: new Date(),
+        targets: {
+          create: [{ itemId: item.id }, { systemId: system.id }],
+        },
+      },
+    });
+    await ctx.meili.tasks.waitForTask(
+      await handleSearchIndex({ kind: 'service', id: sr.id, op: 'upsert' }),
+    );
+
+    const byItem = await ctx.meili.index(SEARCH_INDEX_NAME).search('Heat Pump');
+    expect(byItem.hits.some((h) => h.id === `service-${sr.id}`)).toBe(true);
+
+    const bySystem = await ctx.meili.index(SEARCH_INDEX_NAME).search('HVAC System');
+    expect(bySystem.hits.some((h) => h.id === `service-${sr.id}`)).toBe(true);
   });
 
   it('delete item: cascades to child docs', async () => {

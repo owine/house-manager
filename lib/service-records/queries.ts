@@ -3,10 +3,10 @@
 import { prisma } from '@/lib/db';
 import type { ListParams } from '@/lib/url-params';
 
-// Helper: derive a single primary `item` field from a record's targets so that
-// existing per-item-page rendering (one item-target per record after backfill)
-// keeps working tactically. Multi-target rendering is introduced in a later
-// task.
+// Helper: derive a single primary `item` field from a record's targets. Used
+// only by the compact list view (ServiceRecordTable), where a single primary
+// item read keeps the table layout tight. Detail pages, dashboard, and search
+// indexing now consume the full `targets` collection directly.
 function withDerivedItem<R extends { targets: { item: { id: string; name: string } | null }[] }>(
   record: R,
 ): R & { item: { id: string; name: string } | null } {
@@ -78,8 +78,7 @@ export async function getServiceRecord(id: string) {
       },
     },
   });
-  if (!row) return null;
-  return withDerivedItem(row);
+  return row;
 }
 
 /**
