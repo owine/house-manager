@@ -5,12 +5,12 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import type { TargetInput } from '@/lib/targets/schema';
 import { computeNextDueOn } from './recurrence';
 import {
   completeReminderSchema,
   createReminderSchema,
   type Recurrence,
-  type ReminderTargetInput,
   updateReminderSchema,
 } from './schema';
 
@@ -35,7 +35,7 @@ function revalidateReminderPaths(
   }
 }
 
-async function validateTargets(targets: ReminderTargetInput[]): Promise<string | null> {
+async function validateTargets(targets: TargetInput[]): Promise<string | null> {
   const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
   const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
 

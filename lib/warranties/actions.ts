@@ -3,7 +3,8 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
-import { createWarrantySchema, updateWarrantySchema, type WarrantyTargetInput } from './schema';
+import type { TargetInput } from '@/lib/targets/schema';
+import { createWarrantySchema, updateWarrantySchema } from './schema';
 
 function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -11,7 +12,7 @@ function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
-async function validateTargets(targets: WarrantyTargetInput[]): Promise<string | null> {
+async function validateTargets(targets: TargetInput[]): Promise<string | null> {
   const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
   const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
 
@@ -32,14 +33,14 @@ async function validateTargets(targets: WarrantyTargetInput[]): Promise<string |
   return null;
 }
 
-function targetsToCreateData(targets: WarrantyTargetInput[]) {
+function targetsToCreateData(targets: TargetInput[]) {
   return targets.map((t) => ({
     itemId: t.itemId ?? null,
     systemId: t.systemId ?? null,
   }));
 }
 
-function revalidateForTargets(targets: WarrantyTargetInput[]) {
+function revalidateForTargets(targets: TargetInput[]) {
   for (const t of targets) {
     if (t.itemId) revalidatePath(`/items/${t.itemId}`);
     if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
