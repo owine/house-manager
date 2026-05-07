@@ -79,23 +79,31 @@ export async function listReminders(params: ListParams) {
     ],
   };
 
-  const [rows, total] = await Promise.all([
-    prisma.reminder.findMany({
-      where,
-      // Order by the earliest target's nextDueOn — Prisma can't order by a
-      // related-table aggregate directly, so we order by the first target's
-      // nextDueOn via a relation orderBy. This is correct for single-target
-      // reminders (the dominant shape after backfill) and good-enough for
-      // multi-target until Task 15 introduces a richer list view.
-      orderBy: { createdAt: 'desc' },
-      skip: (params.page - 1) * params.pageSize,
-      take: params.pageSize,
-      include: TARGETS_INCLUDE,
-    }),
+  // Prisma can't `orderBy` an aggregate over a related table, and we want
+  // each reminder ordered by its earliest target's nextDueOn. We fetch the
+  // full filtered set with targets included (already cheap — bounded for a
+  // self-hosted single-household app) and sort + paginate in memory.
+  // Inactive reminders (no upcoming due date) and any reminders that
+  // somehow have no targets sort last.
+  const [allRows, total] = await Promise.all([
+    prisma.reminder.findMany({ where, include: TARGETS_INCLUDE }),
     prisma.reminder.count({ where }),
   ]);
 
-  return { reminders: rows.map(withDerived), total };
+  const derived = allRows.map(withDerived);
+  const FAR_FUTURE = Number.POSITIVE_INFINITY;
+  derived.sort((a, b) => {
+    const aDue = a.nextDueOn?.getTime() ?? FAR_FUTURE;
+    const bDue = b.nextDueOn?.getTime() ?? FAR_FUTURE;
+    if (aDue !== bDue) return aDue - bDue;
+    // Stable secondary order so reminders with same/no due dates have a
+    // predictable ordering across requests.
+    return a.title.localeCompare(b.title);
+  });
+
+  const start = (params.page - 1) * params.pageSize;
+  const reminders = derived.slice(start, start + params.pageSize);
+  return { reminders, total };
 }
 
 export async function listRemindersForItem(itemId: string) {

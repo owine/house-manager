@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
+let queries: typeof import('@/lib/reminders/queries');
+
 let ctx: IntegrationContext;
 let categoryId: string;
 let itemId: string;
@@ -8,6 +10,7 @@ let userId: string;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
+  queries = await import('@/lib/reminders/queries');
   const cat = await ctx.prisma.category.upsert({
     where: { slug: 'hvac' },
     create: { slug: 'hvac', name: 'HVAC', sortOrder: 20 },
@@ -167,5 +170,55 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
     await ctx.prisma.serviceRecord.delete({ where: { id: sr.id } });
     const reread = await ctx.prisma.reminderCompletion.findUnique({ where: { id: c.id } });
     expect(reread?.createdServiceRecordId).toBeNull();
+  });
+});
+
+describe('listReminders ordering', () => {
+  it('orders by earliest target nextDueOn across all targets, ascending', async () => {
+    const itemB = await ctx.prisma.item.create({ data: { name: 'B', categoryId } });
+    const itemC = await ctx.prisma.item.create({ data: { name: 'C', categoryId } });
+
+    // Created in reverse-due order to prove we sort by due-date, not createdAt.
+    // "Late" reminder: only target due 2027-12-01.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Late',
+        recurrence: { kind: 'interval', days: 365 },
+        notifyUserIds: [userId],
+        targets: { create: [{ itemId, nextDueOn: new Date('2027-12-01') }] },
+      },
+    });
+
+    // "Middle" reminder: two targets — earliest is 2027-03-01.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Middle',
+        recurrence: { kind: 'interval', days: 90 },
+        notifyUserIds: [userId],
+        targets: {
+          create: [
+            { itemId, nextDueOn: new Date('2027-09-01') },
+            { itemId: itemB.id, nextDueOn: new Date('2027-03-01') },
+          ],
+        },
+      },
+    });
+
+    // "Early" reminder: single target due 2026-06-01 — should come first.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Early',
+        recurrence: { kind: 'interval', days: 30 },
+        notifyUserIds: [userId],
+        targets: { create: [{ itemId: itemC.id, nextDueOn: new Date('2026-06-01') }] },
+      },
+    });
+
+    const { reminders } = await queries.listReminders({
+      page: 1,
+      pageSize: 20,
+      filters: {},
+    });
+    expect(reminders.map((r) => r.title)).toEqual(['Early', 'Middle', 'Late']);
   });
 });
