@@ -1,12 +1,16 @@
 'use client';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import type { z } from 'zod';
-import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
+import { z } from 'zod';
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
+import {
+  type AvailableItem,
+  type AvailableSystem,
+  TargetsPicker,
+} from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -20,29 +24,55 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
-import {
-  type CreateServiceRecordInput,
-  createServiceRecordSchema,
-} from '@/lib/service-records/schema';
+import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
+import type { TargetInput } from '@/lib/targets/schema';
 
-// Use z.input so performedOn stays as string in form state (resolver coerces via z.coerce.date)
-type ServiceRecordFormValues = z.input<typeof createServiceRecordSchema>;
+const formSchema = z.object({
+  vendorId: z.string().min(1).optional(),
+  performedOn: z.coerce.date(),
+  cost: z.coerce.number().nonnegative().optional(),
+  summary: z.string().min(1, 'Summary is required').max(200),
+  notes: z.string().max(20_000).optional(),
+});
+
+type ServiceRecordFormValues = z.input<typeof formSchema>;
+
+type FormDefaults = {
+  id?: string;
+  vendorId?: string;
+  performedOn?: Date | string;
+  cost?: number;
+  summary?: string;
+  notes?: string;
+};
 
 type Props = {
-  items: { id: string; name: string }[];
   vendors: { id: string; name: string }[];
-  defaultValues?: Partial<CreateServiceRecordInput & { id: string }>;
+  availableItems: AvailableItem[];
+  availableSystems: AvailableSystem[];
+  /** Pre-seeded targets used both for "create from item/system page" and edit. */
+  initialTargets?: TargetInput[];
+  defaultValues?: FormDefaults;
   action: (
     input: CreateServiceRecordInput | (CreateServiceRecordInput & { id: string }),
   ) => Promise<ActionResult<{ id: string }>>;
   submitLabel: string;
 };
 
-export function ServiceRecordForm({ items, vendors, defaultValues, action, submitLabel }: Props) {
+export function ServiceRecordForm({
+  vendors,
+  availableItems,
+  availableSystems,
+  initialTargets,
+  defaultValues,
+  action,
+  submitLabel,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
+  const [targetsError, setTargetsError] = useState<string | null>(null);
 
-  // Derive the string representation of performedOn for the date input
   const performedOnDefault = defaultValues?.performedOn
     ? defaultValues.performedOn instanceof Date
       ? defaultValues.performedOn.toISOString().slice(0, 10)
@@ -50,14 +80,12 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
     : ('' as unknown as Date);
 
   const form = useForm<ServiceRecordFormValues>({
-    resolver: zodResolver(createServiceRecordSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
-      itemId: undefined,
-      vendorId: undefined,
-      cost: undefined,
-      summary: '',
-      notes: '',
-      ...defaultValues,
+      vendorId: defaultValues?.vendorId ?? undefined,
+      cost: defaultValues?.cost ?? undefined,
+      summary: defaultValues?.summary ?? '',
+      notes: defaultValues?.notes ?? '',
       performedOn: performedOnDefault,
     },
   });
@@ -71,10 +99,19 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
-  const onSubmit = handleSubmit((data) => {
+  const onSubmit = handleSubmit((formData) => {
+    if (targets.length === 0) {
+      setTargetsError('Select at least one item or system');
+      return;
+    }
+    setTargetsError(null);
     startTransition(async () => {
-      const payload = defaultValues?.id ? { ...data, id: defaultValues.id } : data;
-      const result = await action(payload as unknown as CreateServiceRecordInput);
+      const payload: CreateServiceRecordInput & { id?: string } = {
+        ...(formData as CreateServiceRecordInput),
+        targets,
+        ...(defaultValues?.id ? { id: defaultValues.id } : {}),
+      };
+      const result = await action(payload as CreateServiceRecordInput & { id: string });
       if (!result.ok) {
         const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
@@ -87,6 +124,11 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
     });
   });
 
+  const handleTargetsChange = (next: TargetInput[]) => {
+    setTargets(next);
+    if (next.length > 0 && targetsError) setTargetsError(null);
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={onSubmit} className="space-y-6">
@@ -96,22 +138,21 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
           </p>
         )}
 
-        {/* Item autocomplete */}
-        <FormField
-          control={control}
-          name="itemId"
-          render={() => (
-            <FormItem>
-              <FormLabel>Item (optional)</FormLabel>
-              <FormControl>
-                <ItemAutocomplete name="itemId" label="" options={items} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <FormItem>
+          <FormLabel>Targets</FormLabel>
+          <TargetsPicker
+            value={targets}
+            onChange={handleTargetsChange}
+            availableItems={availableItems}
+            availableSystems={availableSystems}
+          />
+          {targetsError && (
+            <p className="text-sm text-destructive" role="alert">
+              {targetsError}
+            </p>
           )}
-        />
+        </FormItem>
 
-        {/* Vendor autocomplete */}
         <FormField
           control={control}
           name="vendorId"

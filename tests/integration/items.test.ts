@@ -44,28 +44,40 @@ describe('Item CRUD', () => {
     expect(read?.archivedAt).toBeInstanceOf(Date);
   });
 
-  it('cascade-deletes Warranty when Item is hard-deleted', async () => {
+  it('Cascades WarrantyTarget rows when Item is hard-deleted; warranty itself remains', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId: item.id,
         provider: 'Acme',
         startsOn: new Date(),
         endsOn: new Date(),
+        targets: { create: [{ itemId: item.id }] },
       },
     });
     await ctx.prisma.item.delete({ where: { id: item.id } });
-    const orphan = await ctx.prisma.warranty.findUnique({ where: { id: w.id } });
-    expect(orphan).toBeNull();
+    const read = await ctx.prisma.warranty.findUnique({
+      where: { id: w.id },
+      include: { targets: true },
+    });
+    expect(read).not.toBeNull();
+    expect(read?.targets).toHaveLength(0);
   });
 
-  it('SetNulls ServiceRecord.itemId when Item is hard-deleted', async () => {
+  it('Cascades ServiceRecordTarget rows when Item is hard-deleted; record itself remains', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId: item.id, performedOn: new Date(), summary: 'x' },
+      data: {
+        performedOn: new Date(),
+        summary: 'x',
+        targets: { create: [{ itemId: item.id }] },
+      },
     });
     await ctx.prisma.item.delete({ where: { id: item.id } });
-    const read = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });
-    expect(read?.itemId).toBeNull();
+    const read = await ctx.prisma.serviceRecord.findUnique({
+      where: { id: sr.id },
+      include: { targets: true },
+    });
+    expect(read).not.toBeNull();
+    expect(read?.targets).toHaveLength(0);
   });
 });

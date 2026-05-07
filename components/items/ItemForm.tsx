@@ -33,8 +33,18 @@ import type { ActionResult } from '@/lib/result';
 // Use z.input so purchaseDate stays as string in form state (resolver coerces via z.coerce.date)
 type ItemFormValues = z.input<typeof createItemSchema>;
 
+export type SystemOption = { id: string; name: string };
+
 type Props = {
   categories: Category[];
+  systems?: SystemOption[];
+  /**
+   * If the item being edited is currently assigned to an archived system,
+   * pass that system's `{ id, name }` here. It will be rendered as a disabled,
+   * pre-selected option so the user can keep or unset it without re-selecting
+   * an archived target.
+   */
+  currentArchivedSystem?: SystemOption | null;
   defaultValues?: Partial<CreateItemInput & { id: string }>;
   action: (
     input: CreateItemInput | (CreateItemInput & { id: string }),
@@ -42,7 +52,16 @@ type Props = {
   submitLabel: string;
 };
 
-export function ItemForm({ categories, defaultValues, action, submitLabel }: Props) {
+const NO_SYSTEM_VALUE = '__none__';
+
+export function ItemForm({
+  categories,
+  systems = [],
+  currentArchivedSystem = null,
+  defaultValues,
+  action,
+  submitLabel,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -142,6 +161,44 @@ export function ItemForm({ categories, defaultValues, action, submitLabel }: Pro
               <FormMessage />
             </FormItem>
           )}
+        />
+
+        <FormField
+          control={form.control}
+          name="systemId"
+          render={({ field }) => {
+            const current = typeof field.value === 'string' ? field.value : null;
+            const selectValue = current ?? NO_SYSTEM_VALUE;
+            return (
+              <FormItem>
+                <FormLabel>System (optional)</FormLabel>
+                <Select
+                  onValueChange={(v) => field.onChange(v === NO_SYSTEM_VALUE ? null : v)}
+                  value={selectValue}
+                >
+                  <FormControl>
+                    <SelectTrigger className="w-full" data-testid="item-form-system-trigger">
+                      <SelectValue placeholder="(none)" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={NO_SYSTEM_VALUE}>(none)</SelectItem>
+                    {currentArchivedSystem && (
+                      <SelectItem value={currentArchivedSystem.id} disabled>
+                        {currentArchivedSystem.name} (archived)
+                      </SelectItem>
+                    )}
+                    {systems.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            );
+          }}
         />
 
         <FormField

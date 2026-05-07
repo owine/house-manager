@@ -37,10 +37,10 @@ export function NoteOverflowMenu({ noteId }: Props) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="ghost" size="icon" aria-label="Note actions" disabled={pending}>
-          <MoreVertical className="h-4 w-4" />
-        </Button>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon" aria-label="Note actions" disabled={pending} />}
+      >
+        <MoreVertical className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem render={<Link href={`/notes/${noteId}/edit`} />}>

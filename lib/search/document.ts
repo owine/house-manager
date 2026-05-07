@@ -35,7 +35,14 @@ export type ServiceRow = {
   id: string;
   summary: string;
   notes: string | null;
+  /** Primary item-target, used as the `itemId` filter facet anchor. */
   item: { id: string; name: string } | null;
+  /**
+   * All target names (item + system) concatenated into the searchable
+   * `itemName` field so multi-target records are findable by any name.
+   * When omitted, falls back to `item?.name` for compatibility.
+   */
+  targetNames?: string[];
   updatedAt: Date;
 };
 
@@ -148,6 +155,8 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
     }
     case 'service': {
       const r = row as ServiceRow;
+      const itemName =
+        r.targetNames && r.targetNames.length > 0 ? r.targetNames.join(' ') : (r.item?.name ?? '');
       return {
         id: `service-${r.id}`,
         kind: 'service',
@@ -155,7 +164,7 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
         title: r.summary,
         body: r.notes ?? '',
         tags: [],
-        itemName: r.item?.name ?? '',
+        itemName,
         itemId: r.item?.id ?? null,
         categorySlug: null,
         href: `/service/${r.id}`,
@@ -272,10 +281,33 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           summary: true,
           notes: true,
           updatedAt: true,
-          item: { select: { id: true, name: true } },
+          targets: {
+            select: {
+              item: { select: { id: true, name: true } },
+              system: { select: { id: true, name: true } },
+            },
+          },
         },
       });
-      return row ? toDocument('service', row) : null;
+      if (!row) return null;
+      // Aggregate every target's name into `itemName` so multi-target records
+      // are findable by any of them. The first item-target supplies the
+      // `itemId` filter facet (preserves item-scoped search filtering).
+      const names: string[] = [];
+      let firstItem: { id: string; name: string } | null = null;
+      for (const t of row.targets) {
+        if (t.item) {
+          if (!firstItem) firstItem = t.item;
+          names.push(t.item.name);
+        }
+        if (t.system) names.push(t.system.name);
+      }
+      const { targets: _targets, ...rest } = row;
+      return toDocument('service', {
+        ...rest,
+        item: firstItem,
+        targetNames: names,
+      });
     }
     case 'reminder': {
       const row = await prisma.reminder.findUnique({
@@ -285,10 +317,15 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           title: true,
           description: true,
           updatedAt: true,
-          item: { select: { id: true, name: true } },
+          targets: {
+            select: { item: { select: { id: true, name: true } } },
+          },
         },
       });
-      return row ? toDocument('reminder', row) : null;
+      if (!row) return null;
+      const item = row.targets.find((t) => t.item !== null)?.item ?? null;
+      const { targets: _targets, ...rest } = row;
+      return toDocument('reminder', { ...rest, item });
     }
     case 'attachment': {
       const row = await prisma.attachment.findUnique({
@@ -330,8 +367,14 @@ export async function listChildIdsForItem(
 ): Promise<{ kind: SearchKind; id: string }[]> {
   const [notes, services, reminders, attachments] = await Promise.all([
     prisma.note.findMany({ where: { itemId }, select: { id: true } }),
-    prisma.serviceRecord.findMany({ where: { itemId }, select: { id: true } }),
-    prisma.reminder.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.serviceRecord.findMany({
+      where: { targets: { some: { itemId } } },
+      select: { id: true },
+    }),
+    prisma.reminder.findMany({
+      where: { targets: { some: { itemId } } },
+      select: { id: true },
+    }),
     prisma.attachment.findMany({ where: { itemId }, select: { id: true } }),
   ]);
   return [

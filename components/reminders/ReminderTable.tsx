@@ -12,7 +12,7 @@ import { ReminderStatusBadge } from './ReminderStatusBadge';
 type Row = {
   id: string;
   title: string;
-  nextDueOn: Date;
+  nextDueOn: Date | null;
   active: boolean;
   item: { id: string; name: string } | null;
 };
@@ -45,9 +45,13 @@ export function ReminderTable({ reminders }: { reminders: Row[] }) {
                 <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
-            <TableCell>{r.nextDueOn.toISOString().slice(0, 10)}</TableCell>
+            <TableCell>{r.nextDueOn ? r.nextDueOn.toISOString().slice(0, 10) : '—'}</TableCell>
             <TableCell>
-              <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
+              {r.nextDueOn ? (
+                <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
             </TableCell>
           </TableRow>
         ))}

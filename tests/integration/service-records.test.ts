@@ -36,61 +36,66 @@ beforeEach(async () => {
 });
 
 describe('ServiceRecord CRUD', () => {
-  it('creates a record with both itemId and vendorId', async () => {
+  it('creates a record with both item-target and vendorId', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        itemId,
         vendorId,
         performedOn: new Date('2024-03-15'),
         cost: 249.99,
         summary: 'Annual furnace tune-up',
         notes: 'Replaced filter, checked burners.',
+        targets: { create: [{ itemId }] },
       },
+      include: { targets: true },
     });
 
     expect(sr.id).toBeTruthy();
-    expect(sr.itemId).toBe(itemId);
+    expect(sr.targets).toHaveLength(1);
+    expect(sr.targets[0].itemId).toBe(itemId);
     expect(sr.vendorId).toBe(vendorId);
     expect(sr.summary).toBe('Annual furnace tune-up');
     expect(sr.cost?.toNumber()).toBe(249.99);
   });
 
-  it('creates a record with only itemId (no vendor)', async () => {
+  it('creates a record with only item-target (no vendor)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        itemId,
         performedOn: new Date('2024-04-01'),
         summary: 'Self-performed filter replacement',
+        targets: { create: [{ itemId }] },
       },
+      include: { targets: true },
     });
 
-    expect(sr.itemId).toBe(itemId);
+    expect(sr.targets[0].itemId).toBe(itemId);
     expect(sr.vendorId).toBeNull();
   });
 
-  it('creates a record with only vendorId (no item)', async () => {
+  it('creates a record with only vendorId (no targets)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
         vendorId,
         performedOn: new Date('2024-04-10'),
         summary: 'General vendor visit',
       },
+      include: { targets: true },
     });
 
     expect(sr.vendorId).toBe(vendorId);
-    expect(sr.itemId).toBeNull();
+    expect(sr.targets).toHaveLength(0);
   });
 
-  it('creates a record with neither itemId nor vendorId (both nullable)', async () => {
+  it('creates a record with neither target nor vendor (both nullable)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
         performedOn: new Date('2024-05-01'),
         summary: 'Unlinked general maintenance',
       },
+      include: { targets: true },
     });
 
     expect(sr.id).toBeTruthy();
-    expect(sr.itemId).toBeNull();
+    expect(sr.targets).toHaveLength(0);
     expect(sr.vendorId).toBeNull();
     expect(sr.summary).toBe('Unlinked general maintenance');
   });
@@ -98,10 +103,10 @@ describe('ServiceRecord CRUD', () => {
   it('updates summary and cost; re-reads and confirms', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        itemId,
         performedOn: new Date('2024-06-01'),
         summary: 'Original summary',
         cost: 100,
+        targets: { create: [{ itemId }] },
       },
     });
 
@@ -149,36 +154,48 @@ describe('ServiceRecord CRUD', () => {
 });
 
 describe('ServiceRecord Prisma filters', () => {
-  it('filters by itemId and returns only matching records', async () => {
+  it('filters by item-target and returns only matching records', async () => {
     const otherItem = await ctx.prisma.item.create({
       data: { name: 'Water Heater', categoryId },
     });
 
-    await ctx.prisma.serviceRecord.createMany({
-      data: [
-        { itemId, performedOn: new Date('2024-01-01'), summary: 'Furnace service 1' },
-        { itemId, performedOn: new Date('2024-02-01'), summary: 'Furnace service 2' },
-        {
-          itemId: otherItem.id,
-          performedOn: new Date('2024-03-01'),
-          summary: 'Water heater service',
-        },
-      ],
+    await ctx.prisma.serviceRecord.create({
+      data: {
+        performedOn: new Date('2024-01-01'),
+        summary: 'Furnace service 1',
+        targets: { create: [{ itemId }] },
+      },
+    });
+    await ctx.prisma.serviceRecord.create({
+      data: {
+        performedOn: new Date('2024-02-01'),
+        summary: 'Furnace service 2',
+        targets: { create: [{ itemId }] },
+      },
+    });
+    await ctx.prisma.serviceRecord.create({
+      data: {
+        performedOn: new Date('2024-03-01'),
+        summary: 'Water heater service',
+        targets: { create: [{ itemId: otherItem.id }] },
+      },
     });
 
     const records = await ctx.prisma.serviceRecord.findMany({
-      where: { itemId },
+      where: { targets: { some: { itemId } } },
       include: {
-        item: { select: { id: true, name: true } },
+        targets: { include: { item: { select: { id: true, name: true } } } },
         vendor: { select: { id: true, name: true } },
       },
     });
-    const total = await ctx.prisma.serviceRecord.count({ where: { itemId } });
+    const total = await ctx.prisma.serviceRecord.count({
+      where: { targets: { some: { itemId } } },
+    });
 
     expect(total).toBe(2);
     expect(records).toHaveLength(2);
     for (const r of records) {
-      expect(r.itemId).toBe(itemId);
+      expect(r.targets.some((t) => t.itemId === itemId)).toBe(true);
     }
 
     await ctx.prisma.item.delete({ where: { id: otherItem.id } });
@@ -203,7 +220,7 @@ describe('ServiceRecord Prisma filters', () => {
     const records = await ctx.prisma.serviceRecord.findMany({
       where: { vendorId },
       include: {
-        item: { select: { id: true, name: true } },
+        targets: { include: { item: { select: { id: true, name: true } } } },
         vendor: { select: { id: true, name: true } },
       },
     });
@@ -270,24 +287,24 @@ describe('ServiceRecord Prisma filters', () => {
     expect(records[2].summary).toBe('Oldest');
   });
 
-  it('includes item and vendor relations on list results', async () => {
+  it('includes target item and vendor relations on list results', async () => {
     await ctx.prisma.serviceRecord.create({
       data: {
-        itemId,
         vendorId,
         performedOn: new Date('2024-05-01'),
         summary: 'Full service',
+        targets: { create: [{ itemId }] },
       },
     });
 
     const records = await ctx.prisma.serviceRecord.findMany({
       include: {
-        item: { select: { id: true, name: true } },
+        targets: { include: { item: { select: { id: true, name: true } } } },
         vendor: { select: { id: true, name: true } },
       },
     });
 
-    expect(records[0].item).toEqual({ id: itemId, name: 'Furnace' });
+    expect(records[0].targets[0].item).toEqual({ id: itemId, name: 'Furnace' });
     expect(records[0].vendor).toEqual({ id: vendorId, name: 'HVAC Pro Services' });
   });
 });

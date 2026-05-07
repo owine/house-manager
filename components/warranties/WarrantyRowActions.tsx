@@ -35,10 +35,12 @@ export function WarrantyRowActions({ warrantyId }: Props) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="ghost" size="icon-sm" aria-label="Warranty actions" disabled={pending}>
-          <MoreVertical className="h-4 w-4" />
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label="Warranty actions" disabled={pending} />
+        }
+      >
+        <MoreVertical className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem variant="destructive" onClick={onDelete}>

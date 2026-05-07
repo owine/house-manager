@@ -3,6 +3,8 @@ import { type IntegrationContext, setupIntegration, teardownIntegration } from '
 
 let ctx: IntegrationContext;
 let userId: string;
+let itemId: string;
+let categoryId: string;
 let handleRemindersTick: (deps: {
   enqueue: (job: {
     reminderId: string;
@@ -25,6 +27,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await ctx.prisma.notificationLog.deleteMany();
   await ctx.prisma.reminder.deleteMany();
+  await ctx.prisma.item.deleteMany();
   await ctx.prisma.session.deleteMany();
   await ctx.prisma.account.deleteMany();
   await ctx.prisma.user.deleteMany();
@@ -37,6 +40,14 @@ beforeEach(async () => {
     },
   });
   userId = 'u1';
+  const cat = await ctx.prisma.category.upsert({
+    where: { slug: 'tick-test' },
+    create: { slug: 'tick-test', name: 'Tick test', sortOrder: 99 },
+    update: {},
+  });
+  categoryId = cat.id;
+  const item = await ctx.prisma.item.create({ data: { name: 'Furnace', categoryId } });
+  itemId = item.id;
 });
 
 describe('handleRemindersTick', () => {
@@ -45,9 +56,9 @@ describe('handleRemindersTick', () => {
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         leadTimeDays: 0,
         notifyUserIds: [userId],
+        targets: { create: [{ nextDueOn: new Date(), itemId }] },
       },
     });
     const enqueued: unknown[] = [];
@@ -61,16 +72,17 @@ describe('handleRemindersTick', () => {
   });
 
   it('skips reminders already logged for the cycle', async () => {
+    const dueOn = new Date();
     const reminder = await ctx.prisma.reminder.create({
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         leadTimeDays: 0,
         notifyUserIds: [userId],
+        targets: { create: [{ nextDueOn: dueOn, itemId }] },
       },
     });
-    const cycle = `reminder-${reminder.id}-${reminder.nextDueOn.toISOString().slice(0, 10)}`;
+    const cycle = `reminder-${reminder.id}-${dueOn.toISOString().slice(0, 10)}`;
     await ctx.prisma.notificationLog.create({
       data: { reminderId: reminder.id, userId, channel: 'push', cycle, status: 'sent' },
     });
@@ -91,9 +103,9 @@ describe('handleRemindersTick', () => {
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(),
         notifyUserIds: [userId],
         active: false,
+        targets: { create: [{ nextDueOn: new Date(), itemId }] },
       },
     });
     const r = await handleRemindersTick({ enqueue: async () => {} });
@@ -105,9 +117,11 @@ describe('handleRemindersTick', () => {
       data: {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
-        nextDueOn: new Date(Date.now() + 10 * 86_400_000),
         leadTimeDays: 3,
         notifyUserIds: [userId],
+        targets: {
+          create: [{ nextDueOn: new Date(Date.now() + 10 * 86_400_000), itemId }],
+        },
       },
     });
     const r = await handleRemindersTick({ enqueue: async () => {} });

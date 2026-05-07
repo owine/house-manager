@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
+import { MarkCompleteButton } from '@/components/reminders/MarkCompleteButton';
+import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteDialog';
 import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMenu';
 import { ReminderStatusBadge } from '@/components/reminders/ReminderStatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,15 +27,16 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   if (!r) notFound();
 
   const recurrence = r.recurrence as unknown as Recurrence;
-  const upcoming = previewOccurrences(recurrence, r.nextDueOn, 4);
-  const occurrences = [r.nextDueOn, ...upcoming];
+  const occurrences = r.nextDueOn
+    ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title={r.title} actions={<ReminderOverflowMenu reminderId={r.id} />} />
 
       <div className="mb-4 flex items-center gap-3 text-sm">
-        <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
+        {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
         {r.item && (
           <span className="text-muted-foreground">
             for{' '}
@@ -85,11 +88,23 @@ export default async function ReminderDetailPage({ params }: { params: Params })
       </div>
 
       <div className="mt-6">
-        <CompleteReminderForm
-          reminderId={r.id}
-          autoCreateServiceRecord={r.autoCreateServiceRecord}
-          hasItem={r.itemId != null}
-        />
+        {r.targets.length >= 2 ? (
+          <MarkCompleteButton
+            reminderId={r.id}
+            reminderTitle={r.title}
+            targets={r.targets.map<ReminderTargetSummary>((t) => ({
+              id: t.id,
+              label: t.item?.name ?? t.system?.name ?? '(unnamed target)',
+              kind: t.systemId ? 'system' : 'item',
+            }))}
+          />
+        ) : (
+          <CompleteReminderForm
+            reminderId={r.id}
+            autoCreateServiceRecord={r.autoCreateServiceRecord}
+            hasItem={r.itemId != null}
+          />
+        )}
       </div>
     </div>
   );

@@ -32,16 +32,85 @@ export async function listVendors(params: ListParams) {
 }
 
 export async function getVendor(id: string) {
-  return prisma.vendor.findUnique({
+  const row = await prisma.vendor.findUnique({
     where: { id },
     include: {
       serviceRecords: {
         orderBy: { performedOn: 'desc' },
-        include: { item: { select: { id: true, name: true } } },
+        include: {
+          targets: {
+            where: { itemId: { not: null } },
+            include: { item: { select: { id: true, name: true } } },
+            take: 1,
+          },
+        },
         take: 50,
       },
     },
   });
+  if (!row) return null;
+  // Surface a single derived `item` per record for backward compatibility with
+  // the vendor detail page; multi-target rendering arrives in a later task.
+  const serviceRecords = row.serviceRecords.map((r) => {
+    const { targets, ...rest } = r;
+    return { ...rest, item: targets[0]?.item ?? null };
+  });
+  return { ...row, serviceRecords };
+}
+
+/**
+ * Lightweight `{ id, name }[]` list of all vendors, ordered by name. Used by
+ * vendor pickers (e.g. VendorLinkEditor) where the full ListParams machinery
+ * is overkill.
+ */
+export async function listAllVendors() {
+  return prisma.vendor.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  });
+}
+
+/**
+ * Vendor detail data for the "linked items" / "linked systems" sections plus
+ * the mediated-delete dialog. Returns the vendor row, plus link rows for
+ * every ItemVendor / SystemVendor that references this vendor (orphan rows
+ * that only have `freeformName` are not included — they aren't linked to this
+ * vendor in the FK sense).
+ */
+export async function getVendorWithLinks(id: string) {
+  const vendor = await prisma.vendor.findUnique({ where: { id } });
+  if (!vendor) return null;
+
+  const [itemLinks, systemLinks] = await Promise.all([
+    prisma.itemVendor.findMany({
+      where: { vendorId: id },
+      select: {
+        id: true,
+        itemId: true,
+        vendorId: true,
+        freeformName: true,
+        role: true,
+        notes: true,
+        item: { select: { id: true, name: true } },
+      },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.systemVendor.findMany({
+      where: { vendorId: id },
+      select: {
+        id: true,
+        systemId: true,
+        vendorId: true,
+        freeformName: true,
+        role: true,
+        notes: true,
+        system: { select: { id: true, name: true } },
+      },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+    }),
+  ]);
+
+  return { vendor, itemLinks, systemLinks };
 }
 
 export async function listAllVendorKinds() {

@@ -25,7 +25,6 @@ beforeEach(async () => {
       id: 'sweep-r1',
       title: 'Filter',
       recurrence: { kind: 'interval', days: 90 },
-      nextDueOn: new Date('2026-06-30'),
       notifyUserIds: ['sweep-u1'],
     },
   });

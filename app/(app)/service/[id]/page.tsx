@@ -5,6 +5,7 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { AttachmentList } from '@/components/attachments/AttachmentList';
 import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { ServiceRecordOverflowMenu } from '@/components/service-records/ServiceRecordOverflowMenu';
+import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
 import { Markdown } from '@/lib/markdown';
 import { getServiceRecord } from '@/lib/service-records/queries';
@@ -41,16 +42,10 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
             <dt className="font-semibold">Performed on</dt>
             <dd>{record.performedOn.toISOString().slice(0, 10)}</dd>
 
-            {record.item && (
-              <>
-                <dt className="font-semibold">Item</dt>
-                <dd>
-                  <Link href={`/items/${record.item.id}`} className="underline underline-offset-2">
-                    {record.item.name}
-                  </Link>
-                </dd>
-              </>
-            )}
+            <dt className="font-semibold">Targets</dt>
+            <dd>
+              <TargetsChips targets={record.targets} />
+            </dd>
 
             {record.vendor && (
               <>

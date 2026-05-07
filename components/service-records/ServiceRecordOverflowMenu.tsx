@@ -37,10 +37,17 @@ export function ServiceRecordOverflowMenu({ recordId }: Props) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="ghost" size="icon" aria-label="Service record actions" disabled={pending}>
-          <MoreVertical className="h-4 w-4" />
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Service record actions"
+            disabled={pending}
+          />
+        }
+      >
+        <MoreVertical className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem render={<Link href={`/service/${recordId}/edit`} />}>

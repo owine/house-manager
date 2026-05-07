@@ -75,8 +75,10 @@ describe('saveAcceptedReminders', () => {
   });
 
   it('inserts reminders + updates acceptedItemIds in one transaction', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Furnace', categoryId } });
     const result = await actionsR.saveAcceptedReminders({
       logId,
+      itemId: item.id,
       accepted: [
         {
           title: 'Replace filter',
@@ -124,13 +126,35 @@ describe('saveAcceptedReminders', () => {
     if (!result.ok) throw new Error();
     const r = await ctx.prisma.reminder.findUniqueOrThrow({
       where: { id: result.data.savedIds[0] },
+      include: { targets: true },
     });
-    expect(r.itemId).toBe(item.id);
+    expect(r.targets).toHaveLength(1);
+    expect(r.targets[0].itemId).toBe(item.id);
   });
 
   it('rejects empty accepted list', async () => {
     const result = await actionsR.saveAcceptedReminders({ logId, accepted: [] });
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects when no itemId is provided (would create target-less reminder)', async () => {
+    const result = await actionsR.saveAcceptedReminders({
+      logId,
+      accepted: [
+        {
+          title: 'Orphan reminder',
+          recurrence: { kind: 'interval', days: 30 },
+          leadTimeDays: 3,
+          rationale: 'r',
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error();
+    expect(result.formError).toMatch(/attached to an item/i);
+    // and no reminder rows leaked through
+    const count = await ctx.prisma.reminder.count();
+    expect(count).toBe(0);
   });
 });
 

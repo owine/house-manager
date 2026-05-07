@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,24 @@ export function ItemHeader({ item, actions }: Props) {
             </Badge>
           )}
         </div>
+        {item.system ? (
+          <div className="text-sm text-muted-foreground" data-testid="item-header-system">
+            System:{' '}
+            <Link
+              href={`/systems/${item.system.id}`}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              {item.system.name}
+            </Link>
+            {item.system.archivedAt ? <span className="ml-1">(archived)</span> : null}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground" data-testid="item-header-system-empty">
+            <Link href={`/items/${item.id}/edit`} className="underline-offset-2 hover:underline">
+              Assign to system
+            </Link>
+          </div>
+        )}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </header>

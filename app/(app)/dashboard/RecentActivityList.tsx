@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ActivityEvent } from '@/lib/dashboard/queries';
 
@@ -32,20 +33,30 @@ export function RecentActivityList({ activity }: Props) {
           </p>
         ) : (
           <ul className="space-y-1">
-            {activity.map((event) => (
-              <li
-                key={`${event.kind}-${event.href}`}
-                className="flex items-baseline gap-2 border-b py-2 text-sm last:border-b-0"
-              >
-                <span className="shrink-0">{event.icon}</span>
-                <Link href={event.href} className="min-w-0 flex-1 truncate">
-                  {event.label}
-                </Link>
-                <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                  {relativeTime(event.occurredAt)}
-                </span>
-              </li>
-            ))}
+            {activity.map((event) => {
+              const hasTargets = event.targets && event.targets.length > 0;
+              return (
+                <li
+                  key={`${event.kind}-${event.href}`}
+                  className="flex items-baseline gap-2 border-b py-2 text-sm last:border-b-0"
+                >
+                  <span className="shrink-0">{event.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <Link href={event.href} className="block truncate">
+                      {event.label}
+                    </Link>
+                    {hasTargets && (
+                      <div className="mt-1">
+                        <TargetsChips targets={event.targets ?? []} inert />
+                      </div>
+                    )}
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                    {relativeTime(event.occurredAt)}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>

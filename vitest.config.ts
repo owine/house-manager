@@ -10,11 +10,13 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
+    setupFiles: ['./vitest.setup.ts'],
     include: [
       'tests/unit/**/*.test.ts',
       'tests/integration/**/*.test.ts',
       'lib/**/*.test.ts',
       'worker/**/*.test.ts',
+      'components/**/*.test.tsx',
     ],
     // Integration suites need long timeouts for Testcontainers cold start.
     // The unit-only run uses --testTimeout via the script, but defaults are

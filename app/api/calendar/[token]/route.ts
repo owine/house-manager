@@ -12,6 +12,10 @@ export async function GET(_req: Request, { params }: { params: Params }) {
   const user = await prisma.user.findUnique({ where: { icsToken: token }, select: { id: true } });
   if (!user) return new Response('Not found', { status: 404 });
 
+  // Reminder due-state lives on ReminderTarget. Fetch active reminders (with
+  // their targets) for this user; the iCal builder receives one row per
+  // reminder with the earliest target's nextDueOn (one event series per
+  // reminder is the existing UX).
   const reminders = await prisma.reminder.findMany({
     where: {
       active: true,
@@ -22,17 +26,23 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       title: true,
       description: true,
       recurrence: true,
-      nextDueOn: true,
       leadTimeDays: true,
+      targets: { select: { nextDueOn: true }, orderBy: { nextDueOn: 'asc' }, take: 1 },
     },
   });
 
   const env = getEnv();
   const body = buildIcal(
-    reminders.map((r) => ({
-      ...r,
-      recurrence: r.recurrence as unknown as Recurrence,
-    })),
+    reminders
+      .filter((r) => r.targets.length > 0)
+      .map((r) => ({
+        id: r.id,
+        title: r.title,
+        description: r.description,
+        recurrence: r.recurrence as unknown as Recurrence,
+        nextDueOn: r.targets[0].nextDueOn,
+        leadTimeDays: r.leadTimeDays,
+      })),
     env.APP_URL ?? '',
   );
 

@@ -20,7 +20,7 @@ export async function handleNotify(
 ): Promise<void> {
   const reminder = await prisma.reminder.findUnique({
     where: { id: payload.reminderId },
-    select: { id: true, title: true, description: true, active: true, itemId: true },
+    select: { id: true, title: true, description: true, active: true },
   });
   if (!reminder?.active) return;
 

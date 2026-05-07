@@ -13,10 +13,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { DeleteVendorButton } from '@/components/vendors/DeleteVendorButton';
+import { VendorLinkedItemsSection } from '@/components/vendors/VendorLinkedItemsSection';
+import { VendorLinkedSystemsSection } from '@/components/vendors/VendorLinkedSystemsSection';
 import { VendorMetaCard } from '@/components/vendors/VendorMetaCard';
 import { VendorOverflowMenu } from '@/components/vendors/VendorOverflowMenu';
 import { Markdown } from '@/lib/markdown';
-import { getVendor } from '@/lib/vendors/queries';
+import { getVendor, getVendorWithLinks } from '@/lib/vendors/queries';
 
 type Params = Promise<{ id: string }>;
 
@@ -28,8 +31,31 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function VendorDetailPage({ params }: { params: Params }) {
   const { id } = await params;
-  const vendor = await getVendor(id);
-  if (!vendor) notFound();
+  const [vendor, links] = await Promise.all([getVendor(id), getVendorWithLinks(id)]);
+  if (!vendor || !links) notFound();
+
+  const linksTab = (
+    <div className="space-y-4">
+      <VendorLinkedItemsSection
+        items={links.itemLinks.map((l) => ({
+          id: l.id,
+          itemId: l.itemId,
+          freeformName: l.freeformName,
+          role: l.role,
+          item: l.item,
+        }))}
+      />
+      <VendorLinkedSystemsSection
+        systems={links.systemLinks.map((l) => ({
+          id: l.id,
+          systemId: l.systemId,
+          freeformName: l.freeformName,
+          role: l.role,
+          system: l.system,
+        }))}
+      />
+    </div>
+  );
 
   const overviewTab = (
     <Card>
@@ -142,11 +168,25 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
   return (
     <DetailPageShell
       header={
-        <PageHeader title={vendor.name} actions={<VendorOverflowMenu vendorId={vendor.id} />} />
+        <PageHeader
+          title={vendor.name}
+          actions={
+            <div className="flex items-center gap-2">
+              <DeleteVendorButton
+                vendorId={vendor.id}
+                vendorName={vendor.name}
+                itemCount={links.itemLinks.length}
+                systemCount={links.systemLinks.length}
+              />
+              <VendorOverflowMenu vendorId={vendor.id} />
+            </div>
+          }
+        />
       }
       meta={<VendorMetaCard vendor={vendor} />}
       tabs={[
         { value: 'overview', label: 'Overview', content: overviewTab },
+        { value: 'links', label: 'Links', content: linksTab },
         { value: 'service', label: 'Service', content: serviceTab },
         { value: 'notes', label: 'Notes', content: notesTab },
       ]}

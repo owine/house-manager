@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
+import type { TargetInput } from '@/lib/targets/schema';
 import { createWarrantySchema, updateWarrantySchema } from './schema';
 
 function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -11,9 +12,39 @@ function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
-async function validateItemExists(itemId: string): Promise<boolean> {
-  const item = await prisma.item.findUnique({ where: { id: itemId }, select: { id: true } });
-  return item !== null;
+async function validateTargets(targets: TargetInput[]): Promise<string | null> {
+  const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
+  const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
+
+  if (itemIds.length > 0) {
+    const found = await prisma.item.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(itemIds).size) return 'Item not found';
+  }
+  if (systemIds.length > 0) {
+    const found = await prisma.system.findMany({
+      where: { id: { in: systemIds } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(systemIds).size) return 'System not found';
+  }
+  return null;
+}
+
+function targetsToCreateData(targets: TargetInput[]) {
+  return targets.map((t) => ({
+    itemId: t.itemId ?? null,
+    systemId: t.systemId ?? null,
+  }));
+}
+
+function revalidateForTargets(targets: TargetInput[]) {
+  for (const t of targets) {
+    if (t.itemId) revalidatePath(`/items/${t.itemId}`);
+    if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
+  }
 }
 
 export async function createWarranty(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -30,13 +61,19 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
 
   const data = emptyToUndefined(parsed.data as Record<string, unknown>) as typeof parsed.data;
 
-  const exists = await validateItemExists(data.itemId);
-  if (!exists) return { ok: false, formError: 'Item not found' };
+  const targetErr = await validateTargets(data.targets);
+  if (targetErr) return { ok: false, formError: targetErr };
 
-  const warranty = await prisma.warranty.create({ data });
+  const { targets, ...rest } = data;
+  const warranty = await prisma.warranty.create({
+    data: {
+      ...rest,
+      targets: { create: targetsToCreateData(targets) },
+    },
+  });
 
-  revalidatePath(`/items/${data.itemId}`);
   revalidatePath('/dashboard');
+  revalidateForTargets(targets);
 
   return { ok: true, data: { id: warranty.id } };
 }
@@ -53,30 +90,61 @@ export async function updateWarranty(input: unknown): Promise<ActionResult<{ id:
     };
   }
 
-  const { id, ...rest } = parsed.data;
+  const { id, targets, ...rest } = parsed.data;
   const data = emptyToUndefined(rest as Record<string, unknown>) as typeof rest;
 
-  // Pre-fetch the existing warranty to get the old itemId for revalidation
+  // Pre-fetch the existing warranty + targets for revalidation
   const existing = await prisma.warranty.findUnique({
     where: { id },
-    select: { itemId: true },
+    select: {
+      id: true,
+      targets: { select: { itemId: true, systemId: true } },
+    },
   });
   if (!existing) return { ok: false, formError: 'Warranty not found' };
 
-  const oldItemId = existing.itemId;
-
-  if (data.itemId !== undefined) {
-    const exists = await validateItemExists(data.itemId);
-    if (!exists) return { ok: false, formError: 'Item not found' };
+  if (targets !== undefined) {
+    const targetErr = await validateTargets(targets);
+    if (targetErr) return { ok: false, formError: targetErr };
   }
 
-  await prisma.warranty.update({ where: { id }, data });
+  await prisma.$transaction(async (tx) => {
+    await tx.warranty.update({ where: { id }, data });
+    if (targets !== undefined) {
+      const existingTargets = await tx.warrantyTarget.findMany({
+        where: { warrantyId: id },
+        select: { id: true, itemId: true, systemId: true },
+      });
+      const key = (t: { itemId?: string | null; systemId?: string | null }) =>
+        `${t.itemId ?? ''}|${t.systemId ?? ''}`;
+      const wantSet = new Set(targets.map(key));
+      const haveSet = new Set(existingTargets.map(key));
 
-  revalidatePath(`/items/${oldItemId}`);
+      const toDelete = existingTargets.filter((e) => !wantSet.has(key(e))).map((e) => e.id);
+      const toAdd = targets
+        .filter((t) => !haveSet.has(key(t)))
+        .map((t) => ({
+          warrantyId: id,
+          itemId: t.itemId ?? null,
+          systemId: t.systemId ?? null,
+        }));
+
+      if (toDelete.length > 0) {
+        await tx.warrantyTarget.deleteMany({ where: { id: { in: toDelete } } });
+      }
+      if (toAdd.length > 0) {
+        await tx.warrantyTarget.createMany({ data: toAdd });
+      }
+    }
+  });
+
   revalidatePath('/dashboard');
-  if (data.itemId && data.itemId !== oldItemId) {
-    revalidatePath(`/items/${data.itemId}`);
+  // Revalidate previous + new target paths
+  for (const t of existing.targets) {
+    if (t.itemId) revalidatePath(`/items/${t.itemId}`);
+    if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
   }
+  if (targets) revalidateForTargets(targets);
 
   return { ok: true, data: { id } };
 }
@@ -87,14 +155,17 @@ export async function deleteWarranty(id: string): Promise<ActionResult> {
 
   const existing = await prisma.warranty.findUnique({
     where: { id },
-    select: { itemId: true },
+    select: { targets: { select: { itemId: true, systemId: true } } },
   });
   if (!existing) return { ok: false, formError: 'Warranty not found' };
 
   await prisma.warranty.delete({ where: { id } });
 
-  revalidatePath(`/items/${existing.itemId}`);
   revalidatePath('/dashboard');
+  for (const t of existing.targets) {
+    if (t.itemId) revalidatePath(`/items/${t.itemId}`);
+    if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
+  }
 
   return { ok: true, data: undefined };
 }

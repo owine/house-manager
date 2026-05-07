@@ -33,7 +33,9 @@ export async function listItems(params: ListParams) {
       take: params.pageSize,
       include: {
         category: true,
-        _count: { select: { warranties: true, serviceRecords: true, itemNotes: true } },
+        _count: {
+          select: { warrantyTargets: true, serviceRecordTargets: true, itemNotes: true },
+        },
       },
     }),
     prisma.item.count({ where }),
@@ -43,14 +45,24 @@ export async function listItems(params: ListParams) {
 }
 
 export async function getItem(id: string) {
-  return prisma.item.findUnique({
+  const row = await prisma.item.findUnique({
     where: { id },
     include: {
       category: true,
-      warranties: { orderBy: { endsOn: 'desc' } },
-      serviceRecords: {
-        orderBy: { performedOn: 'desc' },
+      system: { select: { id: true, name: true, archivedAt: true } },
+      itemVendors: {
+        orderBy: { createdAt: 'asc' },
         include: { vendor: { select: { id: true, name: true } } },
+      },
+      warrantyTargets: {
+        orderBy: { warranty: { endsOn: 'desc' } },
+        include: { warranty: true },
+      },
+      serviceRecordTargets: {
+        orderBy: { serviceRecord: { performedOn: 'desc' } },
+        include: {
+          serviceRecord: { include: { vendor: { select: { id: true, name: true } } } },
+        },
       },
       itemNotes: { orderBy: { updatedAt: 'desc' } },
       attachments: {
@@ -66,17 +78,77 @@ export async function getItem(id: string) {
           thumbnailPath: true,
         },
       },
-      reminders: {
-        where: { active: true },
+      reminderTargets: {
+        where: { reminder: { active: true } },
         orderBy: { nextDueOn: 'asc' },
-        select: { id: true, title: true, nextDueOn: true, active: true },
+        select: {
+          id: true,
+          nextDueOn: true,
+          reminder: { select: { id: true, title: true, active: true } },
+        },
       },
     },
   });
+  if (!row) return null;
+  // Surface flat `serviceRecords`, `warranties`, and `reminders` shapes
+  // derived from the per-item target rows. Tactical compatibility with the
+  // existing per-item tabs; the multi-target rendering arrives in a later
+  // task.
+  const { serviceRecordTargets, warrantyTargets, reminderTargets, ...rest } = row;
+  const serviceRecords = serviceRecordTargets.map((t) => t.serviceRecord);
+  const warranties = warrantyTargets.map((t) => t.warranty);
+  const reminders = reminderTargets.map((t) => ({
+    id: t.reminder.id,
+    title: t.reminder.title,
+    active: t.reminder.active,
+    nextDueOn: t.nextDueOn,
+  }));
+  return { ...rest, serviceRecords, warranties, reminders };
 }
 
 export async function listAllCategories() {
   return prisma.category.findMany({ orderBy: { sortOrder: 'asc' } });
+}
+
+/**
+ * All non-archived items projected to the shape consumed by `<TargetsPicker>`.
+ * Used by the service-record / warranty / reminder forms (multi-target picker).
+ */
+export async function listAllActiveItemsForPicker() {
+  const rows = await prisma.item.findMany({
+    where: { archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      archivedAt: true,
+      category: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    archivedAt: r.archivedAt,
+    categoryName: r.category?.name ?? null,
+  }));
+}
+
+/**
+ * Items not assigned to any system and not archived. Used by the
+ * "Add component" picker on the system detail page.
+ */
+export async function listOrphanItems() {
+  return prisma.item.findMany({
+    where: { systemId: null, archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      manufacturer: true,
+      model: true,
+      category: { select: { name: true, icon: true } },
+    },
+  });
 }
 
 export async function listAllItemLocations() {

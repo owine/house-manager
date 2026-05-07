@@ -51,10 +51,10 @@ describe('Attachment CHECK constraint', () => {
   it('rejects an INSERT with two FKs set', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
-        itemId,
         provider: 'Acme',
         startsOn: new Date(),
         endsOn: new Date(Date.now() + 86_400_000),
+        targets: { create: [{ itemId }] },
       },
     });
     await expect(
@@ -103,7 +103,11 @@ describe('Attachment cascade', () => {
 
   it('cascade-deletes when the parent ServiceRecord is hard-deleted', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId, performedOn: new Date(), summary: 'tune-up' },
+      data: {
+        performedOn: new Date(),
+        summary: 'tune-up',
+        targets: { create: [{ itemId }] },
+      },
     });
     const a = await ctx.prisma.attachment.create({
       data: {

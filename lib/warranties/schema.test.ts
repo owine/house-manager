@@ -4,7 +4,7 @@ import { createWarrantySchema, updateWarrantySchema } from '@/lib/warranties/sch
 describe('createWarrantySchema', () => {
   it('accepts a warranty with all fields', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme Warranty Co.',
       policyNumber: 'POL-12345',
       startsOn: '2024-01-01',
@@ -15,9 +15,9 @@ describe('createWarrantySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts a warranty with only required fields', () => {
+  it('accepts a warranty with only required fields and one item-target', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme Warranty Co.',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -25,9 +25,59 @@ describe('createWarrantySchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a warranty targeted at a system', () => {
+    const result = createWarrantySchema.safeParse({
+      targets: [{ systemId: 'sys-xyz' }],
+      provider: 'Whole-system warranty',
+      startsOn: '2024-01-01',
+      endsOn: '2026-01-01',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts multiple targets', () => {
+    const result = createWarrantySchema.safeParse({
+      targets: [{ itemId: 'item-a' }, { systemId: 'sys-b' }],
+      provider: 'Mixed warranty',
+      startsOn: '2024-01-01',
+      endsOn: '2026-01-01',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty targets array', () => {
+    const result = createWarrantySchema.safeParse({
+      targets: [],
+      provider: 'Acme',
+      startsOn: '2024-01-01',
+      endsOn: '2026-01-01',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a target with both itemId and systemId set', () => {
+    const result = createWarrantySchema.safeParse({
+      targets: [{ itemId: 'item-a', systemId: 'sys-b' }],
+      provider: 'Acme',
+      startsOn: '2024-01-01',
+      endsOn: '2026-01-01',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a target with neither itemId nor systemId set', () => {
+    const result = createWarrantySchema.safeParse({
+      targets: [{}],
+      provider: 'Acme',
+      startsOn: '2024-01-01',
+      endsOn: '2026-01-01',
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects when endsOn is before startsOn', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme Warranty Co.',
       startsOn: '2026-01-01',
       endsOn: '2024-01-01',
@@ -42,7 +92,7 @@ describe('createWarrantySchema', () => {
 
   it('accepts when endsOn equals startsOn', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme Warranty Co.',
       startsOn: '2025-06-01',
       endsOn: '2025-06-01',
@@ -50,7 +100,7 @@ describe('createWarrantySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects missing itemId', () => {
+  it('rejects missing targets', () => {
     const result = createWarrantySchema.safeParse({
       provider: 'Acme',
       startsOn: '2024-01-01',
@@ -61,7 +111,7 @@ describe('createWarrantySchema', () => {
 
   it('rejects empty string provider', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: '',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -71,7 +121,7 @@ describe('createWarrantySchema', () => {
 
   it('rejects provider exceeding 200 characters', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'x'.repeat(201),
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -81,7 +131,7 @@ describe('createWarrantySchema', () => {
 
   it('rejects negative cost', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -92,7 +142,7 @@ describe('createWarrantySchema', () => {
 
   it('accepts cost of zero', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -103,7 +153,7 @@ describe('createWarrantySchema', () => {
 
   it('coerces startsOn and endsOn from ISO strings to Date', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -117,7 +167,7 @@ describe('createWarrantySchema', () => {
 
   it('coerces cost from string to number', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -129,7 +179,7 @@ describe('createWarrantySchema', () => {
 
   it('rejects coverage exceeding 20000 characters', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',
@@ -140,7 +190,7 @@ describe('createWarrantySchema', () => {
 
   it('rejects policyNumber exceeding 200 characters', () => {
     const result = createWarrantySchema.safeParse({
-      itemId: 'item-001',
+      targets: [{ itemId: 'item-001' }],
       provider: 'Acme',
       startsOn: '2024-01-01',
       endsOn: '2026-01-01',

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { AttachmentList } from '@/components/attachments/AttachmentList';
 import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
+import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
 import { WarrantyStatusBadge } from '@/components/warranties/WarrantyStatusBadge';
 import { getWarranty } from '@/lib/warranties/queries';
@@ -20,9 +20,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { id } = await params;
   const warranty = await getWarranty(id);
   if (!warranty) return { title: 'Not found' };
-  return {
-    title: warranty.item ? `Warranty for ${warranty.item.name}` : warranty.provider,
-  };
+  return { title: `Warranty: ${warranty.provider}` };
 }
 
 export default async function WarrantyDetailPage({ params }: { params: Params }) {
@@ -32,29 +30,19 @@ export default async function WarrantyDetailPage({ params }: { params: Params })
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title={warranty.provider}
-        description={warranty.item ? `Warranty for ${warranty.item.name}` : undefined}
-      />
+      <PageHeader title={warranty.provider} />
 
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-4">
             <WarrantyStatusBadge endsOn={warranty.endsOn} />
-            {warranty.item && (
-              <span className="text-sm text-muted-foreground">
-                for{' '}
-                <Link
-                  href={`/items/${warranty.item.id}`}
-                  className="underline underline-offset-2 hover:text-foreground"
-                >
-                  {warranty.item.name}
-                </Link>
-              </span>
-            )}
           </div>
 
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
+            <dt className="font-semibold">Targets</dt>
+            <dd>
+              <TargetsChips targets={warranty.targets} />
+            </dd>
             {warranty.policyNumber && (
               <>
                 <dt className="font-semibold">Policy #</dt>

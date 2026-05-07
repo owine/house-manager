@@ -3,10 +3,15 @@
 import { prisma } from '@/lib/db';
 
 export async function getWarranty(id: string) {
-  return prisma.warranty.findUnique({
+  const row = await prisma.warranty.findUnique({
     where: { id },
     include: {
-      item: { select: { id: true, name: true } },
+      targets: {
+        include: {
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
       attachments: {
         orderBy: { createdAt: 'desc' },
         select: {
@@ -22,11 +27,35 @@ export async function getWarranty(id: string) {
       },
     },
   });
+  return row;
 }
 
 export async function listWarrantiesForItem(itemId: string) {
   return prisma.warranty.findMany({
-    where: { itemId },
+    where: { targets: { some: { itemId } } },
     orderBy: { endsOn: 'desc' },
+  });
+}
+
+/**
+ * Warranties targeted at a system, either directly (target.systemId) or
+ * indirectly via an item that belongs to the system (target.item.systemId).
+ */
+export async function getWarrantiesForSystem(systemId: string) {
+  return prisma.warranty.findMany({
+    where: {
+      targets: {
+        some: { OR: [{ systemId }, { item: { systemId } }] },
+      },
+    },
+    orderBy: { endsOn: 'desc' },
+    include: {
+      targets: {
+        include: {
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
 }

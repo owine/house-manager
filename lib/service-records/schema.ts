@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { targetsArraySchema } from '@/lib/targets/schema';
 
 export const createServiceRecordSchema = z.object({
-  itemId: z.string().min(1).optional(),
+  targets: targetsArraySchema,
   vendorId: z.string().min(1).optional(),
   performedOn: z.coerce.date(),
   cost: z.coerce.number().nonnegative().optional(),

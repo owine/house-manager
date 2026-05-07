@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.23.0@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
 
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS base
-RUN corepack enable
+# renovate: datasource=npm depName=pnpm
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 RUN apk add --no-cache postgresql16-client
 WORKDIR /app
 
@@ -59,7 +60,8 @@ RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
-RUN corepack enable && apk add --no-cache curl vips vips-heif
+# renovate: datasource=npm depName=pnpm
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate && apk add --no-cache curl vips vips-heif
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

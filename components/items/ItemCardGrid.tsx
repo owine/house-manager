@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 
 type ItemWithRelations = Item & {
   category: Category;
-  _count: { warranties: number; serviceRecords: number; itemNotes: number };
+  _count: { warrantyTargets: number; serviceRecordTargets: number; itemNotes: number };
 };
 
 export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
@@ -37,7 +37,8 @@ export function ItemCardGrid({ items }: { items: ItemWithRelations[] }) {
             )}
           </CardContent>
           <CardFooter className="mt-auto text-xs text-muted-foreground">
-            {item._count.warranties} warranties · {item._count.serviceRecords} service records
+            {item._count.warrantyTargets} warranties · {item._count.serviceRecordTargets} service
+            records
           </CardFooter>
         </Card>
       ))}

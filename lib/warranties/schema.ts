@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { targetsArraySchema } from '@/lib/targets/schema';
 
 const warrantyBase = z.object({
-  itemId: z.string().min(1),
+  targets: targetsArraySchema,
   provider: z.string().min(1, 'Provider is required').max(200),
   policyNumber: z.string().max(200).optional(),
   startsOn: z.coerce.date(),

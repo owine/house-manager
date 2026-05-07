@@ -159,5 +159,32 @@ describe('toDocument', () => {
       expect(doc.itemName).toBe('Furnace');
       expect(doc.iconHint).toBe('🔧');
     });
+
+    it('service: aggregates every target name into itemName when targetNames is provided', () => {
+      const doc = toDocument('service', {
+        id: 's2',
+        summary: 'Multi-target service',
+        notes: null,
+        item: { id: 'i1', name: 'Heat Pump' },
+        targetNames: ['Heat Pump', 'HVAC System'],
+        updatedAt: NOW,
+      });
+      expect(doc.itemName).toContain('Heat Pump');
+      expect(doc.itemName).toContain('HVAC System');
+      expect(doc.itemId).toBe('i1');
+    });
+
+    it('service: empty targetNames falls back to item name', () => {
+      const doc = toDocument('service', {
+        id: 's3',
+        summary: 'System-only',
+        notes: null,
+        item: null,
+        targetNames: ['HVAC'],
+        updatedAt: NOW,
+      });
+      expect(doc.itemName).toBe('HVAC');
+      expect(doc.itemId).toBeNull();
+    });
   });
 });

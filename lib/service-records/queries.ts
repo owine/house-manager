@@ -3,6 +3,17 @@
 import { prisma } from '@/lib/db';
 import type { ListParams } from '@/lib/url-params';
 
+// Helper: derive a single primary `item` field from a record's targets. Used
+// only by the compact list view (ServiceRecordTable), where a single primary
+// item read keeps the table layout tight. Detail pages, dashboard, and search
+// indexing now consume the full `targets` collection directly.
+function withDerivedItem<R extends { targets: { item: { id: string; name: string } | null }[] }>(
+  record: R,
+): R & { item: { id: string; name: string } | null } {
+  const itemTarget = record.targets.find((t) => t.item !== null);
+  return { ...record, item: itemTarget?.item ?? null };
+}
+
 export async function listServiceRecords(params: ListParams) {
   const itemId = params.filters.itemId?.[0];
   const vendorId = params.filters.vendorId?.[0];
@@ -14,7 +25,7 @@ export async function listServiceRecords(params: ListParams) {
 
   const where = {
     AND: [
-      itemId ? { itemId } : {},
+      itemId ? { targets: { some: { itemId } } } : {},
       vendorId ? { vendorId } : {},
       params.q ? { summary: { contains: params.q, mode: 'insensitive' as const } } : {},
       fromDate && Number.isFinite(fromDate.getTime()) ? { performedOn: { gte: fromDate } } : {},
@@ -22,28 +33,35 @@ export async function listServiceRecords(params: ListParams) {
     ],
   };
 
-  const [records, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.serviceRecord.findMany({
       where,
       orderBy: { performedOn: 'desc' },
       skip: (params.page - 1) * params.pageSize,
       take: params.pageSize,
       include: {
-        item: { select: { id: true, name: true } },
+        targets: { include: { item: { select: { id: true, name: true } } } },
         vendor: { select: { id: true, name: true } },
       },
     }),
     prisma.serviceRecord.count({ where }),
   ]);
 
+  const records = rows.map(withDerivedItem);
+
   return { records, total };
 }
 
 export async function getServiceRecord(id: string) {
-  return prisma.serviceRecord.findUnique({
+  const row = await prisma.serviceRecord.findUnique({
     where: { id },
     include: {
-      item: true,
+      targets: {
+        include: {
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
       vendor: true,
       attachments: {
         orderBy: { createdAt: 'desc' },
@@ -58,6 +76,31 @@ export async function getServiceRecord(id: string) {
           thumbnailPath: true,
         },
       },
+    },
+  });
+  return row;
+}
+
+/**
+ * Service records targeted at a system, either directly (target.systemId) or
+ * indirectly via an item that belongs to the system (target.item.systemId).
+ */
+export async function getServiceRecordsForSystem(systemId: string) {
+  return prisma.serviceRecord.findMany({
+    where: {
+      targets: {
+        some: { OR: [{ systemId }, { item: { systemId } }] },
+      },
+    },
+    orderBy: { performedOn: 'desc' },
+    include: {
+      targets: {
+        include: {
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
+      vendor: { select: { id: true, name: true } },
     },
   });
 }
