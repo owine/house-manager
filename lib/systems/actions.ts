@@ -6,7 +6,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
-import { createSystemSchema, updateSystemSchema, updateSystemWithIdSchema } from './schema';
+import { createSystemSchema, updateSystemWithIdSchema } from './schema';
 
 function emptyToUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -49,15 +49,6 @@ export async function updateSystem(input: unknown): Promise<ActionResult<{ id: s
   }
 
   const { id, ...rest } = parsed.data;
-  // Validate the partial body separately so the schema test stays focused.
-  const partial = updateSystemSchema.safeParse(rest);
-  if (!partial.success) {
-    return {
-      ok: false,
-      fieldErrors: partial.error.flatten().fieldErrors as Record<string, string[]>,
-    };
-  }
-
   await prisma.system.update({ where: { id }, data: emptyToUndefined(rest) });
   revalidateSystemPaths(id);
   return { ok: true, data: { id } };
