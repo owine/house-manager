@@ -33,7 +33,11 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
         id: true,
         summary: true,
         createdAt: true,
-        item: { select: { name: true } },
+        targets: {
+          where: { itemId: { not: null } },
+          select: { item: { select: { name: true } } },
+          take: 1,
+        },
       },
     }),
     prisma.note.findMany({
@@ -100,15 +104,18 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       href: `/items/${i.id}`,
       icon: '📦',
     })),
-    ...services.map((s) => ({
-      kind: 'service-logged' as const,
-      occurredAt: s.createdAt,
-      label: s.item
-        ? `Logged service for ${s.item.name}: ${s.summary}`
-        : `Logged service: ${s.summary}`,
-      href: `/service/${s.id}`,
-      icon: '🔧',
-    })),
+    ...services.map((s) => {
+      const itemName = s.targets[0]?.item?.name;
+      return {
+        kind: 'service-logged' as const,
+        occurredAt: s.createdAt,
+        label: itemName
+          ? `Logged service for ${itemName}: ${s.summary}`
+          : `Logged service: ${s.summary}`,
+        href: `/service/${s.id}`,
+        icon: '🔧',
+      };
+    }),
     ...notes.map((n) => ({
       kind: 'note-added' as const,
       occurredAt: n.createdAt,

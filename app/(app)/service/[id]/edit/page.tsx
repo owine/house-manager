@@ -31,7 +31,7 @@ export default async function EditServiceRecordPage({ params }: { params: Params
         vendors={vendorOptions}
         defaultValues={{
           id: record.id,
-          itemId: record.itemId ?? undefined,
+          itemId: record.item?.id ?? undefined,
           vendorId: record.vendorId ?? undefined,
           performedOn: record.performedOn,
           cost: record.cost?.toNumber() ?? undefined,

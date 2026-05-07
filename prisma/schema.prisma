@@ -103,6 +103,7 @@ model System {
   updatedAt       DateTime   @updatedAt
 
   items           Item[]
+  serviceRecordTargets   ServiceRecordTarget[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -141,7 +142,7 @@ model Item {
   updatedAt       DateTime   @updatedAt
 
   warranties      Warranty[]
-  serviceRecords  ServiceRecord[]
+  serviceRecordTargets   ServiceRecordTarget[]
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
   reminders       Reminder[]
@@ -193,8 +194,6 @@ model Warranty {
 
 model ServiceRecord {
   id              String     @id @default(cuid())
-  itemId          String?
-  item            Item?      @relation(fields: [itemId], references: [id], onDelete: SetNull)
   vendorId        String?
   vendor          Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   performedOn     DateTime
@@ -204,13 +203,33 @@ model ServiceRecord {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  targets         ServiceRecordTarget[]
   attachments     Attachment[]
   completionFromReminder ReminderCompletion? @relation("ReminderCompletionServiceRecord")
 
-  @@index([itemId])
   @@index([vendorId])
   @@index([performedOn])
   @@map("service_records")
+}
+
+model ServiceRecordTarget {
+  id               String         @id @default(cuid())
+  serviceRecordId  String
+  itemId           String?
+  systemId         String?
+
+  serviceRecord    ServiceRecord  @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
+  item             Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  system           System?        @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  // NOTE: the underlying unique index uses NULLS NOT DISTINCT (set in the
+  // migration directly) so duplicates like (sr, itemId, NULL) are rejected.
+  // Prisma 7.8 doesn't model that on @@unique, but the index is enforced at
+  // the DB level and runtime queries still see it.
+  @@unique([serviceRecordId, itemId, systemId])
+  @@index([itemId])
+  @@index([systemId])
+  @@map("service_record_targets")
 }
 
 model Note {

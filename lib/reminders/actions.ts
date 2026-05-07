@@ -193,12 +193,12 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
   if (reminder.autoCreateServiceRecord && reminder.itemId && serviceRecord) {
     const sr = await prisma.serviceRecord.create({
       data: {
-        itemId: reminder.itemId,
         performedOn: now,
         summary: serviceRecord.summary,
         notes: serviceRecord.notes || null,
         cost: serviceRecord.cost,
         vendorId: serviceRecord.vendorId ?? null,
+        targets: { create: [{ itemId: reminder.itemId }] },
       },
       select: { id: true },
     });

@@ -99,7 +99,11 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
       },
     });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId, performedOn: new Date(), summary: 'filter replaced' },
+      data: {
+        performedOn: new Date(),
+        summary: 'filter replaced',
+        targets: { create: [{ itemId }] },
+      },
     });
     const c = await ctx.prisma.reminderCompletion.create({
       data: {
@@ -126,7 +130,11 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
       },
     });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId, performedOn: new Date(), summary: 'X' },
+      data: {
+        performedOn: new Date(),
+        summary: 'X',
+        targets: { create: [{ itemId }] },
+      },
     });
     const c = await ctx.prisma.reminderCompletion.create({
       data: {

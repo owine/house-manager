@@ -272,10 +272,17 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           summary: true,
           notes: true,
           updatedAt: true,
-          item: { select: { id: true, name: true } },
+          targets: {
+            where: { itemId: { not: null } },
+            select: { item: { select: { id: true, name: true } } },
+            take: 1,
+          },
         },
       });
-      return row ? toDocument('service', row) : null;
+      if (!row) return null;
+      const item = row.targets[0]?.item ?? null;
+      const { targets: _targets, ...rest } = row;
+      return toDocument('service', { ...rest, item });
     }
     case 'reminder': {
       const row = await prisma.reminder.findUnique({
@@ -330,7 +337,10 @@ export async function listChildIdsForItem(
 ): Promise<{ kind: SearchKind; id: string }[]> {
   const [notes, services, reminders, attachments] = await Promise.all([
     prisma.note.findMany({ where: { itemId }, select: { id: true } }),
-    prisma.serviceRecord.findMany({ where: { itemId }, select: { id: true } }),
+    prisma.serviceRecord.findMany({
+      where: { targets: { some: { itemId } } },
+      select: { id: true },
+    }),
     prisma.reminder.findMany({ where: { itemId }, select: { id: true } }),
     prisma.attachment.findMany({ where: { itemId }, select: { id: true } }),
   ]);

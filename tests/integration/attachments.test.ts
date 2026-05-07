@@ -103,7 +103,11 @@ describe('Attachment cascade', () => {
 
   it('cascade-deletes when the parent ServiceRecord is hard-deleted', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId, performedOn: new Date(), summary: 'tune-up' },
+      data: {
+        performedOn: new Date(),
+        summary: 'tune-up',
+        targets: { create: [{ itemId }] },
+      },
     });
     const a = await ctx.prisma.attachment.create({
       data: {

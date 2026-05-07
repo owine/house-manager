@@ -59,13 +59,21 @@ describe('Item CRUD', () => {
     expect(orphan).toBeNull();
   });
 
-  it('SetNulls ServiceRecord.itemId when Item is hard-deleted', async () => {
+  it('Cascades ServiceRecordTarget rows when Item is hard-deleted; record itself remains', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { itemId: item.id, performedOn: new Date(), summary: 'x' },
+      data: {
+        performedOn: new Date(),
+        summary: 'x',
+        targets: { create: [{ itemId: item.id }] },
+      },
     });
     await ctx.prisma.item.delete({ where: { id: item.id } });
-    const read = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });
-    expect(read?.itemId).toBeNull();
+    const read = await ctx.prisma.serviceRecord.findUnique({
+      where: { id: sr.id },
+      include: { targets: true },
+    });
+    expect(read).not.toBeNull();
+    expect(read?.targets).toHaveLength(0);
   });
 });

@@ -33,7 +33,7 @@ export async function listItems(params: ListParams) {
       take: params.pageSize,
       include: {
         category: true,
-        _count: { select: { warranties: true, serviceRecords: true, itemNotes: true } },
+        _count: { select: { warranties: true, serviceRecordTargets: true, itemNotes: true } },
       },
     }),
     prisma.item.count({ where }),
@@ -43,14 +43,16 @@ export async function listItems(params: ListParams) {
 }
 
 export async function getItem(id: string) {
-  return prisma.item.findUnique({
+  const row = await prisma.item.findUnique({
     where: { id },
     include: {
       category: true,
       warranties: { orderBy: { endsOn: 'desc' } },
-      serviceRecords: {
-        orderBy: { performedOn: 'desc' },
-        include: { vendor: { select: { id: true, name: true } } },
+      serviceRecordTargets: {
+        orderBy: { serviceRecord: { performedOn: 'desc' } },
+        include: {
+          serviceRecord: { include: { vendor: { select: { id: true, name: true } } } },
+        },
       },
       itemNotes: { orderBy: { updatedAt: 'desc' } },
       attachments: {
@@ -73,6 +75,13 @@ export async function getItem(id: string) {
       },
     },
   });
+  if (!row) return null;
+  // Surface a flat `serviceRecords` shape derived from the per-item target
+  // rows. Tactical compatibility with the existing per-item ServiceTab; the
+  // multi-target rendering arrives in a later task.
+  const { serviceRecordTargets, ...rest } = row;
+  const serviceRecords = serviceRecordTargets.map((t) => t.serviceRecord);
+  return { ...rest, serviceRecords };
 }
 
 export async function listAllCategories() {

@@ -32,16 +32,30 @@ export async function listVendors(params: ListParams) {
 }
 
 export async function getVendor(id: string) {
-  return prisma.vendor.findUnique({
+  const row = await prisma.vendor.findUnique({
     where: { id },
     include: {
       serviceRecords: {
         orderBy: { performedOn: 'desc' },
-        include: { item: { select: { id: true, name: true } } },
+        include: {
+          targets: {
+            where: { itemId: { not: null } },
+            include: { item: { select: { id: true, name: true } } },
+            take: 1,
+          },
+        },
         take: 50,
       },
     },
   });
+  if (!row) return null;
+  // Surface a single derived `item` per record for backward compatibility with
+  // the vendor detail page; multi-target rendering arrives in a later task.
+  const serviceRecords = row.serviceRecords.map((r) => {
+    const { targets, ...rest } = r;
+    return { ...rest, item: targets[0]?.item ?? null };
+  });
+  return { ...row, serviceRecords };
 }
 
 export async function listAllVendorKinds() {
