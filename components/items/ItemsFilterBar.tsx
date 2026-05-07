@@ -90,13 +90,9 @@ export function ItemsFilterBar({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_CATEGORIES}>All categories</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.slug}>
-                <span className="flex items-center gap-2">
-                  <CategoryIcon name={c.icon} />
-                  {c.name}
-                </span>
+            {categoryItems.map((it) => (
+              <SelectItem key={it.value} value={it.value}>
+                {it.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -114,10 +110,9 @@ export function ItemsFilterBar({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_LOCATIONS}>All locations</SelectItem>
-            {locations.map((loc) => (
-              <SelectItem key={loc} value={loc}>
-                {loc}
+            {locationItems.map((it) => (
+              <SelectItem key={it.value} value={it.value}>
+                {it.label}
               </SelectItem>
             ))}
           </SelectContent>

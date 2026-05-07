@@ -181,13 +181,14 @@ export function ItemForm({
           render={({ field }) => {
             const current = typeof field.value === 'string' ? field.value : null;
             const selectValue = current ?? NO_SYSTEM_VALUE;
-            const systemItems = [
+            const systemItems: Array<{ label: string; value: string; disabled?: boolean }> = [
               { label: '(none)', value: NO_SYSTEM_VALUE },
               ...(currentArchivedSystem
                 ? [
                     {
                       label: `${currentArchivedSystem.name} (archived)`,
                       value: currentArchivedSystem.id,
+                      disabled: true,
                     },
                   ]
                 : []),
@@ -207,15 +208,9 @@ export function ItemForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value={NO_SYSTEM_VALUE}>(none)</SelectItem>
-                    {currentArchivedSystem && (
-                      <SelectItem value={currentArchivedSystem.id} disabled>
-                        {currentArchivedSystem.name} (archived)
-                      </SelectItem>
-                    )}
-                    {systems.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
+                    {systemItems.map((it) => (
+                      <SelectItem key={it.value} value={it.value} disabled={it.disabled}>
+                        {it.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
