@@ -27,7 +27,7 @@ export type TimelineEvent = {
 
 type Filter = 'all' | 'system' | 'component';
 
-type Props = { events: TimelineEvent[] };
+type Props = { events: TimelineEvent[]; systemId: string };
 
 const TYPE_LABELS: Record<TimelineEvent['type'], string> = {
   service: 'Service',
@@ -46,7 +46,7 @@ function formatTargetsLabel(targets: TimelineTargetChip[]): string {
   return `${head} + ${others} ${others === 1 ? 'other' : 'others'}`;
 }
 
-export function SystemTimeline({ events }: Props) {
+export function SystemTimeline({ events, systemId }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
 
   const filtered = useMemo(() => {
@@ -58,7 +58,32 @@ export function SystemTimeline({ events }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Timeline ({events.length})</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm">Timeline ({events.length})</CardTitle>
+          <div className="flex flex-wrap gap-2" data-testid="timeline-add-event-group">
+            <Button
+              size="sm"
+              variant="outline"
+              render={<Link href={`/service/new?systemId=${systemId}`} />}
+            >
+              Add service record
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              render={<Link href={`/warranties/new?systemId=${systemId}`} />}
+            >
+              Add warranty
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              render={<Link href={`/reminders/new?systemId=${systemId}`} />}
+            >
+              Add reminder
+            </Button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2 pt-2" role="tablist" aria-label="Timeline filter">
           {(['all', 'system', 'component'] as const).map((f) => (
             <Button

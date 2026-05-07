@@ -122,11 +122,13 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
 
   async function doArchive() {
     'use server';
-    return archiveSystem(id);
+    const r = await archiveSystem(id);
+    return r.ok ? { ok: true as const } : { ok: false as const, formError: r.formError };
   }
   async function doUnarchive() {
     'use server';
-    return unarchiveSystem(id);
+    const r = await unarchiveSystem(id);
+    return r.ok ? { ok: true as const } : { ok: false as const, formError: r.formError };
   }
 
   return (
@@ -140,14 +142,8 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
           installDate: system.installDate,
           archivedAt: system.archivedAt,
         }}
-        onArchive={async () => {
-          const r = await doArchive();
-          return r.ok ? { ok: true } : { ok: false, formError: r.formError };
-        }}
-        onUnarchive={async () => {
-          const r = await doUnarchive();
-          return r.ok ? { ok: true } : { ok: false, formError: r.formError };
-        }}
+        onArchive={doArchive}
+        onUnarchive={doUnarchive}
       />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-6 md:col-span-2">
@@ -167,7 +163,7 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
             }))}
           />
           <SystemVendorsSection systemId={system.id} links={vendorLinks} vendors={vendors} />
-          <SystemTimeline events={events} />
+          <SystemTimeline events={events} systemId={system.id} />
         </div>
         <aside className="space-y-6 md:col-span-1">
           <CostRollup rollup={rollup} />
