@@ -3,6 +3,7 @@
 import {
   Calendar,
   Home,
+  Layers,
   ListChecks,
   Package,
   Search,
@@ -32,6 +33,7 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ classN
 const PRIMARY: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
   { href: '/items', label: 'Items', icon: Package },
+  { href: '/systems', label: 'Systems', icon: Layers },
   { href: '/vendors', label: 'Vendors', icon: Users },
   { href: '/reminders', label: 'Reminders', icon: Calendar },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
