@@ -1,12 +1,16 @@
 'use client';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ItemAutocomplete } from '@/components/service-records/ItemAutocomplete';
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
+import {
+  type AvailableItem,
+  type AvailableSystem,
+  TargetsPicker,
+} from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -21,11 +25,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
+import type { TargetInput } from '@/lib/targets/schema';
 
-// Tactical single-target form schema. Wider multi-target picker arrives in
-// Task 14; the action accepts the multi-target shape from any caller.
 const formSchema = z.object({
-  itemId: z.string().min(1).optional(),
   vendorId: z.string().min(1).optional(),
   performedOn: z.coerce.date(),
   cost: z.coerce.number().nonnegative().optional(),
@@ -37,7 +39,6 @@ type ServiceRecordFormValues = z.input<typeof formSchema>;
 
 type FormDefaults = {
   id?: string;
-  itemId?: string;
   vendorId?: string;
   performedOn?: Date | string;
   cost?: number;
@@ -46,8 +47,11 @@ type FormDefaults = {
 };
 
 type Props = {
-  items: { id: string; name: string }[];
   vendors: { id: string; name: string }[];
+  availableItems: AvailableItem[];
+  availableSystems: AvailableSystem[];
+  /** Pre-seeded targets used both for "create from item/system page" and edit. */
+  initialTargets?: TargetInput[];
   defaultValues?: FormDefaults;
   action: (
     input: CreateServiceRecordInput | (CreateServiceRecordInput & { id: string }),
@@ -55,9 +59,19 @@ type Props = {
   submitLabel: string;
 };
 
-export function ServiceRecordForm({ items, vendors, defaultValues, action, submitLabel }: Props) {
+export function ServiceRecordForm({
+  vendors,
+  availableItems,
+  availableSystems,
+  initialTargets,
+  defaultValues,
+  action,
+  submitLabel,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
+  const [targetsError, setTargetsError] = useState<string | null>(null);
 
   const performedOnDefault = defaultValues?.performedOn
     ? defaultValues.performedOn instanceof Date
@@ -68,7 +82,6 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
   const form = useForm<ServiceRecordFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      itemId: defaultValues?.itemId ?? undefined,
       vendorId: defaultValues?.vendorId ?? undefined,
       cost: defaultValues?.cost ?? undefined,
       summary: defaultValues?.summary ?? '',
@@ -87,21 +100,15 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((formData) => {
+    if (targets.length === 0) {
+      setTargetsError('Select at least one item or system');
+      return;
+    }
+    setTargetsError(null);
     startTransition(async () => {
-      const { itemId, ...rest } = formData as ServiceRecordFormValues;
-      // Build canonical multi-target payload. The form currently only edits a
-      // single item-target; users without an item are blocked here because the
-      // action requires targets.min(1). For records with neither item nor
-      // vendor, callers must use a Task 14 picker instead.
-      if (!itemId) {
-        setError('itemId', {
-          message: 'Select an item (multi-target picker arrives in a later task)',
-        });
-        return;
-      }
       const payload: CreateServiceRecordInput & { id?: string } = {
-        ...(rest as Omit<ServiceRecordFormValues, 'itemId'> as CreateServiceRecordInput),
-        targets: [{ itemId }],
+        ...(formData as CreateServiceRecordInput),
+        targets,
         ...(defaultValues?.id ? { id: defaultValues.id } : {}),
       };
       const result = await action(payload as CreateServiceRecordInput & { id: string });
@@ -117,6 +124,11 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
     });
   });
 
+  const handleTargetsChange = (next: TargetInput[]) => {
+    setTargets(next);
+    if (next.length > 0 && targetsError) setTargetsError(null);
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={onSubmit} className="space-y-6">
@@ -126,22 +138,21 @@ export function ServiceRecordForm({ items, vendors, defaultValues, action, submi
           </p>
         )}
 
-        {/* Item autocomplete */}
-        <FormField
-          control={control}
-          name="itemId"
-          render={() => (
-            <FormItem>
-              <FormLabel>Item</FormLabel>
-              <FormControl>
-                <ItemAutocomplete name="itemId" label="" options={items} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+        <FormItem>
+          <FormLabel>Targets</FormLabel>
+          <TargetsPicker
+            value={targets}
+            onChange={handleTargetsChange}
+            availableItems={availableItems}
+            availableSystems={availableSystems}
+          />
+          {targetsError && (
+            <p className="text-sm text-destructive" role="alert">
+              {targetsError}
+            </p>
           )}
-        />
+        </FormItem>
 
-        {/* Vendor autocomplete */}
         <FormField
           control={control}
           name="vendorId"

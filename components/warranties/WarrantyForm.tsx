@@ -1,10 +1,15 @@
 'use client';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import {
+  type AvailableItem,
+  type AvailableSystem,
+  TargetsPicker,
+} from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -18,13 +23,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
+import type { TargetInput } from '@/lib/targets/schema';
 import type { CreateWarrantyInput } from '@/lib/warranties/schema';
 
-// Tactical single-target form schema. Wider multi-target picker arrives in
-// Task 14; the action accepts the multi-target shape from any caller.
 const formSchema = z
   .object({
-    itemId: z.string().min(1),
     provider: z.string().min(1, 'Provider is required').max(200),
     policyNumber: z.string().max(200).optional(),
     startsOn: z.coerce.date(),
@@ -37,12 +40,10 @@ const formSchema = z
     path: ['endsOn'],
   });
 
-// Use z.input so date fields stay as strings in form state
 type WarrantyFormValues = z.input<typeof formSchema>;
 
 type FormDefaults = {
   id?: string;
-  itemId?: string;
   provider?: string;
   policyNumber?: string;
   startsOn?: Date | string;
@@ -52,7 +53,15 @@ type FormDefaults = {
 };
 
 type Props = {
-  itemId: string;
+  availableItems: AvailableItem[];
+  availableSystems: AvailableSystem[];
+  /**
+   * Pre-seeded targets used both for "create from item/system page" and
+   * editing an existing warranty. Defaults to empty.
+   */
+  initialTargets?: TargetInput[];
+  /** Optional explicit redirect after a successful submit. */
+  successRedirect?: string;
   defaultValues?: FormDefaults;
   action: (
     input: CreateWarrantyInput | (CreateWarrantyInput & { id: string }),
@@ -66,14 +75,23 @@ function dateToInputString(v: unknown): string {
   return String(v);
 }
 
-export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Props) {
+export function WarrantyForm({
+  availableItems,
+  availableSystems,
+  initialTargets,
+  successRedirect,
+  defaultValues,
+  action,
+  submitLabel,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
+  const [targetsError, setTargetsError] = useState<string | null>(null);
 
   const form = useForm<WarrantyFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      itemId: defaultValues?.itemId ?? itemId,
       provider: defaultValues?.provider ?? '',
       policyNumber: defaultValues?.policyNumber ?? '',
       startsOn: dateToInputString(defaultValues?.startsOn) as unknown as Date,
@@ -86,7 +104,6 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
   const {
     control,
     handleSubmit,
-    register,
     setError,
     formState: { errors },
   } = form;
@@ -94,11 +111,15 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((formData) => {
+    if (targets.length === 0) {
+      setTargetsError('Select at least one item or system');
+      return;
+    }
+    setTargetsError(null);
     startTransition(async () => {
-      const { itemId: formItemId, ...rest } = formData as WarrantyFormValues;
       const payload: CreateWarrantyInput & { id?: string } = {
-        ...(rest as Omit<WarrantyFormValues, 'itemId'> as CreateWarrantyInput),
-        targets: [{ itemId: formItemId }],
+        ...(formData as CreateWarrantyInput),
+        targets,
         ...(defaultValues?.id ? { id: defaultValues.id } : {}),
       };
       const result = await action(payload as CreateWarrantyInput & { id: string });
@@ -110,9 +131,21 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
       }
       const isEdit = !!defaultValues?.id;
       toast.success(isEdit ? 'Warranty updated' : 'Warranty created');
-      router.push(`/items/${itemId}?tab=warranties`);
+      // Default redirect: stay on the first item-target's page if there is one,
+      // otherwise the warranty detail.
+      const fallback = (() => {
+        const firstItem = targets.find((t) => t.itemId)?.itemId;
+        if (firstItem) return `/items/${firstItem}?tab=warranties`;
+        return `/warranties/${result.data.id}`;
+      })();
+      router.push(successRedirect ?? fallback);
     });
   });
+
+  const handleTargetsChange = (next: TargetInput[]) => {
+    setTargets(next);
+    if (next.length > 0 && targetsError) setTargetsError(null);
+  };
 
   return (
     <Form {...form}>
@@ -123,7 +156,20 @@ export function WarrantyForm({ itemId, defaultValues, action, submitLabel }: Pro
           </p>
         )}
 
-        <input type="hidden" {...register('itemId')} value={itemId} />
+        <FormItem>
+          <FormLabel>Targets</FormLabel>
+          <TargetsPicker
+            value={targets}
+            onChange={handleTargetsChange}
+            availableItems={availableItems}
+            availableSystems={availableSystems}
+          />
+          {targetsError && (
+            <p className="text-sm text-destructive" role="alert">
+              {targetsError}
+            </p>
+          )}
+        </FormItem>
 
         <FormField
           control={control}

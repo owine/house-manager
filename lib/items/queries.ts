@@ -111,6 +111,29 @@ export async function listAllCategories() {
 }
 
 /**
+ * All non-archived items projected to the shape consumed by `<TargetsPicker>`.
+ * Used by the service-record / warranty / reminder forms (multi-target picker).
+ */
+export async function listAllActiveItemsForPicker() {
+  const rows = await prisma.item.findMany({
+    where: { archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      archivedAt: true,
+      category: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    archivedAt: r.archivedAt,
+    categoryName: r.category?.name ?? null,
+  }));
+}
+
+/**
  * Items not assigned to any system and not archived. Used by the
  * "Add component" picker on the system detail page.
  */

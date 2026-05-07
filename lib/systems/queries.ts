@@ -34,6 +34,26 @@ export async function listSystemsForPicker() {
   });
 }
 
+/**
+ * Non-archived systems with their (active + archived) component items, in the
+ * shape consumed by `<TargetsPicker>`. The picker filters archived items out
+ * client-side during auto-expand via `expandSystemSelection`.
+ */
+export async function listSystemsWithItemsForPicker() {
+  return prisma.system.findMany({
+    where: { archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      kind: true,
+      items: {
+        select: { id: true, archivedAt: true },
+      },
+    },
+  });
+}
+
 export async function getSystem(id: string) {
   return prisma.system.findUnique({ where: { id } });
 }
