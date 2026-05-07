@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LocalDate } from '@/components/ui/LocalDate';
 import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
@@ -32,7 +33,7 @@ export function NotesTab({ item }: Props) {
                     {note.title}
                   </Link>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {note.updatedAt.toISOString().slice(0, 10)}
+                    <LocalDate iso={note.updatedAt.toISOString()} />
                   </span>
                 </div>
                 {note.tags.length > 0 && (

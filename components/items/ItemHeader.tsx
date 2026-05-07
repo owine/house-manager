@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
+import { LocalDate } from '@/components/ui/LocalDate';
 import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
@@ -12,8 +13,6 @@ type Props = {
 };
 
 export function ItemHeader({ item, actions }: Props) {
-  const isArchived = item.archivedAt !== null;
-
   return (
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div className="flex flex-col gap-2">
@@ -23,9 +22,9 @@ export function ItemHeader({ item, actions }: Props) {
             <CategoryIcon name={item.category.icon} className="h-3.5 w-3.5" />
             {item.category.name}
           </Badge>
-          {isArchived && (
+          {item.archivedAt && (
             <Badge variant="destructive">
-              Archived {item.archivedAt?.toISOString().slice(0, 10)}
+              Archived <LocalDate iso={item.archivedAt.toISOString()} />
             </Badge>
           )}
         </div>

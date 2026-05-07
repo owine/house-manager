@@ -8,6 +8,7 @@ import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteD
 import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMenu';
 import { ReminderStatusBadge } from '@/components/reminders/ReminderStatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getReminder } from '@/lib/reminders/queries';
 import { previewOccurrences } from '@/lib/reminders/recurrence';
@@ -60,7 +61,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
           <CardContent>
             <ul className="space-y-1 text-sm">
               {occurrences.map((d) => (
-                <li key={d.toISOString()}>{d.toISOString().slice(0, 10)}</li>
+                <li key={d.toISOString()}>{formatCalendarDate(d)}</li>
               ))}
             </ul>
           </CardContent>
@@ -77,7 +78,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
               <ul className="space-y-1 text-sm">
                 {r.completions.map((c) => (
                   <li key={c.id}>
-                    {c.completedOn.toISOString().slice(0, 10)} — completed by {c.completedBy.name}
+                    {formatCalendarDate(c.completedOn)} — completed by {c.completedBy.name}
                     {c.notes && <span className="text-muted-foreground">: {c.notes}</span>}
                   </li>
                 ))}

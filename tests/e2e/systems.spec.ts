@@ -306,7 +306,9 @@ test('archive flow: system disappears from active, items keep systemId, restore 
   await page.goto(`/systems/${systemId}`);
   await page.getByRole('button', { name: 'Archive' }).click();
   // Header swaps to "Archived <date>" badge once the action completes.
-  await expect(page.getByText(/Archived \d{4}-\d{2}-\d{2}/)).toBeVisible();
+  await expect(
+    page.getByText(/Archived (?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})/),
+  ).toBeVisible();
 
   // Active list omits the archived system.
   await page.goto('/systems');
@@ -327,7 +329,9 @@ test('archive flow: system disappears from active, items keep systemId, restore 
   await page.goto(`/systems/${systemId}`);
   await page.getByRole('button', { name: 'Restore' }).click();
   // Wait for the archived badge to disappear.
-  await expect(page.getByText(/Archived \d{4}-\d{2}-\d{2}/)).toHaveCount(0);
+  await expect(
+    page.getByText(/Archived (?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})/),
+  ).toHaveCount(0);
 
   // Active list includes the system again.
   await page.goto('/systems');

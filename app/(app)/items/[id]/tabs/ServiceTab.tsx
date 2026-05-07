@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
@@ -55,7 +56,7 @@ export function ServiceTab({ item }: Props) {
                       href={`/service/${sr.id}`}
                       className="text-sm underline-offset-4 hover:underline"
                     >
-                      {sr.performedOn.toISOString().slice(0, 10)}
+                      {formatCalendarDate(sr.performedOn)}
                     </Link>
                   </TableCell>
                   <TableCell>{sr.summary}</TableCell>

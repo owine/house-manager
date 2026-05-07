@@ -6,6 +6,7 @@ import { AttachmentUploader } from '@/components/attachments/AttachmentUploader'
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
 import { WarrantyStatusBadge } from '@/components/warranties/WarrantyStatusBadge';
+import { formatCalendarDate } from '@/lib/format/date';
 import { getWarranty } from '@/lib/warranties/queries';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -50,9 +51,9 @@ export default async function WarrantyDetailPage({ params }: { params: Params })
               </>
             )}
             <dt className="font-semibold">Starts on</dt>
-            <dd>{warranty.startsOn.toISOString().slice(0, 10)}</dd>
+            <dd>{formatCalendarDate(warranty.startsOn)}</dd>
             <dt className="font-semibold">Ends on</dt>
-            <dd>{warranty.endsOn.toISOString().slice(0, 10)}</dd>
+            <dd>{formatCalendarDate(warranty.endsOn)}</dd>
             {warranty.cost != null && (
               <>
                 <dt className="font-semibold">Cost</dt>

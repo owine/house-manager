@@ -6,6 +6,8 @@ import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LocalDate } from '@/components/ui/LocalDate';
+import { formatCalendarDate } from '@/lib/format/date';
 
 type SystemHeaderSystem = {
   id: string;
@@ -43,18 +45,16 @@ export function SystemHeader({ system, onArchive, onUnarchive }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{system.name}</h1>
           {system.kind && <Badge variant="secondary">{system.kind}</Badge>}
-          {isArchived && (
+          {system.archivedAt && (
             <Badge variant="destructive">
-              Archived {system.archivedAt?.toISOString().slice(0, 10)}
+              Archived <LocalDate iso={system.archivedAt.toISOString()} />
             </Badge>
           )}
         </div>
         <div className="text-sm text-muted-foreground">
           {system.location && <span>{system.location}</span>}
           {system.location && system.installDate && <span> · </span>}
-          {system.installDate && (
-            <span>Installed {system.installDate.toISOString().slice(0, 10)}</span>
-          )}
+          {system.installDate && <span>Installed {formatCalendarDate(system.installDate)}</span>}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">

@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatCalendarDate } from '@/lib/format/date';
 import { WarrantyRowActions } from './WarrantyRowActions';
 import { WarrantyStatusBadge } from './WarrantyStatusBadge';
 
@@ -57,8 +58,8 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
               </Link>
             </TableCell>
             <TableCell>{warranty.policyNumber ?? '—'}</TableCell>
-            <TableCell>{warranty.startsOn.toISOString().slice(0, 10)}</TableCell>
-            <TableCell>{warranty.endsOn.toISOString().slice(0, 10)}</TableCell>
+            <TableCell>{formatCalendarDate(warranty.startsOn)}</TableCell>
+            <TableCell>{formatCalendarDate(warranty.endsOn)}</TableCell>
             <TableCell>
               <WarrantyStatusBadge endsOn={warranty.endsOn} />
             </TableCell>

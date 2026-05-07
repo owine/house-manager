@@ -5,6 +5,7 @@ import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteD
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { QuickStats, upcomingReminders } from '@/lib/dashboard/queries';
+import { formatCalendarDate } from '@/lib/format/date';
 
 type Props = {
   stats: QuickStats;
@@ -55,7 +56,7 @@ export function DueSoonLane({ stats, reminders }: Props) {
                     {r.title}
                   </Link>
                   <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                    {r.nextDueOn.toISOString().slice(0, 10)}
+                    {formatCalendarDate(r.nextDueOn)}
                   </span>
                 </div>
                 <div className="mt-1">

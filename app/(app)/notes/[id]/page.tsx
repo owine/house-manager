@@ -7,6 +7,7 @@ import { AttachmentUploader } from '@/components/attachments/AttachmentUploader'
 import { NoteOverflowMenu } from '@/components/notes/NoteOverflowMenu';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { LocalDate } from '@/components/ui/LocalDate';
 import { Markdown } from '@/lib/markdown';
 import { getNote } from '@/lib/notes/queries';
 
@@ -47,7 +48,9 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
             ))}
           </span>
         )}
-        <span className="ml-auto text-xs">Updated {note.updatedAt.toISOString().slice(0, 10)}</span>
+        <span className="ml-auto text-xs">
+          Updated <LocalDate iso={note.updatedAt.toISOString()} />
+        </span>
       </div>
 
       {/* Body */}
