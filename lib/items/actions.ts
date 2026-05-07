@@ -1,10 +1,13 @@
 'use server';
+import type { VendorRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import { vendorLinkSchema } from '@/lib/vendor-links/schema';
 import { createItemSchema, updateItemSchema } from './schema';
 
 export async function createItem(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -122,6 +125,84 @@ export async function restoreItem(id: string): Promise<ActionResult> {
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
   revalidatePath('/dashboard');
+  return { ok: true, data: undefined };
+}
+
+// ---------- ItemVendor (vendor links) ----------
+
+const addItemVendorInput = vendorLinkSchema.and(z.object({ itemId: z.string().min(1) }));
+
+export async function addItemVendor(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = addItemVendorInput.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const link = await prisma.itemVendor.create({
+    data: {
+      itemId: parsed.data.itemId,
+      vendorId: parsed.data.vendorId ?? null,
+      freeformName: parsed.data.freeformName ?? null,
+      role: parsed.data.role as VendorRole,
+      notes: parsed.data.notes ?? null,
+    },
+  });
+  revalidatePath(`/items/${parsed.data.itemId}`);
+  revalidatePath('/vendors');
+  return { ok: true, data: { id: link.id } };
+}
+
+const updateItemVendorInput = vendorLinkSchema.and(z.object({ id: z.string().min(1) }));
+
+export async function updateItemVendor(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = updateItemVendorInput.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const updated = await prisma.itemVendor.update({
+    where: { id: parsed.data.id },
+    data: {
+      vendorId: parsed.data.vendorId ?? null,
+      freeformName: parsed.data.freeformName ?? null,
+      role: parsed.data.role as VendorRole,
+      notes: parsed.data.notes ?? null,
+    },
+  });
+  revalidatePath(`/items/${updated.itemId}`);
+  revalidatePath('/vendors');
+  return { ok: true, data: { id: updated.id } };
+}
+
+const removeItemVendorInput = z.object({ id: z.string().min(1) });
+
+export async function removeItemVendor(input: { id: string }): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+
+  const parsed = removeItemVendorInput.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const removed = await prisma.itemVendor.delete({ where: { id: parsed.data.id } });
+  revalidatePath(`/items/${removed.itemId}`);
+  revalidatePath('/vendors');
   return { ok: true, data: undefined };
 }
 

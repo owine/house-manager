@@ -22,6 +22,18 @@ export async function listSystems({ archived = false }: { archived?: boolean } =
   });
 }
 
+/**
+ * Lightweight `{ id, name }[]` list of non-archived systems, ordered by name.
+ * Used by the Item form's optional system picker.
+ */
+export async function listSystemsForPicker() {
+  return prisma.system.findMany({
+    where: { archivedAt: null },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  });
+}
+
 export async function getSystem(id: string) {
   return prisma.system.findUnique({ where: { id } });
 }

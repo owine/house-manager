@@ -9,6 +9,7 @@ export const createItemSchema = z.object({
   serialNumber: z.string().max(200).optional(),
   purchaseDate: z.coerce.date().optional(),
   purchasePrice: z.coerce.number().nonnegative().optional(),
+  systemId: z.string().optional().nullable(),
   metadata: z.unknown().default({}),
   notes: z.string().max(20_000).optional(),
 });

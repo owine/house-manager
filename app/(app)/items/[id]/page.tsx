@@ -4,8 +4,11 @@ import { ItemHeader } from '@/components/items/ItemHeader';
 import { ItemMetaCard } from '@/components/items/ItemMetaCard';
 import { ItemOverflowMenu } from '@/components/items/ItemOverflowMenu';
 import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
+import { ItemVendorsSection } from '@/components/items/ItemVendorsSection';
+import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
 import { getItem } from '@/lib/items/queries';
+import { listAllVendors } from '@/lib/vendors/queries';
 import { FilesTab } from './tabs/FilesTab';
 import { NotesTab } from './tabs/NotesTab';
 import { OverviewTab } from './tabs/OverviewTab';
@@ -38,10 +41,19 @@ export default async function ItemDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const tab = parseTab(sp.tab);
-  const item = await getItem(id);
+  const [item, vendors] = await Promise.all([getItem(id), listAllVendors()]);
   if (!item) notFound();
 
   const itemId = item.id;
+
+  const vendorLinks: VendorLinkRow[] = item.itemVendors.map((iv) => ({
+    id: iv.id,
+    vendorId: iv.vendorId,
+    vendorName: iv.vendor?.name ?? null,
+    freeformName: iv.freeformName,
+    role: iv.role,
+    notes: iv.notes,
+  }));
 
   async function doArchive() {
     'use server';
@@ -70,13 +82,16 @@ export default async function ItemDetailPage({
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2">
           <ItemTabs active={tab} itemId={item.id} />
-          <div className="mt-6">
+          <div className="mt-6 space-y-6">
             {tab === 'overview' && <OverviewTab item={item} />}
             {tab === 'warranties' && <WarrantiesTab item={item} />}
             {tab === 'service' && <ServiceTab item={item} />}
             {tab === 'reminders' && <RemindersTab item={item} />}
             {tab === 'notes' && <NotesTab item={item} />}
             {tab === 'files' && <FilesTab item={item} />}
+            {tab === 'overview' && (
+              <ItemVendorsSection itemId={item.id} links={vendorLinks} vendors={vendors} />
+            )}
           </div>
         </div>
         <aside className="md:col-span-1">

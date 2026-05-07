@@ -5,6 +5,7 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ItemForm } from '@/components/items/ItemForm';
 import { updateItem } from '@/lib/items/actions';
 import { getItem, listAllCategories } from '@/lib/items/queries';
+import { listSystemsForPicker } from '@/lib/systems/queries';
 
 export async function generateMetadata({
   params,
@@ -18,12 +19,21 @@ export async function generateMetadata({
 
 export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [item, categories] = await Promise.all([getItem(id), listAllCategories()]);
+  const [item, categories, systems] = await Promise.all([
+    getItem(id),
+    listAllCategories(),
+    listSystemsForPicker(),
+  ]);
   if (!item) notFound();
+  const currentArchivedSystem = item.system?.archivedAt
+    ? { id: item.system.id, name: item.system.name }
+    : null;
   return (
     <FormPageShell header={<PageHeader title={`Edit ${item.name}`} />}>
       <ItemForm
         categories={categories}
+        systems={systems}
+        currentArchivedSystem={currentArchivedSystem}
         defaultValues={{
           id: item.id,
           name: item.name,
@@ -36,6 +46,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
             | Date
             | undefined,
           purchasePrice: item.purchasePrice?.toNumber() ?? undefined,
+          systemId: item.systemId ?? null,
           metadata: (item.metadata ?? {}) as Record<string, unknown>,
           notes: item.notes ?? undefined,
         }}

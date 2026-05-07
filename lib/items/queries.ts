@@ -49,6 +49,11 @@ export async function getItem(id: string) {
     where: { id },
     include: {
       category: true,
+      system: { select: { id: true, name: true, archivedAt: true } },
+      itemVendors: {
+        orderBy: { createdAt: 'asc' },
+        include: { vendor: { select: { id: true, name: true } } },
+      },
       warrantyTargets: {
         orderBy: { warranty: { endsOn: 'desc' } },
         include: { warranty: true },
