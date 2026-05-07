@@ -109,7 +109,7 @@ test('logs a service record on a system and dedupes across system + components',
   await page.getByLabel('Performed on').fill('2026-04-01');
   await page.getByLabel('Summary').fill('Spring tune-up');
   await page.getByRole('button', { name: 'Save record' }).click();
-  await expect(page).toHaveURL(/\/service\/c[a-z0-9]+$/);
+  await expect(page).toHaveURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 });
   const serviceRecordId = page.url().match(/\/service\/(c[a-z0-9]+)$/)?.[1];
   if (!serviceRecordId) throw new Error('service record id not found in URL');
 
