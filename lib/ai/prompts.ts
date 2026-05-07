@@ -1,3 +1,15 @@
+// AI prompt configuration.
+//
+// Where things live:
+//   - SYSTEM_PROMPT       — instructions sent on every Anthropic call
+//   - buildHouseProfileBlock — house profile context (location is coarsened)
+//   - buildInventoryBlock — inventory context (no PII fields like serial number)
+//   - lib/ai/context-builder.ts — what data is fetched from the DB into the prompt
+//
+// Data scrubbing:
+//   - coarsenLocation strips street-level detail so AI receives at most city/region.
+//   - FocusedItem deliberately excludes serialNumber and metadata — never select them here.
+
 export const SYSTEM_PROMPT_VERSION = 'v1';
 
 export const SYSTEM_PROMPT = `You are a household maintenance assistant.
@@ -20,6 +32,72 @@ export function seasonForDate(d: Date): Season {
   return 'winter'; // Dec, Jan, Feb
 }
 
+/**
+ * Coarsen a freeform location string to city/region level.
+ * Removes street addresses, ZIP codes, apartment markers, and common street suffixes.
+ * Returns null if the input is null, empty, or contains only street-level details.
+ */
+export function coarsenLocation(input: string | null): string | null {
+  if (!input || input.trim() === '') {
+    return null;
+  }
+
+  const segments = input
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const filtered = segments
+    .map((segment) => {
+      // Strip trailing ZIP codes (e.g., "TX 78701" → "TX", "Austin, TX 78701-1234" → "Austin, TX")
+      const withoutZip = segment
+        .replace(/\s+\d{5}(-\d{4})?$/, '') // ZIP or ZIP+4 at end
+        .trim();
+
+      return withoutZip;
+    })
+    .filter((segment) => {
+      if (!segment) {
+        return false;
+      }
+
+      // Drop segments starting with a house number followed by a space.
+      // \S* after the digits catches "123B Elm St" (alpha suffix) and
+      // "12-14 Main St" (hyphenated range) — both still encode street-level detail.
+      if (/^\d+\S*\s/.test(segment)) {
+        return false;
+      }
+
+      // Drop segments containing apartment/unit markers followed by digits
+      if (/\b(Apt|Unit|Suite|Ste)\s*\d/i.test(segment)) {
+        return false;
+      }
+
+      // Drop segments starting with # followed by digit
+      if (/^#\d/.test(segment)) {
+        return false;
+      }
+
+      // Drop segments starting with "PO Box" — also matches "P.O. Box" and "P O Box".
+      if (/^P\.?\s*O\.?\s+Box\b/i.test(segment)) {
+        return false;
+      }
+
+      // Drop segments that are entirely digits (ZIP codes that weren't caught by stripping)
+      if (/^\d+$/.test(segment)) {
+        return false;
+      }
+
+      return true;
+    });
+
+  if (filtered.length === 0) {
+    return null;
+  }
+
+  return filtered.join(', ');
+}
+
 export type HouseProfileForPrompt = {
   location: string | null;
   climateZone: string | null;
@@ -38,7 +116,7 @@ export function buildHouseProfileBlock(input: {
   const fmt = (v: string | null) => v ?? 'not specified';
   return [
     'House profile',
-    `  Location: ${fmt(input.profile.location)}`,
+    `  Location: ${fmt(coarsenLocation(input.profile.location))}`,
     `  Climate zone: ${fmt(input.profile.climateZone)}`,
     `  Property type: ${fmt(input.profile.propertyType)}`,
     `Today: ${dateStr}`,

@@ -95,10 +95,14 @@ export function HouseProfileForm({ defaultValues }: Props) {
           name="location"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Location</FormLabel>
+              <FormLabel>City or region</FormLabel>
               <FormControl>
                 <Input {...field} />
               </FormControl>
+              <FormDescription>
+                Used to tailor AI maintenance suggestions. Keep it general (e.g., &apos;Austin,
+                TX&apos;); don&apos;t enter a street address.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
