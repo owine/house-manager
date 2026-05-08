@@ -6,6 +6,10 @@ import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
+import {
+  type ClassifyIncomingEmailJob,
+  handleClassifyIncomingEmail,
+} from './jobs/classify-incoming-email';
 import { handleNotify, type NotifyJob } from './jobs/notify';
 import { handleNotifyLogSweep } from './jobs/notify-log-sweep';
 import { handlePgDump } from './jobs/pg-dump';
@@ -99,8 +103,16 @@ async function main() {
     await handlePgDump();
   });
 
+  // Inbound-email classifier — fired by the /api/inbound-email webhook handler
+  // after each new IncomingEmail row is persisted. Stub until Phase D.
+  await boss.work<ClassifyIncomingEmailJob>(
+    Queue.ClassifyIncomingEmail,
+    { batchSize: 4 },
+    handleClassifyIncomingEmail,
+  );
+
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify jobs',
   );
 
   const shutdown = async (signal: string) => {

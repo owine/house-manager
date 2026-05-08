@@ -1,0 +1,20 @@
+{
+  "messageId": "<ticket-003@acme.example>",
+  "subject": "Service report — HVAC tune-up complete",
+  "from": {
+    "value": [{ "address": "dispatch@acme.example", "name": "Acme HVAC Dispatch" }]
+  },
+  "date": "2026-05-08T14:30:00Z",
+  "text": "Service ticket #5512. Tech: Brian. Time: 2026-05-07 9:00-10:30. Replaced air filter on the heat pump. All readings normal.",
+  "html": "<p>Service ticket #5512. Tech: Brian.</p><p><img src=\"cid:tech-photo\"/> Replaced air filter on the heat pump.</p>",
+  "headers": { "message-id": "<ticket-003@acme.example>" },
+  "attachments": [
+    {
+      "filename": "tech-photo.jpg",
+      "contentType": "image/jpeg",
+      "size": 4,
+      "content": { "type": "Buffer", "data": [255, 216, 255, 224] },
+      "cid": "tech-photo"
+    }
+  ]
+}

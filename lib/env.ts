@@ -22,6 +22,18 @@ const EnvSchema = z.object({
     ),
   FORWARDEMAIL_API_KEY: z.string().min(1),
   FORWARDEMAIL_FROM_ADDRESS: z.string().min(1),
+  // Inbound webhook auth (paired with the ForwardEmail "inbox:" alias).
+  // Both vars are optional: the inbox feature is opt-in per deployment.
+  // The route handler returns 503 if either is unset, so a deploy that
+  // hasn't configured the funnel just rejects webhook hits cleanly.
+  // When set, both must be 16+ chars so a typo or truncation fails fast.
+  //   - INBOUND_EMAIL_TOKEN sits in the DNS TXT URL path. DNS TXT is public,
+  //     so this is not a secret on its own; HMAC carries the real defense.
+  //   - INBOUND_EMAIL_HMAC_KEY must match ForwardEmail's "Webhook Signature
+  //     Payload Verification Key" exactly. The actual secret; never traverses
+  //     the wire once configured.
+  INBOUND_EMAIL_TOKEN: z.string().min(16).optional(),
+  INBOUND_EMAIL_HMAC_KEY: z.string().min(16).optional(),
   APP_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
   // Empty string is tolerated alongside undefined: the Dockerfile's
