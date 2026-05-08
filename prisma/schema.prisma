@@ -116,6 +116,7 @@ model System {
   warrantyTargets        WarrantyTarget[]
   reminderTargets        ReminderTarget[]
   systemVendors          SystemVendor[]
+  incomingEmails         IncomingEmail[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -160,6 +161,7 @@ model Item {
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
   checklistItems  ChecklistItem[]
+  incomingEmails  IncomingEmail[]
 
   @@index([categoryId])
   @@index([systemId])
@@ -183,6 +185,7 @@ model Vendor {
   serviceRecords  ServiceRecord[]
   itemVendors     ItemVendor[]
   systemVendors   SystemVendor[]
+  incomingEmails  IncomingEmail[]
 
   @@map("vendors")
 }
@@ -279,6 +282,7 @@ model ServiceRecord {
   targets         ServiceRecordTarget[]
   attachments     Attachment[]
   completionFromReminder ReminderCompletion? @relation("ReminderCompletionServiceRecord")
+  fromIncomingEmail      IncomingEmail?      @relation("IncomingEmailServiceRecord")
 
   @@index([vendorId])
   @@index([performedOn])
@@ -303,6 +307,61 @@ model ServiceRecordTarget {
   @@index([itemId])
   @@index([systemId])
   @@map("service_record_targets")
+}
+
+enum IncomingEmailKind {
+  ESTIMATE
+  INVOICE
+  TICKET
+  UNKNOWN
+}
+
+enum IncomingEmailState {
+  UNTRIAGED
+  AUTO_LINKED
+  LINKED
+  ARCHIVED
+}
+
+model IncomingEmail {
+  id              String              @id @default(cuid())
+
+  messageId       String              @unique
+  fromAddress     String
+  fromName        String?
+  subject         String
+  receivedAt      DateTime
+  ingestedAt      DateTime            @default(now())
+
+  bodyText        String?             @db.Text
+  bodyHtml        String?             @db.Text
+  headersJson     Json
+  authResultsJson Json?
+
+  kind            IncomingEmailKind   @default(UNKNOWN)
+  state           IncomingEmailState  @default(UNTRIAGED)
+
+  vendorId        String?
+  vendor          Vendor?             @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  itemId          String?
+  item            Item?               @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  systemId        String?
+  system          System?             @relation(fields: [systemId], references: [id], onDelete: SetNull)
+
+  createdServiceRecordId String?         @unique
+  createdServiceRecord   ServiceRecord? @relation("IncomingEmailServiceRecord", fields: [createdServiceRecordId], references: [id], onDelete: SetNull)
+
+  attachments     Attachment[]
+
+  archivedAt      DateTime?
+
+  @@index([state])
+  @@index([receivedAt])
+  @@index([vendorId])
+  @@index([itemId])
+  @@index([systemId])
+  @@index([kind])
+  @@map("incoming_emails")
 }
 
 model Note {
@@ -338,10 +397,12 @@ model Attachment {
   warrantyId      String?
   serviceRecordId String?
   noteId          String?
+  incomingEmailId String?
   item            Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
   warranty        Warranty?      @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
   serviceRecord   ServiceRecord? @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
   note            Note?          @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  incomingEmail   IncomingEmail? @relation(fields: [incomingEmailId], references: [id], onDelete: Cascade)
 
   uploadedById    String
   uploadedBy      User           @relation(fields: [uploadedById], references: [id])
@@ -357,6 +418,7 @@ model Attachment {
   @@index([warrantyId])
   @@index([serviceRecordId])
   @@index([noteId])
+  @@index([incomingEmailId])
   @@map("attachments")
 }
 
