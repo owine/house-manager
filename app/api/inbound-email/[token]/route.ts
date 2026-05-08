@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import { type NextRequest, NextResponse } from 'next/server';
 import { getEnv } from '@/lib/env';
-import { ingestIncomingEmail } from '@/lib/incoming-email/actions';
 import { verifyWebhookSignature } from '@/lib/incoming-email/hmac';
+import { ingestIncomingEmail } from '@/lib/incoming-email/ingest';
 import { ForwardEmailWebhookSchema } from '@/lib/incoming-email/schema';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
