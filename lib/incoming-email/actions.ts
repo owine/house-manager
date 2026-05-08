@@ -158,12 +158,19 @@ export async function promoteToServiceRecord(
     };
   }
 
+  // Subject is a non-nullable String column, but it can be the empty string
+  // (mailparser sometimes hands us "" for messages with no Subject header).
+  // Build the summary defensively so an empty/whitespace-only subject still
+  // produces a usable ServiceRecord.summary.
+  const trimmedSubject = email.subject.trim();
+  const summary = (trimmedSubject.length > 0 ? trimmedSubject : '(no subject)').slice(0, 200);
+
   const created = await prisma.$transaction(async (tx) => {
     const sr = await tx.serviceRecord.create({
       data: {
         vendorId: email.vendorId,
         performedOn: email.receivedAt,
-        summary: email.subject.slice(0, 200) || '(no subject)',
+        summary,
         notes: '[Promoted from inbound email — review and edit.]',
         targets: {
           create: [
