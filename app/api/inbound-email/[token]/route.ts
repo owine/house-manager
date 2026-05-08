@@ -27,6 +27,14 @@ export async function POST(
   const env = getEnv();
   const { token } = await params;
 
+  // The inbox feature is opt-in: a deployment that hasn't set both env vars
+  // shouldn't accept webhook deliveries at all. 503 (Service Unavailable) is
+  // accurate — the resource exists but isn't configured to serve traffic.
+  if (!env.INBOUND_EMAIL_TOKEN || !env.INBOUND_EMAIL_HMAC_KEY) {
+    log.warn('inbound-email: webhook hit but env not configured');
+    return NextResponse.json({ error: 'inbox not configured' }, { status: 503 });
+  }
+
   // 1. Token check (sanity / routing). The token lives in DNS TXT and is not
   //    a secret on its own; HMAC carries the real defense. Mismatch → fast
   //    reject so we don't run HMAC on misrouted requests.

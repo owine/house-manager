@@ -179,3 +179,32 @@ describe('POST /api/inbound-email/[token]', () => {
     expect(await ctx.prisma.incomingEmail.count()).toBe(0);
   });
 });
+
+describe('POST /api/inbound-email/[token] when inbox env is unset', () => {
+  it('returns 503 when token+key are not configured (feature off)', async () => {
+    // Re-mock env to simulate a deployment that hasn't opted in.
+    vi.doMock('@/lib/env', () => ({
+      getEnv: vi.fn(() => ({
+        INBOUND_EMAIL_TOKEN: undefined,
+        INBOUND_EMAIL_HMAC_KEY: undefined,
+        FILES_DIR: mockedFilesDir,
+      })),
+    }));
+    vi.resetModules();
+    const route = await import('@/app/api/inbound-email/[token]/route');
+    const url = `http://localhost:3000/api/inbound-email/${TOKEN}`;
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const res = await route.POST(req as unknown as Parameters<typeof route.POST>[0], {
+      params: Promise.resolve({ token: TOKEN }),
+    });
+    expect(res.status).toBe(503);
+    // Restore the previous mock so the rest of this file's suite (if reordered)
+    // would still see configured env. vi.resetModules + the original vi.mock at
+    // module load handles this on the next describe.
+    vi.doUnmock('@/lib/env');
+  });
+});

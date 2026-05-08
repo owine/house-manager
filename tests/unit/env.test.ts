@@ -31,6 +31,30 @@ describe('parseEnv', () => {
     expect(() => parseEnv({})).toThrow();
   });
 
+  it('treats INBOUND_EMAIL_* as optional (inbox feature is opt-in)', () => {
+    const baseValid = {
+      ANTHROPIC_API_KEY: 'sk-ant-test-fixture',
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+      AUTH_SECRET: 'a'.repeat(32),
+      AUTH_OIDC_ISSUER: 'https://auth.example.com',
+      AUTH_OIDC_CLIENT_ID: 'house-manager',
+      AUTH_OIDC_CLIENT_SECRET: 'secret',
+      MEILI_HOST: 'http://meilisearch:7700',
+      MEILI_KEY: 'key',
+      FILES_DIR: '/data/files',
+      NODE_ENV: 'test',
+      WEB_PUSH_VAPID_PUBLIC_KEY: 'test-vapid-public-key-fixture',
+      WEB_PUSH_VAPID_PRIVATE_KEY: 'test-vapid-private-key-fixture',
+      WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
+      FORWARDEMAIL_API_KEY: 'test-api-key',
+      FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+    };
+    expect(() => parseEnv(baseValid)).not.toThrow();
+    const env = parseEnv(baseValid);
+    expect(env.INBOUND_EMAIL_TOKEN).toBeUndefined();
+    expect(env.INBOUND_EMAIL_HMAC_KEY).toBeUndefined();
+  });
+
   // Regression: the Dockerfile's `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN`
   // pattern produces an empty-string ENV when no --build-arg is passed. A bare
   // `.url().optional()` rejects empty string (not undefined, not a valid URL),
