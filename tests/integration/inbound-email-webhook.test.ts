@@ -152,6 +152,22 @@ describe('POST /api/inbound-email/[token]', () => {
     expect(enqueued).toHaveLength(1);
   });
 
+  it('accepts a body of exactly 50 MB (boundary)', async () => {
+    // Body at MAX_BODY_BYTES (`> MAX_BODY_BYTES` is the cap; equal is allowed).
+    // We don't sign — body is invalid JSON anyway — so the request will fail
+    // later (401 on signature mismatch). The point of this test is purely
+    // to assert it does NOT 413 at the boundary.
+    const exact = 'x'.repeat(50 * 1024 * 1024);
+    const url = `http://localhost:3000/api/inbound-email/${TOKEN}`;
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: exact,
+    });
+    const res = await callRoute(req, TOKEN);
+    expect(res.status).not.toBe(413);
+  }, 30_000);
+
   it('rejects with 413 when the body exceeds 50 MB', async () => {
     // Construct a body just over the cap. We don't sign it correctly because
     // size check happens before HMAC; signing would still be wasted CPU.
