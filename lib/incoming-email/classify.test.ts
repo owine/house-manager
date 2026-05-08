@@ -8,16 +8,19 @@ import {
 
 const VENDOR_ACME: ClassifyVendor = {
   id: 'v_acme',
+  name: 'Acme HVAC',
   email: 'dispatch@acme.example',
   notes: null,
 };
 const VENDOR_BETA: ClassifyVendor = {
   id: 'v_beta',
+  name: 'Beta Plumbing',
   email: 'billing@beta.example',
   notes: null,
 };
 const VENDOR_DOMAIN_ONLY: ClassifyVendor = {
   id: 'v_domain',
+  name: 'Gamma Services',
   // No email, but notes mention the domain — domain-match path.
   email: null,
   notes: 'Service email comes from gamma-services.example',
@@ -32,6 +35,7 @@ const SYSTEM_HVAC: ClassifyEntity = { id: 's_hvac', name: 'HVAC' };
 function input(overrides: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
     fromAddress: 'someone@example.com',
+    fromName: null,
     subject: '',
     bodyText: '',
     vendors: [VENDOR_ACME, VENDOR_BETA, VENDOR_DOMAIN_ONLY],
@@ -46,8 +50,8 @@ describe('classifyEmail — vendor match', () => {
     // Beta has a sibling at billing@beta.example; an email from
     // dispatch@beta.example would domain-match Beta. But we want exact-email
     // priority: simulate by giving two vendors with the same domain.
-    const v1 = { id: 'v1', email: 'a@shared.example', notes: null };
-    const v2 = { id: 'v2', email: 'b@shared.example', notes: null };
+    const v1 = { id: 'v1', name: 'V1', email: 'a@shared.example', notes: null };
+    const v2 = { id: 'v2', name: 'V2', email: 'b@shared.example', notes: null };
     const r = classifyEmail(input({ fromAddress: 'b@shared.example', vendors: [v1, v2] }));
     expect(r.vendorId).toBe('v2');
   });
@@ -78,11 +82,108 @@ describe('classifyEmail — vendor match', () => {
   });
 
   it('case-insensitive: matches Vendor.email regardless of casing on either side', () => {
-    const v = { id: 'v_case', email: 'INFO@CASE.example', notes: null };
+    const v = { id: 'v_case', name: 'Case Co', email: 'INFO@CASE.example', notes: null };
     const r = classifyEmail(
       input({ fromAddress: 'info@case.example', vendors: [v], subject: 'x' }),
     );
     expect(r.vendorId).toBe('v_case');
+  });
+
+  it('falls back to display-name match when sender domain is unknown', () => {
+    // Billing-platform pattern: "Acme HVAC via QuickBooks" <noreply@quickbooks.example>
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@quickbooks.example',
+        fromName: 'Acme HVAC via QuickBooks',
+      }),
+    );
+    expect(r.vendorId).toBe('v_acme');
+  });
+
+  it('does not fall back to display-name match when domain matched first', () => {
+    // Domain match wins: even if fromName mentions a different vendor's name,
+    // the precise domain match should not be overridden.
+    const r = classifyEmail(
+      input({
+        fromAddress: 'sales@acme.example',
+        fromName: 'Beta Plumbing newsletter',
+      }),
+    );
+    expect(r.vendorId).toBe('v_acme');
+  });
+
+  it('falls back to subject/body match when no domain or display-name match', () => {
+    // Real-world case: invoice forwarded from a billing platform whose sender
+    // is e.g. noreply@walkabout.software with no display name; vendor name
+    // appears in the subject.
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@walkabout.software',
+        fromName: null,
+        subject: 'Acme HVAC Service Invoice',
+      }),
+    );
+    expect(r.vendorId).toBe('v_acme');
+  });
+
+  it('finds a vendor name in the body prefix when subject has no name', () => {
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        subject: 'Invoice 142020',
+        bodyText: 'Attached is invoice 142020 from Acme HVAC.',
+      }),
+    );
+    expect(r.vendorId).toBe('v_acme');
+  });
+
+  it('returns null when subject/body name match is ambiguous (2+ vendors)', () => {
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        subject: 'Combined invoice from Acme HVAC and Beta Plumbing',
+      }),
+    );
+    expect(r.vendorId).toBeNull();
+  });
+
+  it('respects word boundaries in subject/body match (no substring false-positive)', () => {
+    // Vendor "Beta Plumbing" should NOT match "alphabeta" in body.
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        subject: 'About alphabeta proposal',
+      }),
+    );
+    expect(r.vendorId).toBeNull();
+  });
+
+  it('matches vendor names with non-ASCII characters (Unicode-aware boundaries)', () => {
+    // Vendor with an accented Latin name. Plain \W boundaries treat 'é' as
+    // a non-word character, which would create a spurious internal boundary;
+    // the Unicode-aware regex (\\p{L}) handles it correctly.
+    const v = { id: 'v_cafe', name: 'Café Plumbing', email: null, notes: null };
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        subject: 'Invoice from Café Plumbing',
+        vendors: [v],
+      }),
+    );
+    expect(r.vendorId).toBe('v_cafe');
+  });
+
+  it('non-ASCII boundary still rejects substrings', () => {
+    const v = { id: 'v_cafe', name: 'Café', email: null, notes: null };
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        // 'Cafétaria' should NOT match 'Café' (whole-word required).
+        subject: 'Stop by the Cafétaria',
+        vendors: [v],
+      }),
+    );
+    expect(r.vendorId).toBeNull();
   });
 });
 
