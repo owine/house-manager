@@ -14,7 +14,7 @@ export function DashboardShell({ greeting, primary, secondary, tertiary }: Props
           {primary}
           {secondary && <div className="grid gap-4 sm:grid-cols-2">{secondary}</div>}
         </div>
-        {tertiary && <aside>{tertiary}</aside>}
+        {tertiary && <aside className="min-w-0">{tertiary}</aside>}
       </div>
     </div>
   );
