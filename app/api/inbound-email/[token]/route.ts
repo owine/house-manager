@@ -39,7 +39,10 @@ export async function POST(
   //    bytes ForwardEmail signed. Re-stringifying after JSON.parse would
   //    produce a byte-different (though semantically equivalent) body.
   const rawBody = await req.text();
-  if (rawBody.length > MAX_BODY_BYTES) {
+  // Buffer.byteLength counts UTF-8 bytes, which matches the wire size and the
+  // bytes the HMAC was computed over. rawBody.length would count UTF-16 code
+  // units and undercount any payload with non-ASCII characters.
+  if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) {
     return NextResponse.json({ error: 'payload too large' }, { status: 413 });
   }
 
