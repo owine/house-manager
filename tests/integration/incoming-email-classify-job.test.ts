@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
-vi.mock('@sentry/node', () => ({ captureException: vi.fn() }));
+const sentryCaptured: unknown[] = [];
+vi.mock('@sentry/node', () => ({
+  captureException: vi.fn((e: unknown) => {
+    sentryCaptured.push(e);
+  }),
+}));
 
 let ctx: IntegrationContext;
 let handle: typeof import('@/worker/jobs/classify-incoming-email').handleClassifyIncomingEmail;
@@ -42,6 +47,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  sentryCaptured.length = 0;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmail.deleteMany();
@@ -182,4 +188,104 @@ describe('handleClassifyIncomingEmail', () => {
   it('skips a missing row without throwing', async () => {
     await expect(handle([{ data: { id: 'does-not-exist' } }])).resolves.toBeUndefined();
   });
+
+  it('preserves user-set LINKED state instead of downgrading on re-run', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme', email: 'dispatch@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: { performedOn: new Date(), summary: 'manual draft' },
+    });
+    const e = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<linked@a>',
+        fromAddress: 'dispatch@acme.example',
+        subject: 'Service report — Heat Pump',
+        receivedAt: new Date(),
+        headersJson: {},
+        // User already triaged manually; classifier re-run must not reset.
+        state: 'LINKED',
+        vendorId: v.id,
+        itemId: item.id,
+        createdServiceRecordId: sr.id,
+      },
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.state).toBe('LINKED');
+    // Metadata still refreshes on re-run; only state is preserved.
+    expect(after?.kind).toBe('TICKET');
+  });
+
+  it('preserves ARCHIVED state on re-run', async () => {
+    const e = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<archived@a>',
+        fromAddress: 'spam@unknown.example',
+        subject: 'Hello',
+        receivedAt: new Date(),
+        headersJson: {},
+        state: 'ARCHIVED',
+        archivedAt: new Date(),
+      },
+    });
+    await handle([{ data: { id: e.id } }]);
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.state).toBe('ARCHIVED');
+  });
+
+  it('truncates summary to 200 chars when subject is very long', async () => {
+    await ctx.prisma.vendor.create({
+      data: { name: 'Acme', email: 'dispatch@acme.example' },
+    });
+    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    const longSubject = `Service report — Heat Pump tune-up complete: ${'x'.repeat(500)}`;
+    const e = await makeEmail({
+      messageId: '<long@a>',
+      fromAddress: 'dispatch@acme.example',
+      subject: longSubject,
+    });
+    await handle([{ data: { id: e.id } }]);
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { createdServiceRecord: true },
+    });
+    expect(after?.createdServiceRecord?.summary.length).toBe(200);
+    expect(after?.createdServiceRecord?.summary).toBe(longSubject.slice(0, 200));
+  });
+
+  it('uses "(no subject)" placeholder when subject is empty/whitespace', async () => {
+    await ctx.prisma.vendor.create({
+      data: { name: 'Acme', email: 'dispatch@acme.example' },
+    });
+    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    // Empty subject won't trigger TICKET kind, so put the trigger in body.
+    const e = await makeEmail({
+      messageId: '<empty@a>',
+      fromAddress: 'dispatch@acme.example',
+      subject: '   ',
+      bodyText: 'Service report from today: replaced filter on Heat Pump.',
+    });
+    await handle([{ data: { id: e.id } }]);
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { createdServiceRecord: true },
+    });
+    expect(after?.createdServiceRecord?.summary).toBe('(no subject)');
+  });
+
+  // NOTE: The Sentry-on-failure path (try/catch around the $transaction in
+  // worker/jobs/classify-incoming-email.ts) is intentionally not covered by an
+  // integration test here. The integration helper uses its own PrismaClient
+  // (ctx.prisma) while the worker imports its own from @/lib/db, so spies on
+  // ctx.prisma don't intercept the worker's queries. Forcing a real DB-level
+  // failure mid-transaction would require either coordinated FK manipulation
+  // or a vi.mock('@/lib/db') stub mirroring the worker's full client usage —
+  // both add more infrastructure than the small try/catch block deserves.
+  // The behavior is unit-trivial (catch → Sentry.captureException → don't
+  // rethrow) and the surrounding tests confirm classification metadata
+  // persists before the auto-stub attempt.
 });

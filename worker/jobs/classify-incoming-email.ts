@@ -34,6 +34,7 @@ async function classifyOne(id: string): Promise<void> {
       subject: true,
       bodyText: true,
       receivedAt: true,
+      state: true,
       createdServiceRecordId: true,
     },
   });
@@ -64,8 +65,21 @@ async function classifyOne(id: string): Promise<void> {
   });
 
   // Persist classification metadata regardless of whether the auto-stub fires.
-  // If state was already LINKED (user manually triaged before the worker ran),
-  // don't downgrade it; only flip from UNTRIAGED.
+  // We always update `kind` and the FK guesses since those are pure derived
+  // metadata, but `state` is user-meaningful: if the user has already triaged
+  // (LINKED) or dismissed (ARCHIVED) this email, don't reset to AUTO_LINKED /
+  // UNTRIAGED. Only transition state when it was still UNTRIAGED or a prior
+  // AUTO_LINKED (which a re-run is allowed to refresh).
+  const stateUpdate =
+    row.state === 'UNTRIAGED' || row.state === 'AUTO_LINKED'
+      ? {
+          state:
+            result.vendorId || result.itemId || result.systemId
+              ? ('AUTO_LINKED' as const)
+              : ('UNTRIAGED' as const),
+        }
+      : {};
+
   await prisma.incomingEmail.update({
     where: { id },
     data: {
@@ -73,9 +87,7 @@ async function classifyOne(id: string): Promise<void> {
       vendorId: result.vendorId,
       itemId: result.itemId,
       systemId: result.systemId,
-      // AUTO_LINKED if we found anything; UNTRIAGED otherwise. Leave LINKED
-      // and ARCHIVED alone — the user has already touched those.
-      state: result.vendorId || result.itemId || result.systemId ? 'AUTO_LINKED' : 'UNTRIAGED',
+      ...stateUpdate,
     },
   });
 
