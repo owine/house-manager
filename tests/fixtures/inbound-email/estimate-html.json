@@ -1,0 +1,28 @@
+{
+  "messageId": "<est-002@acme.example>",
+  "subject": "Estimate for HVAC system replacement",
+  "from": {
+    "value": [{ "address": "sales@acme.example", "name": "Acme HVAC Sales" }]
+  },
+  "date": "2026-05-08T11:00:00Z",
+  "text": "Estimate attached. Total proposed: $8,400.",
+  "html": "<html><body><h1>Estimate</h1><p>Total: $8,400</p></body></html>",
+  "headers": { "message-id": "<est-002@acme.example>" },
+  "attachments": [
+    {
+      "filename": "estimate-4831.pdf",
+      "contentType": "application/pdf",
+      "size": 11,
+      "content": {
+        "type": "Buffer",
+        "data": [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]
+      }
+    },
+    {
+      "filename": "scope.pdf",
+      "contentType": "application/pdf",
+      "size": 5,
+      "content": { "type": "Buffer", "data": [65, 66, 67, 68, 69] }
+    }
+  ]
+}

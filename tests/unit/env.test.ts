@@ -21,6 +21,8 @@ describe('parseEnv', () => {
       WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
       FORWARDEMAIL_API_KEY: 'test-api-key',
       FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+      INBOUND_EMAIL_TOKEN: 'test-inbound-token-1234567890ab',
+      INBOUND_EMAIL_HMAC_KEY: 'test-inbound-hmac-key-1234567890',
     });
     expect(env.DATABASE_URL).toBe('postgresql://u:p@localhost:5432/db');
   });
@@ -51,6 +53,8 @@ describe('parseEnv', () => {
       WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
       FORWARDEMAIL_API_KEY: 'test-api-key',
       FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+      INBOUND_EMAIL_TOKEN: 'test-inbound-token-1234567890ab',
+      INBOUND_EMAIL_HMAC_KEY: 'test-inbound-hmac-key-1234567890',
     };
     expect(() =>
       parseEnv({ ...baseValid, SENTRY_DSN: '', NEXT_PUBLIC_SENTRY_DSN: '' }),
@@ -74,6 +78,8 @@ describe('parseEnv', () => {
       WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
       FORWARDEMAIL_API_KEY: 'test-api-key',
       FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+      INBOUND_EMAIL_TOKEN: 'test-inbound-token-1234567890ab',
+      INBOUND_EMAIL_HMAC_KEY: 'test-inbound-hmac-key-1234567890',
     };
     expect(() => parseEnv({ ...baseValid, SENTRY_DSN: 'not-a-url' })).toThrow();
   });

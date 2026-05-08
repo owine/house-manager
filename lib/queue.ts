@@ -19,6 +19,7 @@ export const Queue = {
   SearchReindex: 'search.reindex',
   PgDump: 'pg-dump', // NEW
   NotifyLogSweep: 'notify-log.sweep', // NEW
+  ClassifyIncomingEmail: 'incoming-email.classify',
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];

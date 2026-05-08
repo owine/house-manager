@@ -1,0 +1,22 @@
+{
+  "messageId": "<inv-001@acme.example>",
+  "subject": "Invoice #4827 — Spring HVAC Tune-Up",
+  "from": {
+    "value": [{ "address": "billing@acme.example", "name": "Acme HVAC Billing" }]
+  },
+  "to": {
+    "value": [{ "address": "inbox@housemanager.owine.net" }]
+  },
+  "date": "2026-05-08T10:15:00Z",
+  "text": "Hi Oliver,\n\nAttached is invoice #4827 for the spring tune-up. Amount due: $185.00. Payment is due by 2026-06-08.\n\nThanks,\nAcme HVAC",
+  "html": "<p>Hi Oliver,</p><p>Attached is invoice #4827 for the spring tune-up. Amount due: $185.00.</p>",
+  "headers": {
+    "message-id": "<inv-001@acme.example>",
+    "from": "Acme HVAC Billing <billing@acme.example>"
+  },
+  "attachments": [],
+  "dkim": { "result": "pass" },
+  "spf": { "result": "pass" },
+  "dmarc": { "result": "pass" },
+  "session": { "recipient": "inbox@housemanager.owine.net" }
+}
