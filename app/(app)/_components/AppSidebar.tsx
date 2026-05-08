@@ -3,6 +3,7 @@
 import {
   Calendar,
   Home,
+  Inbox,
   Layers,
   ListChecks,
   Package,
@@ -29,7 +30,13 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar';
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type BadgeKey = 'inbox';
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badgeKey?: BadgeKey;
+};
 
 const PRIMARY: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -37,6 +44,7 @@ const PRIMARY: NavItem[] = [
   { href: '/systems', label: 'Systems', icon: Layers },
   { href: '/vendors', label: 'Vendors', icon: Users },
   { href: '/service', label: 'Service', icon: Wrench },
+  { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
   { href: '/reminders', label: 'Reminders', icon: Calendar },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
   { href: '/notes', label: 'Notes', icon: StickyNote },
@@ -48,7 +56,13 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AppSidebar({ user }: { user: { name?: string | null; role?: string | null } }) {
+export function AppSidebar({
+  user,
+  badges,
+}: {
+  user: { name?: string | null; role?: string | null };
+  badges?: Partial<Record<BadgeKey, number>>;
+}) {
   const pathname = usePathname();
   const isAdmin = user.role === 'ADMIN';
 
@@ -64,18 +78,30 @@ export function AppSidebar({ user }: { user: { name?: string | null; role?: stri
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {PRIMARY.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    render={<Link href={item.href} />}
-                    isActive={isActive(pathname, item.href)}
-                    tooltip={item.label}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {PRIMARY.map((item) => {
+                const badgeCount = item.badgeKey ? badges?.[item.badgeKey] : undefined;
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      render={<Link href={item.href} />}
+                      isActive={isActive(pathname, item.href)}
+                      tooltip={item.label}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                      {badgeCount !== undefined && badgeCount > 0 && (
+                        <span
+                          role="status"
+                          aria-label={`${badgeCount} untriaged`}
+                          className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                        >
+                          {badgeCount > 99 ? '99+' : badgeCount}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

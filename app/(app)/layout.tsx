@@ -4,6 +4,7 @@ import { SearchBar } from '@/components/search/SearchBar';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import { auth } from '@/lib/auth';
+import { countUntriagedInbox } from '@/lib/incoming-email/queries';
 import { APP_GIT_SHA, APP_VERSION } from '@/lib/version';
 import { AppSidebar } from './_components/AppSidebar';
 
@@ -16,6 +17,13 @@ import { AppSidebar } from './_components/AppSidebar';
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect('/api/auth/signin');
+  // Fail-soft: a stale schema or DB blip shouldn't take the whole sidebar down.
+  let inboxCount = 0;
+  try {
+    inboxCount = await countUntriagedInbox();
+  } catch {
+    inboxCount = 0;
+  }
   return (
     <SidebarProvider>
       <AppSidebar
@@ -23,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           name: session.user.name,
           role: (session.user as { role?: string | null }).role,
         }}
+        badges={{ inbox: inboxCount }}
       />
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 border-b px-4">
