@@ -157,6 +157,34 @@ describe('classifyEmail — vendor match', () => {
     );
     expect(r.vendorId).toBeNull();
   });
+
+  it('matches vendor names with non-ASCII characters (Unicode-aware boundaries)', () => {
+    // Vendor with an accented Latin name. Plain \W boundaries treat 'é' as
+    // a non-word character, which would create a spurious internal boundary;
+    // the Unicode-aware regex (\\p{L}) handles it correctly.
+    const v = { id: 'v_cafe', name: 'Café Plumbing', email: null, notes: null };
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        subject: 'Invoice from Café Plumbing',
+        vendors: [v],
+      }),
+    );
+    expect(r.vendorId).toBe('v_cafe');
+  });
+
+  it('non-ASCII boundary still rejects substrings', () => {
+    const v = { id: 'v_cafe', name: 'Café', email: null, notes: null };
+    const r = classifyEmail(
+      input({
+        fromAddress: 'noreply@platform.example',
+        // 'Cafétaria' should NOT match 'Café' (whole-word required).
+        subject: 'Stop by the Cafétaria',
+        vendors: [v],
+      }),
+    );
+    expect(r.vendorId).toBeNull();
+  });
 });
 
 describe('classifyEmail — kind regex', () => {

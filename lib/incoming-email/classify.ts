@@ -74,17 +74,33 @@ function domainOf(addr: string): string | null {
   return addr.slice(at + 1).toLowerCase();
 }
 
+type VendorWithRegex = { vendor: ClassifyVendor; re: RegExp };
+
+/**
+ * Pre-compile name-match regexes once per classify call. matchVendor invokes
+ * the by-name search up to twice (once against the From-display-name, once
+ * against subject + body), so caching avoids O(2N) regex compiles. Vendors
+ * with names < 3 chars are filtered out — same false-positive guard used
+ * for entity matching.
+ */
+function compileVendorNameRegexes(vendors: ClassifyVendor[]): VendorWithRegex[] {
+  const out: VendorWithRegex[] = [];
+  for (const v of vendors) {
+    const vendorName = v.name.trim();
+    if (vendorName.length < 3) continue;
+    out.push({ vendor: v, re: unicodeWordBoundaryRegex(vendorName) });
+  }
+  return out;
+}
+
 /**
  * Word-boundary case-insensitive vendor-name search against an arbitrary
  * haystack. Single-hit wins; 2+ distinct hits return null (ambiguous).
  */
-function matchVendorByName(haystack: string, vendors: ClassifyVendor[]): ClassifyVendor | null {
+function matchVendorByName(haystack: string, compiled: VendorWithRegex[]): ClassifyVendor | null {
   const hits: ClassifyVendor[] = [];
-  for (const v of vendors) {
-    const vendorName = v.name.trim();
-    if (vendorName.length < 3) continue;
-    const re = new RegExp(`(?:^|(?<=\\W))${escapeRegex(vendorName)}(?:$|(?=\\W))`, 'i');
-    if (re.test(haystack)) hits.push(v);
+  for (const { vendor, re } of compiled) {
+    if (re.test(haystack)) hits.push(vendor);
   }
   return hits.length === 1 ? hits[0] : null;
 }
@@ -125,10 +141,17 @@ function matchVendor(
     }
   }
 
+  // Compile name regexes once for the two by-name fallback passes below.
+  let compiled: VendorWithRegex[] | null = null;
+  const getCompiled = () => {
+    if (compiled === null) compiled = compileVendorNameRegexes(vendors);
+    return compiled;
+  };
+
   // Display-name fallback. Skip when fromName is empty/very short to avoid
   // false positives from mailers that omit the display name.
   if (fromName && fromName.trim().length >= 3) {
-    const hit = matchVendorByName(fromName, vendors);
+    const hit = matchVendorByName(fromName, getCompiled());
     if (hit) return hit;
   }
 
@@ -136,7 +159,7 @@ function matchVendor(
   // generic noreply addresses with no display name; the vendor name lives
   // in the subject ("Blue Sky Appliance Service Invoice") or body.
   const haystack = `${subject}\n${bodyText.slice(0, BODY_CLASSIFY_LIMIT)}`;
-  const subjectHit = matchVendorByName(haystack, vendors);
+  const subjectHit = matchVendorByName(haystack, getCompiled());
   if (subjectHit) return subjectHit;
 
   return null;
@@ -151,12 +174,23 @@ function matchKind(subject: string, bodyText: string): ClassifyKind {
 }
 
 /**
- * Word-boundary case-insensitive substring search. Names with regex special
- * characters (e.g. "AC/DC", "X (1.0)") need to be escaped before being
- * dropped into the regex.
+ * Escape regex special characters so a literal name can be safely embedded
+ * in a regex pattern (e.g. "AC/DC", "X (1.0)").
  */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Build a Unicode-aware whole-word matcher for a literal name. Uses
+ * `\p{L}\p{N}_` as the "word character" class so accented Latin
+ * (Café, naïve), CJK, Cyrillic, etc. boundary-match the way humans
+ * expect. JS's `\W` without the `u` flag is ASCII-only; the `iu`
+ * flags here make matching case-insensitive and Unicode-correct.
+ */
+function unicodeWordBoundaryRegex(name: string): RegExp {
+  const NON_WORD = '[^\\p{L}\\p{N}_]';
+  return new RegExp(`(?:^|(?<=${NON_WORD}))${escapeRegex(name)}(?:$|(?=${NON_WORD}))`, 'iu');
 }
 
 type EntityHit = { id: string; matchLength: number; sourceLen: number };
@@ -166,12 +200,10 @@ function findEntityHits(haystack: string, entities: ClassifyEntity[]): EntityHit
   for (const e of entities) {
     const trimmed = e.name.trim();
     if (trimmed.length < 3) continue; // 1- and 2-char names produce too many false positives
-    // Use lookarounds instead of \b so names with trailing non-word chars
-    // (e.g. "X (model 1.0)" or "AC/DC") still match. \b only fires at
-    // word↔non-word transitions, which fails when the name itself ends in
-    // a non-word character.
-    const re = new RegExp(`(?:^|(?<=\\W))${escapeRegex(trimmed)}(?:$|(?=\\W))`, 'i');
-    if (re.test(haystack)) {
+    // Unicode-aware whole-word match: handles names with non-ASCII characters
+    // (Café, naïve) and names with trailing non-word chars (X (1.0), AC/DC)
+    // that plain \b can't anchor against.
+    if (unicodeWordBoundaryRegex(trimmed).test(haystack)) {
       out.push({ id: e.id, matchLength: trimmed.length, sourceLen: trimmed.length });
     }
   }
