@@ -136,6 +136,48 @@ describe('IncomingEmail schema', () => {
     ).rejects.toThrow();
   });
 
+  it('rejects an attachment with both incomingEmailId and another parent (CHECK constraint)', async () => {
+    const email = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<two-parents@example.com>',
+        fromAddress: 'a@example.com',
+        subject: 's',
+        receivedAt: new Date(),
+        headersJson: {},
+      },
+    });
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: { performedOn: new Date(), summary: 's' },
+    });
+    await expect(
+      ctx.prisma.attachment.create({
+        data: {
+          incomingEmailId: email.id,
+          serviceRecordId: sr.id,
+          filename: 'oops.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1,
+          storagePath: 'fake/oops.pdf',
+          uploadedById: 'u1',
+        },
+      }),
+    ).rejects.toThrow(/Attachment_exactly_one_parent/);
+  });
+
+  it('rejects an attachment with no parent set (CHECK constraint)', async () => {
+    await expect(
+      ctx.prisma.attachment.create({
+        data: {
+          filename: 'orphan.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1,
+          storagePath: 'fake/orphan.pdf',
+          uploadedById: 'u1',
+        },
+      }),
+    ).rejects.toThrow(/Attachment_exactly_one_parent/);
+  });
+
   it('clears createdServiceRecordId when the linked ServiceRecord is deleted (SetNull)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: { performedOn: new Date(), summary: 's' },
