@@ -11,7 +11,13 @@ export const runtime = 'nodejs'; // node:crypto required
 export const dynamic = 'force-dynamic';
 
 const log = getLogger('inbound-email');
-const MAX_BODY_BYTES = 25 * 1024 * 1024; // 25 MB
+// ForwardEmail encodes attachments as JSON byte-arrays (~3.5x base64 inflation),
+// so a 7 MB PDF becomes ~25 MB on the wire. Real vendor invoices with photos
+// regularly cross 25 MB; 50 MB covers the typical case while still rejecting
+// pathological payloads (gigabyte CAD attachments, etc.). 413 is a 4xx so FE
+// will NOT retry — losing a real email at this boundary is more costly than
+// the disk/DB cost of accepting it.
+const MAX_BODY_BYTES = 50 * 1024 * 1024;
 
 function constantTimeStringEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);

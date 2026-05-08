@@ -31,6 +31,7 @@ async function classifyOne(id: string): Promise<void> {
     select: {
       id: true,
       fromAddress: true,
+      fromName: true,
       subject: true,
       bodyText: true,
       receivedAt: true,
@@ -44,7 +45,7 @@ async function classifyOne(id: string): Promise<void> {
   }
 
   const [vendors, items, systems] = await Promise.all([
-    prisma.vendor.findMany({ select: { id: true, email: true, notes: true } }),
+    prisma.vendor.findMany({ select: { id: true, name: true, email: true, notes: true } }),
     prisma.item.findMany({
       where: { archivedAt: null },
       select: { id: true, name: true },
@@ -57,6 +58,7 @@ async function classifyOne(id: string): Promise<void> {
 
   const result = classifyEmail({
     fromAddress: row.fromAddress,
+    fromName: row.fromName,
     subject: row.subject,
     bodyText: row.bodyText ?? '',
     vendors,

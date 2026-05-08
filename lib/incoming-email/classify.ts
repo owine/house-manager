@@ -13,6 +13,7 @@
 
 export type ClassifyVendor = {
   id: string;
+  name: string;
   email: string | null;
   notes: string | null;
 };
@@ -21,6 +22,14 @@ export type ClassifyEntity = { id: string; name: string };
 
 export type ClassifyInput = {
   fromAddress: string;
+  /**
+   * The display name from the `From:` header (mailparser's `from.value[0].name`).
+   * Used as a tertiary vendor-match path: many vendors send invoices through
+   * billing platforms (QuickBooks, Stripe, Square) whose sender domain
+   * doesn't match the vendor's own domain, but the platform sets the
+   * display name to e.g. `"Acme HVAC via QuickBooks"`. Optional / nullable.
+   */
+  fromName: string | null;
   subject: string;
   bodyText: string;
   vendors: ClassifyVendor[];
@@ -66,24 +75,70 @@ function domainOf(addr: string): string | null {
 }
 
 /**
- * Resolve a vendor by sender. Order: exact email match, then domain match
- * against any vendor's email or notes (case-insensitive substring).
+ * Word-boundary case-insensitive vendor-name search against an arbitrary
+ * haystack. Single-hit wins; 2+ distinct hits return null (ambiguous).
  */
-function matchVendor(fromAddress: string, vendors: ClassifyVendor[]): ClassifyVendor | null {
+function matchVendorByName(haystack: string, vendors: ClassifyVendor[]): ClassifyVendor | null {
+  const hits: ClassifyVendor[] = [];
+  for (const v of vendors) {
+    const vendorName = v.name.trim();
+    if (vendorName.length < 3) continue;
+    const re = new RegExp(`(?:^|(?<=\\W))${escapeRegex(vendorName)}(?:$|(?=\\W))`, 'i');
+    if (re.test(haystack)) hits.push(v);
+  }
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Resolve a vendor by sender. Tries, in order:
+ *   1. Exact email match against Vendor.email
+ *   2. Domain match: vendor's stored email shares the from-domain
+ *   3. Notes substring: vendor's notes mention the from-domain (user-curated)
+ *   4. Display-name match: from-header display name contains the vendor's
+ *      own name as a whole word (covers "Acme HVAC via QuickBooks" senders)
+ *   5. Subject + body match: when the email is delivered through a billing
+ *      platform with no useful sender info (e.g. noreply@walkabout.software
+ *      sending "Blue Sky Appliance Service Invoice"), look for the vendor
+ *      name in the subject and body prefix
+ *
+ * Each fallback is more permissive than the last, so we use single-hit-wins
+ * + ambiguity-bail to keep precision high. The body window mirrors the
+ * one used for kind classification (BODY_CLASSIFY_LIMIT) — tightening the
+ * search to the obviously-relevant prefix.
+ */
+function matchVendor(
+  fromAddress: string,
+  fromName: string | null,
+  subject: string,
+  bodyText: string,
+  vendors: ClassifyVendor[],
+): ClassifyVendor | null {
   const fromLower = fromAddress.toLowerCase();
   const exact = vendors.find((v) => v.email?.toLowerCase() === fromLower);
   if (exact) return exact;
 
   const fromDomain = domainOf(fromAddress);
-  if (!fromDomain) return null;
-
-  // Domain match: any vendor whose stored email shares the from-domain, OR
-  // whose notes mention the from-domain. Notes are user-curated, so a vendor
-  // with notes "Service email comes from billing@acmehvac.example" matches.
-  for (const v of vendors) {
-    if (v.email && domainOf(v.email) === fromDomain) return v;
-    if (v.notes?.toLowerCase().includes(fromDomain)) return v;
+  if (fromDomain) {
+    for (const v of vendors) {
+      if (v.email && domainOf(v.email) === fromDomain) return v;
+      if (v.notes?.toLowerCase().includes(fromDomain)) return v;
+    }
   }
+
+  // Display-name fallback. Skip when fromName is empty/very short to avoid
+  // false positives from mailers that omit the display name.
+  if (fromName && fromName.trim().length >= 3) {
+    const hit = matchVendorByName(fromName, vendors);
+    if (hit) return hit;
+  }
+
+  // Subject + body-prefix fallback. Real-world: billing platforms send from
+  // generic noreply addresses with no display name; the vendor name lives
+  // in the subject ("Blue Sky Appliance Service Invoice") or body.
+  const haystack = `${subject}\n${bodyText.slice(0, BODY_CLASSIFY_LIMIT)}`;
+  const subjectHit = matchVendorByName(haystack, vendors);
+  if (subjectHit) return subjectHit;
+
   return null;
 }
 
@@ -140,7 +195,13 @@ function pickBestEntity(hits: EntityHit[]): string | null {
 }
 
 export function classifyEmail(input: ClassifyInput): ClassifyResult {
-  const vendor = matchVendor(input.fromAddress, input.vendors);
+  const vendor = matchVendor(
+    input.fromAddress,
+    input.fromName,
+    input.subject,
+    input.bodyText,
+    input.vendors,
+  );
   const kind = matchKind(input.subject, input.bodyText);
 
   // Item/system matching is only attempted when a vendor matched. Without a

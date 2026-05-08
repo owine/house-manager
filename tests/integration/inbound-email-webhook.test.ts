@@ -152,10 +152,10 @@ describe('POST /api/inbound-email/[token]', () => {
     expect(enqueued).toHaveLength(1);
   });
 
-  it('rejects with 413 when the body exceeds 25 MB', async () => {
+  it('rejects with 413 when the body exceeds 50 MB', async () => {
     // Construct a body just over the cap. We don't sign it correctly because
     // size check happens before HMAC; signing would still be wasted CPU.
-    const huge = 'x'.repeat(25 * 1024 * 1024 + 1);
+    const huge = 'x'.repeat(50 * 1024 * 1024 + 1);
     const url = `http://localhost:3000/api/inbound-email/${TOKEN}`;
     const req = new Request(url, {
       method: 'POST',
