@@ -10,6 +10,10 @@ import {
   type ClassifyIncomingEmailJob,
   handleClassifyIncomingEmail,
 } from './jobs/classify-incoming-email';
+import {
+  type ExtractIncomingEmailJob,
+  handleExtractIncomingEmail,
+} from './jobs/extract-incoming-email';
 import { handleNotify, type NotifyJob } from './jobs/notify';
 import { handleNotifyLogSweep } from './jobs/notify-log-sweep';
 import { handlePgDump } from './jobs/pg-dump';
@@ -104,15 +108,26 @@ async function main() {
   });
 
   // Inbound-email classifier — fired by the /api/inbound-email webhook handler
-  // after each new IncomingEmail row is persisted. Stub until Phase D.
+  // after each new IncomingEmail row is persisted.
   await boss.work<ClassifyIncomingEmailJob>(
     Queue.ClassifyIncomingEmail,
     { batchSize: 4 },
     handleClassifyIncomingEmail,
   );
 
+  // Inbound-email extractor — pulls cost / date of service / scope from
+  // the body via the AI client. Chained from the classify worker (only fires
+  // for kinds that benefit: TICKET / INVOICE / ESTIMATE) and re-runnable
+  // on demand from the inbox UI. batchSize: 1 because each call is an
+  // Anthropic round-trip ~1-3s.
+  await boss.work<ExtractIncomingEmailJob>(
+    Queue.ExtractIncomingEmail,
+    { batchSize: 1 },
+    handleExtractIncomingEmail,
+  );
+
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract jobs',
   );
 
   const shutdown = async (signal: string) => {

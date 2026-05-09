@@ -38,3 +38,45 @@ export const proposeChecklistResponseSchema = z.object({
   items: z.array(proposedChecklistItemSchema).min(1).max(20),
 });
 export type ProposeChecklistResponse = z.infer<typeof proposeChecklistResponseSchema>;
+
+// ─── Incoming-email extraction ──────────────────────────────────────────────
+//
+// Extracted structured data from a vendor invoice / work ticket / estimate
+// email body. All fields nullable — the model returns null when a field
+// can't be confidently extracted, instead of guessing. The worker uses
+// these to seed a new ServiceRecord when the user clicks
+// "Create service record" from the inbox detail page.
+export const incomingEmailExtractionSchema = z.object({
+  summary: z
+    .string()
+    .max(120)
+    .nullable()
+    .describe(
+      'Short title for this service (e.g. "Spring HVAC tune-up", "Replace bathroom faucet"). Punchier than the email subject. Title-case, no trailing period, max ~10 words. Null only if the body has nothing to summarize.',
+    ),
+  cost: z
+    .number()
+    .nonnegative()
+    .nullable()
+    .describe(
+      'Total amount due in dollars (USD). Use the line-item / invoice grand total, not subtotals or tax-exclusive figures. Null if not stated.',
+    ),
+  performedOn: z
+    .string()
+    .nullable()
+    .describe(
+      'Date the work was performed, ISO format (YYYY-MM-DD). Look for explicit "service date", "visit date", "performed on" cues. NOT the email send date or invoice date. Null if not stated.',
+    ),
+  scope: z
+    .string()
+    .max(2000)
+    .nullable()
+    .describe(
+      'Detailed description of the work performed and findings, formatted as markdown. Use **bold** for key components, bullet lists for multiple line items, and short paragraphs for narrative sections. Goes into the service-record `notes` field which renders markdown. Null only if the body has zero useful content.',
+    ),
+  rationale: z
+    .string()
+    .max(200)
+    .describe('One sentence explaining how confident the extraction is and any caveats.'),
+});
+export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSchema>;
