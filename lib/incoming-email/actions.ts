@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getLogger } from '@/lib/logger';
+import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
 import { targetSchema } from '@/lib/targets/schema';
 
@@ -151,6 +152,37 @@ export async function unarchiveIncomingEmail(input: unknown): Promise<ActionResu
     data: { archivedAt: null, state: hasAnyLink ? 'LINKED' : 'UNTRIAGED' },
   });
   revalidateInbox(parsed.data.id);
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Re-enqueues the classify job for one email. The worker's existing state
+ * guard means it only refreshes UNTRIAGED / AUTO_LINKED rows; LINKED and
+ * ARCHIVED rows are user-owned and only get a kind+vendor metadata refresh.
+ *
+ * UI gates the button on UNTRIAGED + AUTO_LINKED + !archived, but the action
+ * accepts any state — the worker is the source of truth for what a re-run
+ * is allowed to mutate.
+ */
+const reclassifySchema = z.object({ id: z.string().min(1) });
+
+export async function reclassifyIncomingEmail(input: unknown): Promise<ActionResult<void>> {
+  const u = await requireUser();
+  if (!u) return { ok: false, formError: 'Unauthorized' };
+  const parsed = reclassifySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, formError: 'Invalid input' };
+
+  const exists = await prisma.incomingEmail.findUnique({
+    where: { id: parsed.data.id },
+    select: { id: true },
+  });
+  if (!exists) return { ok: false, formError: 'Not found' };
+
+  const boss = await getBoss();
+  await boss.send(Queue.ClassifyIncomingEmail, { id: parsed.data.id });
+  log.info({ id: parsed.data.id, by: u.id }, 'incoming-email: reclassify enqueued');
+  // No revalidate yet — the worker writes async. The UI will pick up changes
+  // on the user's next navigation, same pattern as the initial classify pass.
   return { ok: true, data: undefined };
 }
 

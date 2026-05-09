@@ -16,7 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { attachIncomingEmail } from '@/lib/incoming-email/actions';
+import {
+  archiveIncomingEmail,
+  attachIncomingEmail,
+  promoteToServiceRecord,
+  reclassifyIncomingEmail,
+  unarchiveIncomingEmail,
+} from '@/lib/incoming-email/actions';
 import type { TargetInput } from '@/lib/targets/schema';
 
 type VendorOption = { id: string; name: string };
@@ -119,20 +125,25 @@ export function InboxActionButtons({
   emailId,
   isArchived,
   canPromote,
+  canReclassify,
   promotedServiceRecordId,
 }: {
   emailId: string;
   isArchived: boolean;
   canPromote: boolean;
+  /**
+   * True only for UNTRIAGED + AUTO_LINKED rows that aren't archived. The
+   * worker's state guard means a reclassify on LINKED/ARCHIVED rows would
+   * only refresh kind+vendor metadata (silently leaving targets alone),
+   * which is more confusing than helpful — hide the button instead.
+   */
+  canReclassify: boolean;
   promotedServiceRecordId: string | null;
 }) {
   const [pending, start] = useTransition();
 
   const onArchive = () =>
     start(async () => {
-      const { archiveIncomingEmail, unarchiveIncomingEmail } = await import(
-        '@/lib/incoming-email/actions'
-      );
       const action = isArchived ? unarchiveIncomingEmail : archiveIncomingEmail;
       const r = await action({ id: emailId });
       if (!r.ok) toast.error(r.formError ?? 'Failed');
@@ -141,10 +152,16 @@ export function InboxActionButtons({
 
   const onPromote = () =>
     start(async () => {
-      const { promoteToServiceRecord } = await import('@/lib/incoming-email/actions');
       const r = await promoteToServiceRecord({ id: emailId });
       if (!r.ok) toast.error(r.formError ?? 'Failed to promote');
       else toast.success('Service record drafted');
+    });
+
+  const onReclassify = () =>
+    start(async () => {
+      const r = await reclassifyIncomingEmail({ id: emailId });
+      if (!r.ok) toast.error(r.formError ?? 'Failed to reclassify');
+      else toast.success('Reclassify queued — refresh in a moment');
     });
 
   return (
@@ -157,6 +174,11 @@ export function InboxActionButtons({
       ) : (
         <Button onClick={onPromote} disabled={pending || !canPromote}>
           Promote to service record
+        </Button>
+      )}
+      {canReclassify && (
+        <Button variant="outline" onClick={onReclassify} disabled={pending}>
+          Reclassify
         </Button>
       )}
       <Button variant="outline" onClick={onArchive} disabled={pending}>

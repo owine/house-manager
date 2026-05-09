@@ -6,6 +6,20 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
+const enqueued: Array<{ queue: string; data: unknown }> = [];
+vi.mock('@/lib/queue', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/lib/queue')>();
+  return {
+    ...orig,
+    getBoss: vi.fn(async () => ({
+      send: vi.fn(async (queue: string, data: unknown) => {
+        enqueued.push({ queue, data });
+        return 'fake-job-id';
+      }),
+    })),
+  };
+});
+
 let ctx: IntegrationContext;
 let actions: typeof import('@/lib/incoming-email/actions');
 let categoryId: string;
@@ -38,6 +52,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  enqueued.length = 0;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmailTarget.deleteMany();
@@ -287,6 +302,26 @@ describe('promoteToServiceRecord', () => {
   it('rejects when no targets are linked', async () => {
     const e = await makeEmail();
     const r = await actions.promoteToServiceRecord({ id: e.id });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('reclassifyIncomingEmail', () => {
+  it('enqueues a classify job for an existing email', async () => {
+    const e = await makeEmail();
+    const r = await actions.reclassifyIncomingEmail({ id: e.id });
+    expect(r.ok).toBe(true);
+    expect(enqueued).toEqual([{ queue: 'incoming-email.classify', data: { id: e.id } }]);
+  });
+
+  it('rejects when the email does not exist', async () => {
+    const r = await actions.reclassifyIncomingEmail({ id: 'nope' });
+    expect(r.ok).toBe(false);
+    expect(enqueued).toHaveLength(0);
+  });
+
+  it('rejects invalid input', async () => {
+    const r = await actions.reclassifyIncomingEmail({ id: '' });
     expect(r.ok).toBe(false);
   });
 });
