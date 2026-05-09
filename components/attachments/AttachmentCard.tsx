@@ -1,6 +1,8 @@
+import { ExternalLink, FileText, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import type React from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { deleteAttachment } from '@/lib/attachments/actions';
 
 export type AttachmentRow = {
@@ -21,20 +23,15 @@ function AttachmentDeleteForm({ id }: { id: string }) {
   }
   return (
     <form action={doDelete}>
-      <button
+      <Button
         type="submit"
-        style={{
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-          color: 'var(--danger)',
-          font: 'inherit',
-          fontSize: '0.85rem',
-        }}
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Delete attachment"
+        className="text-destructive hover:bg-destructive/10"
       >
-        Delete
-      </button>
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
     </form>
   );
 }
@@ -48,18 +45,8 @@ function formatSize(bytes: number): string {
 export function AttachmentCard({ a }: { a: AttachmentRow }) {
   const isLink = a.externalUrl != null;
   const isImage = !isLink && (a.mimeType ?? '').startsWith('image/');
-  const cardStyle: React.CSSProperties = {
-    border: '1px solid var(--border)',
-    borderRadius: '4px',
-    padding: '0.5rem',
-    background: 'var(--bg-elevated)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-  };
 
   if (isLink) {
-    // externalUrl is non-null when isLink is true; assign to a local string to avoid non-null assertions
     const externalUrl = a.externalUrl ?? '';
     let hostname: string;
     try {
@@ -68,45 +55,23 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
       hostname = externalUrl;
     }
     return (
-      <div style={cardStyle}>
+      <Card className="flex flex-col gap-2 p-2">
         <a
           href={externalUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{
-            textDecoration: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.25rem',
-          }}
+          className="flex flex-col gap-1 no-underline"
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '1.5rem' }}>🔗</span>
-            <span style={{ wordBreak: 'break-word' }}>{a.displayLabel || hostname}</span>
+          <div className="flex items-center gap-2">
+            <ExternalLink className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <span className="break-words font-medium">{a.displayLabel || hostname}</span>
           </div>
-          <span
-            style={{
-              fontSize: '0.75rem',
-              color: 'var(--fg-muted)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {externalUrl}
-          </span>
+          <span className="truncate text-xs text-muted-foreground">{externalUrl}</span>
         </a>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            fontSize: '0.8rem',
-            color: 'var(--fg-muted)',
-          }}
-        >
+        <div className="flex justify-end">
           <AttachmentDeleteForm id={a.id} />
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -114,45 +79,30 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
   const thumbHref = a.thumbnailPath ? `/api/files/${a.id}?thumb=1` : href;
 
   return (
-    <div style={cardStyle}>
+    <Card className="flex flex-col gap-2 p-2">
       {isImage ? (
-        <Link href={href} target="_blank">
+        <Link href={href} target="_blank" className="block">
           <Image
             src={thumbHref}
             alt={a.filename ?? 'attachment'}
             width={400}
             height={300}
             unoptimized
-            style={{ width: '100%', height: 'auto', borderRadius: '3px' }}
+            className="h-auto w-full rounded-sm"
           />
         </Link>
       ) : (
-        <Link href={href} target="_blank" style={{ textDecoration: 'none' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '1rem 0',
-            }}
-          >
-            <span style={{ fontSize: '1.5rem' }}>📄</span>
-            <span style={{ wordBreak: 'break-word' }}>{a.filename ?? '(no filename)'}</span>
-          </div>
+        <Link href={href} target="_blank" className="block no-underline">
+          <CardContent className="flex items-center gap-2 px-0 py-2">
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <span className="break-words font-medium">{a.filename ?? '(no filename)'}</span>
+          </CardContent>
         </Link>
       )}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '0.8rem',
-          color: 'var(--fg-muted)',
-        }}
-      >
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{a.sizeBytes !== null ? formatSize(a.sizeBytes) : '–'}</span>
         <AttachmentDeleteForm id={a.id} />
       </div>
-    </div>
+    </Card>
   );
 }
