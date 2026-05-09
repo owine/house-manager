@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/node';
 import { prisma } from '@/lib/db';
 import { classifyEmail } from '@/lib/incoming-email/classify';
 import { getLogger } from '@/lib/logger';
+import { getBoss, Queue } from '@/lib/queue';
 
 export type ClassifyIncomingEmailJob = { id: string };
 
@@ -109,6 +110,20 @@ async function classifyOne(id: string): Promise<void> {
       },
     });
   });
+
+  // Chain the AI extractor for kinds that benefit: TICKET / INVOICE / ESTIMATE
+  // bodies typically contain cost / date / scope information worth pulling.
+  // UNKNOWN kind doesn't — likely not a vendor service email.
+  if (result.kind === 'TICKET' || result.kind === 'INVOICE' || result.kind === 'ESTIMATE') {
+    try {
+      const boss = await getBoss();
+      await boss.send(Queue.ExtractIncomingEmail, { id: row.id });
+    } catch (err) {
+      // Non-fatal: classify already wrote its metadata; user can re-extract
+      // manually if they hit this rare case.
+      log.warn({ err, id: row.id }, 'classify-incoming-email: extract enqueue failed');
+    }
+  }
 
   if (!result.shouldAutoStubServiceRecord) {
     log.info(

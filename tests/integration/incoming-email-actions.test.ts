@@ -305,6 +305,59 @@ describe('createServiceRecordFromEmail', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('seeds the new service record with AI-extracted fields when present', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    const e = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<ai@a>',
+        fromAddress: 'a@a',
+        subject: 'Invoice 142020', // generic subject, AI summary should win
+        receivedAt: new Date('2026-05-01T00:00:00Z'),
+        headersJson: {},
+        targets: { create: [{ itemId: item.id }] },
+        aiExtractedSummary: 'Spring HVAC tune-up',
+        aiExtractedCost: 185 as unknown as never, // Decimal coerce
+        aiExtractedPerformedOn: new Date('2026-04-15T00:00:00Z'),
+        aiExtractedScope: '- Replaced filter\n- Cleaned coils',
+        aiExtractedAt: new Date(),
+      },
+    });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error();
+    const sr = await ctx.prisma.serviceRecord.findUnique({
+      where: { id: r.data.serviceRecordId },
+    });
+    expect(sr?.summary).toBe('Spring HVAC tune-up');
+    expect(sr?.cost?.toString()).toBe('185');
+    expect(sr?.performedOn.toISOString()).toBe('2026-04-15T00:00:00.000Z');
+    expect(sr?.notes).toBe('- Replaced filter\n- Cleaned coils');
+  });
+
+  it('falls back to email subject + receivedAt when no AI extraction present', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
+    const e = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<noai@a>',
+        fromAddress: 'a@a',
+        subject: 'Service Visit Recap',
+        receivedAt: new Date('2026-05-01T00:00:00Z'),
+        headersJson: {},
+        targets: { create: [{ itemId: item.id }] },
+      },
+    });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error();
+    const sr = await ctx.prisma.serviceRecord.findUnique({
+      where: { id: r.data.serviceRecordId },
+    });
+    expect(sr?.summary).toBe('Service Visit Recap');
+    expect(sr?.cost).toBeNull();
+    expect(sr?.performedOn.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+    expect(sr?.notes).toContain('review and edit');
+  });
+
   it('links existing email attachments to the new service record (multi-parent)', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
     const e = await ctx.prisma.incomingEmail.create({
@@ -357,6 +410,21 @@ describe('reclassifyIncomingEmail', () => {
   it('rejects invalid input', async () => {
     const r = await actions.reclassifyIncomingEmail({ id: '' });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('reextractIncomingEmail', () => {
+  it('enqueues an extract job for an existing email', async () => {
+    const e = await makeEmail();
+    const r = await actions.reextractIncomingEmail({ id: e.id });
+    expect(r.ok).toBe(true);
+    expect(enqueued).toEqual([{ queue: 'incoming-email.extract', data: { id: e.id } }]);
+  });
+
+  it('rejects when the email does not exist', async () => {
+    const r = await actions.reextractIncomingEmail({ id: 'nope' });
+    expect(r.ok).toBe(false);
+    expect(enqueued).toHaveLength(0);
   });
 });
 

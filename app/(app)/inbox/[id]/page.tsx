@@ -3,12 +3,17 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmailBodyView } from '@/components/incoming-email/EmailBodyView';
+import { ExtractedFieldsCard } from '@/components/incoming-email/ExtractedFieldsCard';
 import { InboxActionButtons, LinkPicker } from '@/components/incoming-email/LinkPicker';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
 import { Separator } from '@/components/ui/separator';
-import { getInboxEmail, loadLinkPickerOptions } from '@/lib/incoming-email/queries';
+import {
+  getInboxEmail,
+  loadLinkPickerOptions,
+  selectExtraction,
+} from '@/lib/incoming-email/queries';
 
 export const metadata: Metadata = { title: 'Inbox — message' };
 
@@ -48,6 +53,23 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
           <EmailBodyView bodyText={email.bodyText} bodyHtml={email.bodyHtml} />
         </CardContent>
       </Card>
+
+      {/* AI-extracted summary / cost / date / scope, populated by the
+          extract worker for TICKET / INVOICE / ESTIMATE kinds. Used to
+          seed the new ServiceRecord on Create. */}
+      {(email.kind === 'TICKET' || email.kind === 'INVOICE' || email.kind === 'ESTIMATE') &&
+        email.archivedAt === null && (
+          <ExtractedFieldsCard
+            emailId={email.id}
+            extraction={selectExtraction(email)}
+            canReextract={
+              email.archivedAt === null &&
+              (email.state === 'UNTRIAGED' ||
+                email.state === 'AUTO_LINKED' ||
+                email.state === 'LINKED')
+            }
+          />
+        )}
 
       <Card>
         <CardHeader>

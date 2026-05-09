@@ -20,6 +20,7 @@ export const Queue = {
   PgDump: 'pg-dump', // NEW
   NotifyLogSweep: 'notify-log.sweep', // NEW
   ClassifyIncomingEmail: 'incoming-email.classify',
+  ExtractIncomingEmail: 'incoming-email.extract',
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];

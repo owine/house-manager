@@ -89,6 +89,35 @@ export async function getInboxEmail(id: string) {
   });
 }
 
+export type ExtractionView = {
+  summary: string | null;
+  cost: number | null;
+  performedOn: Date | null;
+  scope: string | null;
+  extractedAt: Date | null;
+};
+
+/**
+ * Pulls just the extraction fields, decoded for the UI. Decimal → number
+ * conversion happens here so the component can stay a server tree without
+ * pulling in Decimal.js.
+ */
+export function selectExtraction(row: {
+  aiExtractedSummary: string | null;
+  aiExtractedCost: { toNumber(): number } | null;
+  aiExtractedPerformedOn: Date | null;
+  aiExtractedScope: string | null;
+  aiExtractedAt: Date | null;
+}): ExtractionView {
+  return {
+    summary: row.aiExtractedSummary,
+    cost: row.aiExtractedCost?.toNumber() ?? null,
+    performedOn: row.aiExtractedPerformedOn,
+    scope: row.aiExtractedScope,
+    extractedAt: row.aiExtractedAt,
+  };
+}
+
 /**
  * Cheap count for the sidebar badge. UNTRIAGED + AUTO_LINKED are both "needs
  * attention" from the user's perspective.

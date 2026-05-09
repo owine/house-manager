@@ -187,6 +187,29 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
 }
 
 /**
+ * Re-enqueues the extract job for one email. Useful when the user adjusts
+ * the body or wants to retry after an extraction failure. The worker is
+ * idempotent — overwrites existing aiExtracted* fields with fresh values.
+ */
+export async function reextractIncomingEmail(input: unknown): Promise<ActionResult<void>> {
+  const u = await requireUser();
+  if (!u) return { ok: false, formError: 'Unauthorized' };
+  const parsed = reclassifySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, formError: 'Invalid input' };
+
+  const exists = await prisma.incomingEmail.findUnique({
+    where: { id: parsed.data.id },
+    select: { id: true },
+  });
+  if (!exists) return { ok: false, formError: 'Not found' };
+
+  const boss = await getBoss();
+  await boss.send(Queue.ExtractIncomingEmail, { id: parsed.data.id });
+  log.info({ id: parsed.data.id, by: u.id }, 'incoming-email: re-extract enqueued');
+  return { ok: true, data: undefined };
+}
+
+/**
  * Creates a draft `ServiceRecord` from an incoming email and links it back via
  * `IncomingEmail.createdServiceRecordId`. Only fires when no draft already
  * exists for this email; the caller (UI) gates the button on the same.
@@ -214,6 +237,10 @@ export async function createServiceRecordFromEmail(
       receivedAt: true,
       vendorId: true,
       createdServiceRecordId: true,
+      aiExtractedSummary: true,
+      aiExtractedCost: true,
+      aiExtractedPerformedOn: true,
+      aiExtractedScope: true,
       targets: { select: { itemId: true, systemId: true } },
     },
   });
@@ -229,19 +256,29 @@ export async function createServiceRecordFromEmail(
     };
   }
 
-  // Subject is a non-nullable String column, but mailparser sometimes hands
-  // us "" for messages with no Subject header. Trim then fall back so an
-  // empty/whitespace-only subject still produces a usable summary.
+  // AI-extracted values seed the new record when present. The user can edit
+  // any of these on the ServiceRecord after creation.
+  //   - summary:    extractedSummary or fall back to email subject (trimmed)
+  //   - cost:       extractedCost or null
+  //   - performedOn: extractedPerformedOn or fall back to email receivedAt
+  //   - notes:      extractedScope, or the legacy placeholder when nothing
+  //                 was extracted (still useful for the "review and edit" cue)
   const trimmedSubject = email.subject.trim();
-  const summary = (trimmedSubject.length > 0 ? trimmedSubject : '(no subject)').slice(0, 200);
+  const summary = (
+    email.aiExtractedSummary?.trim() ||
+    (trimmedSubject.length > 0 ? trimmedSubject : '(no subject)')
+  ).slice(0, 200);
+  const performedOn = email.aiExtractedPerformedOn ?? email.receivedAt;
+  const notes = email.aiExtractedScope ?? '[Created from inbound email — review and edit.]';
 
   const created = await prisma.$transaction(async (tx) => {
     const sr = await tx.serviceRecord.create({
       data: {
         vendorId: email.vendorId,
-        performedOn: email.receivedAt,
+        performedOn,
+        cost: email.aiExtractedCost,
         summary,
-        notes: '[Promoted from inbound email — review and edit.]',
+        notes,
         targets: {
           create: email.targets.map((t) => ({
             itemId: t.itemId,

@@ -247,7 +247,7 @@ export function ServiceRecordForm({
             <FormItem>
               <FormLabel>Notes (markdown)</FormLabel>
               <FormControl>
-                <Textarea rows={6} {...field} value={field.value ?? ''} />
+                <Textarea rows={10} {...field} value={field.value ?? ''} />
               </FormControl>
               <FormMessage />
             </FormItem>
