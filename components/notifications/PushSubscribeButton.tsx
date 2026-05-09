@@ -1,5 +1,7 @@
 'use client';
+import { Bell, Loader2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
 import { subscribePush } from '@/lib/notifications/actions';
 
 export function PushSubscribeButton() {
@@ -60,15 +62,12 @@ export function PushSubscribeButton() {
   }
 
   return (
-    <div>
-      <button type="button" onClick={subscribe} disabled={pending}>
+    <div className="space-y-2">
+      <Button type="button" variant="outline" onClick={subscribe} disabled={pending}>
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
         {pending ? 'Subscribing…' : 'Subscribe this device'}
-      </button>
-      {status && (
-        <p style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-          {status}
-        </p>
-      )}
+      </Button>
+      {status && <p className="text-sm text-muted-foreground">{status}</p>}
     </div>
   );
 }

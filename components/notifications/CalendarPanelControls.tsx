@@ -1,6 +1,9 @@
 'use client';
+import { Check, Copy, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { regenerateIcsToken } from '@/lib/notifications/actions';
 
 type Props = {
@@ -35,47 +38,16 @@ export function CalendarPanelControls({ url }: Props) {
   };
 
   return (
-    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
-      <input
-        type="text"
-        readOnly
-        value={url}
-        style={{
-          flex: 1,
-          padding: '0.5rem',
-          fontFamily: 'monospace',
-          fontSize: '0.85rem',
-          border: '1px solid var(--border)',
-          borderRadius: '4px',
-        }}
-      />
-      <button
-        type="button"
-        onClick={handleCopy}
-        style={{
-          padding: '0.5rem 1rem',
-          backgroundColor: 'transparent',
-          border: '1px solid var(--border)',
-          borderRadius: '4px',
-          cursor: 'pointer',
-        }}
-      >
+    <div className="flex items-stretch gap-2">
+      <Input type="text" readOnly value={url} className="flex-1 font-mono text-sm" />
+      <Button type="button" variant="outline" onClick={handleCopy}>
+        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         {copied ? 'Copied!' : 'Copy'}
-      </button>
-      <button
-        type="button"
-        onClick={handleRegenerate}
-        disabled={regenerating}
-        style={{
-          padding: '0.5rem 1rem',
-          backgroundColor: 'transparent',
-          border: '1px solid var(--border)',
-          borderRadius: '4px',
-          cursor: 'pointer',
-        }}
-      >
+      </Button>
+      <Button type="button" variant="outline" onClick={handleRegenerate} disabled={regenerating}>
+        <RefreshCw className={regenerating ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
         {regenerating ? 'Regenerating…' : 'Regenerate'}
-      </button>
+      </Button>
     </div>
   );
 }

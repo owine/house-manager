@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 type Mode = 'system' | 'light' | 'dark';
 const STORAGE_KEY = 'theme';
@@ -33,26 +34,6 @@ function applyMode(mode: Mode): void {
   }
 }
 
-const buttonBase: React.CSSProperties = {
-  padding: '0.25rem 0.75rem',
-  fontSize: '0.8125rem',
-  cursor: 'pointer',
-  borderWidth: '1px',
-  borderStyle: 'solid',
-  borderColor: 'var(--border-strong)',
-  background: 'var(--bg-elevated)',
-  color: 'var(--fg-muted)',
-  lineHeight: 1.4,
-};
-
-const buttonActive: React.CSSProperties = {
-  ...buttonBase,
-  background: 'var(--app-accent)',
-  color: 'var(--app-accent-fg)',
-  fontWeight: 600,
-  borderColor: 'var(--app-accent)',
-};
-
 export function ThemeToggle() {
   // Render a stable initial state ('system') on the server; resolve real mode
   // in useEffect. The no-flash script in layout.tsx already set data-theme
@@ -80,14 +61,7 @@ export function ThemeToggle() {
   return (
     <fieldset
       aria-label="Color theme"
-      style={{
-        display: 'inline-flex',
-        borderRadius: '4px',
-        overflow: 'hidden',
-        border: 'none',
-        padding: 0,
-        margin: 0,
-      }}
+      className="m-0 inline-flex overflow-hidden rounded-md border-0 p-0"
     >
       {buttons.map(({ label, value }, i) => {
         const isActive = mounted && mode === value;
@@ -97,10 +71,13 @@ export function ThemeToggle() {
             type="button"
             onClick={() => pick(value)}
             aria-pressed={mounted ? mode === value : undefined}
-            style={{
-              ...(isActive ? buttonActive : buttonBase),
-              borderLeftWidth: i === 0 ? '1px' : 0,
-            }}
+            className={cn(
+              'cursor-pointer border border-border px-3 py-1 text-xs leading-tight transition-colors',
+              i !== 0 && 'border-l-0',
+              isActive
+                ? 'bg-primary font-semibold text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80',
+            )}
           >
             {label}
           </button>
