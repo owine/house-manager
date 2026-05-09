@@ -29,13 +29,24 @@ describe('createServiceRecordSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects an empty targets array', () => {
+  it('rejects when both vendor and targets are missing', () => {
+    // The cross-field rule requires at least one of vendor / targets.
     const result = createServiceRecordSchema.safeParse({
       targets: [],
       performedOn: '2024-03-15',
       summary: 'Test',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts a vendor-only record with no targets (e.g. landscaping)', () => {
+    const result = createServiceRecordSchema.safeParse({
+      targets: [],
+      vendorId: 'vendor-acme',
+      performedOn: '2024-03-15',
+      summary: 'Lawn mowed',
+    });
+    expect(result.success).toBe(true);
   });
 
   it('rejects a target with both itemId and systemId set', () => {

@@ -91,7 +91,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
           <InboxActionButtons
             emailId={email.id}
             isArchived={email.archivedAt !== null}
-            canCreateServiceRecord={email.targets.length > 0}
+            canCreateServiceRecord={email.vendorId !== null || email.targets.length > 0}
             canReclassify={
               email.archivedAt === null &&
               (email.state === 'UNTRIAGED' || email.state === 'AUTO_LINKED')
