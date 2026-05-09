@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DetailPageShell } from '@/app/(app)/_components/DetailPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
+import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -130,7 +131,7 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
           <TableHeader>
             <TableRow>
               <TableHead>Performed</TableHead>
-              <TableHead>Item</TableHead>
+              <TableHead>Targets</TableHead>
               <TableHead>Summary</TableHead>
             </TableRow>
           </TableHeader>
@@ -143,13 +144,7 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  {sr.item ? (
-                    <Link href={`/items/${sr.item.id}`} className="underline underline-offset-2">
-                      {sr.item.name}
-                    </Link>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  <TargetsChips targets={sr.targets} />
                 </TableCell>
                 <TableCell>{sr.summary}</TableCell>
               </TableRow>

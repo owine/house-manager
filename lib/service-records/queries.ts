@@ -3,17 +3,6 @@
 import { prisma } from '@/lib/db';
 import type { ListParams } from '@/lib/url-params';
 
-// Helper: derive a single primary `item` field from a record's targets. Used
-// only by the compact list view (ServiceRecordTable), where a single primary
-// item read keeps the table layout tight. Detail pages, dashboard, and search
-// indexing now consume the full `targets` collection directly.
-function withDerivedItem<R extends { targets: { item: { id: string; name: string } | null }[] }>(
-  record: R,
-): R & { item: { id: string; name: string } | null } {
-  const itemTarget = record.targets.find((t) => t.item !== null);
-  return { ...record, item: itemTarget?.item ?? null };
-}
-
 export async function listServiceRecords(params: ListParams) {
   const itemId = params.filters.itemId?.[0];
   const vendorId = params.filters.vendorId?.[0];
@@ -33,21 +22,27 @@ export async function listServiceRecords(params: ListParams) {
     ],
   };
 
-  const [rows, total] = await Promise.all([
+  // Targets include `item.systemId` so the chip renderer can dedupe item
+  // chips whose parent system is also in the same target set (showing the
+  // system implies its items).
+  const [records, total] = await Promise.all([
     prisma.serviceRecord.findMany({
       where,
       orderBy: { performedOn: 'desc' },
       skip: (params.page - 1) * params.pageSize,
       take: params.pageSize,
       include: {
-        targets: { include: { item: { select: { id: true, name: true } } } },
+        targets: {
+          include: {
+            item: { select: { id: true, name: true, systemId: true } },
+            system: { select: { id: true, name: true } },
+          },
+        },
         vendor: { select: { id: true, name: true } },
       },
     }),
     prisma.serviceRecord.count({ where }),
   ]);
-
-  const records = rows.map(withDerivedItem);
 
   return { records, total };
 }

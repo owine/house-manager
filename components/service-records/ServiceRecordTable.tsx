@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { type TargetSummary, TargetsChips } from '@/components/targets/TargetsChips';
 import {
   Table,
   TableBody,
@@ -19,7 +20,13 @@ type ServiceRecordRow = {
   performedOn: Date;
   summary: string;
   cost: DecimalLike | null;
-  item: { id: string; name: string } | null;
+  /**
+   * Multi-target: each record owns N targets (item or system). The chip
+   * renderer dedupes item chips whose parent system is also in the same
+   * target set, so a system + its components renders as a single system
+   * chip rather than the system plus N redundant item chips.
+   */
+  targets: TargetSummary[];
   vendor: { id: string; name: string } | null;
 };
 
@@ -36,7 +43,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
         <TableRow>
           <TableHead>Date</TableHead>
           <TableHead>Summary</TableHead>
-          <TableHead>Item</TableHead>
+          <TableHead>Targets</TableHead>
           <TableHead>Vendor</TableHead>
           <TableHead className="text-right">Cost</TableHead>
         </TableRow>
@@ -55,13 +62,7 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
               </Link>
             </TableCell>
             <TableCell>
-              {record.item ? (
-                <Link href={`/items/${record.item.id}`} className="underline underline-offset-2">
-                  {record.item.name}
-                </Link>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
+              <TargetsChips targets={record.targets} />
             </TableCell>
             <TableCell>
               {record.vendor ? (

@@ -38,10 +38,13 @@ export async function getVendor(id: string) {
       serviceRecords: {
         orderBy: { performedOn: 'desc' },
         include: {
+          // Full target set with item.systemId for the chip dedup logic;
+          // matches the shape ServiceRecordTable consumes on /service.
           targets: {
-            where: { itemId: { not: null } },
-            include: { item: { select: { id: true, name: true } } },
-            take: 1,
+            include: {
+              item: { select: { id: true, name: true, systemId: true } },
+              system: { select: { id: true, name: true } },
+            },
           },
         },
         take: 50,
@@ -49,13 +52,7 @@ export async function getVendor(id: string) {
     },
   });
   if (!row) return null;
-  // Surface a single derived `item` per record for backward compatibility with
-  // the vendor detail page; multi-target rendering arrives in a later task.
-  const serviceRecords = row.serviceRecords.map((r) => {
-    const { targets, ...rest } = r;
-    return { ...rest, item: targets[0]?.item ?? null };
-  });
-  return { ...row, serviceRecords };
+  return row;
 }
 
 /**
