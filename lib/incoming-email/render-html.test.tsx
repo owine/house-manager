@@ -106,4 +106,19 @@ describe('renderSanitizedEmailHtml', () => {
     const out = render('<div><p><img src="https://e.example/a.png"/></p></div>');
     expect(out).toContain('loading="lazy"');
   });
+
+  it('returns null for input exceeding the size cap', () => {
+    // 1.1 MB > 1 MB cap. Use a benign repeated paragraph to keep the test
+    // fast (no parser involvement on the rejected path).
+    const big = '<p>x</p>'.repeat(150_000);
+    const result = renderSanitizedEmailHtml(big);
+    expect(result).toBeNull();
+  });
+
+  it('accepts input at the size boundary', () => {
+    // Exactly the cap should still render; cap uses '>' (strict).
+    const exactly = 'a'.repeat(1_000_000);
+    const result = renderSanitizedEmailHtml(exactly);
+    expect(result).not.toBeNull();
+  });
 });

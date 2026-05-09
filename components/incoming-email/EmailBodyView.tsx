@@ -16,12 +16,16 @@ type Props = {
  * email-specific styling. `prose-sm` keeps it sized for the detail card.
  */
 export function EmailBodyView({ bodyText, bodyHtml }: Props) {
+  // `renderSanitizedEmailHtml` returns null when the input is too large or the
+  // pipeline throws. In either case, fall through to the plaintext branch
+  // below rather than rendering an empty card.
   if (bodyHtml && bodyHtml.trim().length > 0) {
-    return (
-      <div className="prose prose-sm max-w-none break-words dark:prose-invert">
-        {renderSanitizedEmailHtml(bodyHtml)}
-      </div>
-    );
+    const rendered = renderSanitizedEmailHtml(bodyHtml);
+    if (rendered !== null) {
+      return (
+        <div className="prose prose-sm max-w-none break-words dark:prose-invert">{rendered}</div>
+      );
+    }
   }
   if (bodyText && bodyText.trim().length > 0) {
     return (
