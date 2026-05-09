@@ -1,6 +1,10 @@
 'use client';
+import { Link2, Loader2 } from 'lucide-react';
 import type React from 'react';
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { addAttachmentLink } from '@/lib/attachments/actions';
 import type { ParentType } from '@/lib/attachments/schema';
 
@@ -35,74 +39,39 @@ export function AttachmentLinkForm({ parentType, parentId }: Props) {
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-        marginTop: '0.75rem',
-        paddingTop: '0.75rem',
-        borderTop: '1px solid var(--border)',
-        alignItems: 'flex-end',
-      }}
-    >
-      <label
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          flex: '1 1 200px',
-          fontSize: '0.85rem',
-        }}
-      >
-        Label (optional)
-        <input
+    <form onSubmit={onSubmit} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+      <div className="flex flex-1 basis-[200px] flex-col gap-1.5">
+        <Label htmlFor="attachment-link-label" className="text-xs">
+          Label (optional)
+        </Label>
+        <Input
+          id="attachment-link-label"
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           maxLength={200}
           disabled={pending}
-          style={{ padding: '0.25rem 0.4rem', marginTop: '0.15rem' }}
         />
-      </label>
-      <label
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          flex: '2 1 320px',
-          fontSize: '0.85rem',
-        }}
-      >
-        URL (https or http)
-        <input
+      </div>
+      <div className="flex flex-[2_1_320px] flex-col gap-1.5">
+        <Label htmlFor="attachment-link-url" className="text-xs">
+          URL (https or http)
+        </Label>
+        <Input
+          id="attachment-link-url"
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           required
           placeholder="https://drive.proton.me/..."
           disabled={pending}
-          style={{ padding: '0.25rem 0.4rem', marginTop: '0.15rem' }}
         />
-      </label>
-      <button
-        type="submit"
-        disabled={pending || url === ''}
-        style={{ padding: '0.4rem 0.75rem', cursor: 'pointer' }}
-      >
+      </div>
+      <Button type="submit" variant="outline" disabled={pending || url === ''}>
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
         {pending ? 'Adding…' : 'Add link'}
-      </button>
-      {error && (
-        <p
-          style={{
-            flex: '1 1 100%',
-            fontSize: '0.85rem',
-            color: 'var(--danger)',
-            margin: 0,
-          }}
-        >
-          {error}
-        </p>
-      )}
+      </Button>
+      {error && <p className="basis-full text-sm text-destructive">{error}</p>}
     </form>
   );
 }
