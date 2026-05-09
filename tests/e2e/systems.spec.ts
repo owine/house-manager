@@ -240,11 +240,13 @@ test('vendor link round-trip: create, render on both sides, convert-to-freeform'
   await expect(chips.getByText('PURCHASE').first()).toBeVisible();
   await expect(chips.getByText('MANUFACTURER').first()).toBeVisible();
 
-  // Vendor detail shows the linked item under "Items — Purchase".
+  // Vendor detail shows the linked item under the Purchase role section.
+  // PR #86 unified the previous "Linked items" + "Linked systems" cards into
+  // one "Linked items & systems" section grouped by role.
   await page.goto(`/vendors/${vendorId}`);
   await page.getByRole('tab', { name: 'Links' }).click();
-  await expect(page.getByText(/Items — Purchase/)).toBeVisible();
-  await expect(page.getByTestId('vendor-linked-items').getByText('Test Boiler')).toBeVisible();
+  await expect(page.getByText(/Linked items & systems/)).toBeVisible();
+  await expect(page.getByTestId('vendor-links').getByText('Test Boiler')).toBeVisible();
 
   // Open delete dialog: it should show "1 item is linked".
   await page.getByRole('button', { name: 'Delete vendor', exact: true }).click();
