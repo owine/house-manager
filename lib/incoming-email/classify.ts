@@ -39,11 +39,18 @@ export type ClassifyInput = {
 
 export type ClassifyKind = 'ESTIMATE' | 'INVOICE' | 'TICKET' | 'UNKNOWN';
 
+export type ClassifyTarget = { itemId: string | null; systemId: string | null };
+
 export type ClassifyResult = {
   kind: ClassifyKind;
   vendorId: string | null;
-  itemId: string | null;
-  systemId: string | null;
+  /**
+   * Targets the heuristic could confidently identify. v1 returns at most one
+   * (the entity matcher picks a single best hit) but the array shape lets a
+   * future enhancement return multiple without changing call sites.
+   * Each target is item XOR system.
+   */
+  targets: ClassifyTarget[];
   shouldAutoStubServiceRecord: boolean;
 };
 
@@ -239,27 +246,26 @@ export function classifyEmail(input: ClassifyInput): ClassifyResult {
   // Item/system matching is only attempted when a vendor matched. Without a
   // vendor anchor the false-positive rate goes up sharply (random list emails
   // mention product names without being about the user's specific instance).
-  let itemId: string | null = null;
-  let systemId: string | null = null;
+  const targets: ClassifyTarget[] = [];
   if (vendor) {
     const haystack = `${input.subject}\n${input.bodyText.slice(0, BODY_ENTITY_LIMIT)}`;
     const itemHits = findEntityHits(haystack, input.items);
     const systemHits = findEntityHits(haystack, input.systems);
-    itemId = pickBestEntity(itemHits);
-    systemId = pickBestEntity(systemHits);
+    const itemId = pickBestEntity(itemHits);
+    let systemId = pickBestEntity(systemHits);
     // Item wins over system when both match — per-item is the more specific
     // link, matching the same precedence used by promoteToServiceRecord.
     if (itemId && systemId) systemId = null;
+    if (itemId) targets.push({ itemId, systemId: null });
+    else if (systemId) targets.push({ itemId: null, systemId });
   }
 
-  const shouldAutoStubServiceRecord =
-    kind === 'TICKET' && vendor !== null && (itemId !== null || systemId !== null);
+  const shouldAutoStubServiceRecord = kind === 'TICKET' && vendor !== null && targets.length > 0;
 
   return {
     kind,
     vendorId: vendor?.id ?? null,
-    itemId,
-    systemId,
+    targets,
     shouldAutoStubServiceRecord,
   };
 }

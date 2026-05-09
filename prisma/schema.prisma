@@ -116,7 +116,7 @@ model System {
   warrantyTargets        WarrantyTarget[]
   reminderTargets        ReminderTarget[]
   systemVendors          SystemVendor[]
-  incomingEmails         IncomingEmail[]
+  incomingEmailTargets   IncomingEmailTarget[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -161,7 +161,7 @@ model Item {
   itemNotes       Note[]     @relation("ItemNotes")
   attachments     Attachment[]
   checklistItems  ChecklistItem[]
-  incomingEmails  IncomingEmail[]
+  incomingEmailTargets   IncomingEmailTarget[]
 
   @@index([categoryId])
   @@index([systemId])
@@ -343,25 +343,39 @@ model IncomingEmail {
 
   vendorId        String?
   vendor          Vendor?             @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  itemId          String?
-  item            Item?               @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  systemId        String?
-  system          System?             @relation(fields: [systemId], references: [id], onDelete: SetNull)
 
   createdServiceRecordId String?         @unique
   createdServiceRecord   ServiceRecord? @relation("IncomingEmailServiceRecord", fields: [createdServiceRecordId], references: [id], onDelete: SetNull)
 
   attachments     Attachment[]
+  targets         IncomingEmailTarget[]
 
   archivedAt      DateTime?
 
   @@index([state])
   @@index([receivedAt])
   @@index([vendorId])
-  @@index([itemId])
-  @@index([systemId])
   @@index([kind])
   @@map("incoming_emails")
+}
+
+model IncomingEmailTarget {
+  id               String        @id @default(cuid())
+  incomingEmailId  String
+  itemId           String?
+  systemId         String?
+
+  incomingEmail    IncomingEmail @relation(fields: [incomingEmailId], references: [id], onDelete: Cascade)
+  item             Item?         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  system           System?       @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  // Mirrors ServiceRecordTarget: NULLS NOT DISTINCT enforced via raw SQL in
+  // the migration so duplicates like (email, itemId, NULL) are rejected.
+  // Prisma 7.8 doesn't model NULLS NOT DISTINCT on @@unique.
+  @@unique([incomingEmailId, itemId, systemId])
+  @@index([itemId])
+  @@index([systemId])
+  @@map("incoming_email_targets")
 }
 
 model Note {

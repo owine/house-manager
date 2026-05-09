@@ -59,8 +59,16 @@ export function InboxList({ rows }: { rows: InboxRow[] }) {
                   </span>
                 )}
                 {row.hasVendor && <Badge variant="outline">Vendor</Badge>}
-                {row.hasItem && <Badge variant="outline">Item</Badge>}
-                {row.hasSystem && <Badge variant="outline">System</Badge>}
+                {row.itemTargetCount > 0 && (
+                  <Badge variant="outline">
+                    {row.itemTargetCount === 1 ? 'Item' : `${row.itemTargetCount} items`}
+                  </Badge>
+                )}
+                {row.systemTargetCount > 0 && (
+                  <Badge variant="outline">
+                    {row.systemTargetCount === 1 ? 'System' : `${row.systemTargetCount} systems`}
+                  </Badge>
+                )}
               </div>
             </div>
           </Link>

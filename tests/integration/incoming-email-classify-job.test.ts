@@ -50,6 +50,7 @@ beforeEach(async () => {
   sentryCaptured.length = 0;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
+  await ctx.prisma.incomingEmailTarget.deleteMany();
   await ctx.prisma.incomingEmail.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.system.deleteMany();
@@ -77,11 +78,15 @@ describe('handleClassifyIncomingEmail', () => {
 
     const after = await ctx.prisma.incomingEmail.findUnique({
       where: { id: e.id },
-      include: { createdServiceRecord: { include: { targets: true } } },
+      include: {
+        targets: true,
+        createdServiceRecord: { include: { targets: true } },
+      },
     });
     expect(after?.kind).toBe('TICKET');
     expect(after?.vendorId).toBe(v.id);
-    expect(after?.itemId).toBe(item.id);
+    expect(after?.targets).toHaveLength(1);
+    expect(after?.targets[0].itemId).toBe(item.id);
     expect(after?.state).toBe('AUTO_LINKED');
     expect(after?.createdServiceRecord).not.toBeNull();
     expect(after?.createdServiceRecord?.summary).toBe(
@@ -104,9 +109,13 @@ describe('handleClassifyIncomingEmail', () => {
     await handle([{ data: { id: e.id } }]);
     const after = await ctx.prisma.incomingEmail.findUnique({
       where: { id: e.id },
-      include: { createdServiceRecord: { include: { targets: true } } },
+      include: {
+        targets: true,
+        createdServiceRecord: { include: { targets: true } },
+      },
     });
-    expect(after?.systemId).toBe(sys.id);
+    expect(after?.targets[0].systemId).toBe(sys.id);
+    expect(after?.targets[0].itemId).toBeNull();
     expect(after?.createdServiceRecord?.targets[0].systemId).toBe(sys.id);
     expect(after?.createdServiceRecord?.targets[0].itemId).toBeNull();
   });
@@ -153,10 +162,13 @@ describe('handleClassifyIncomingEmail', () => {
       subject: 'Service report — annual visit',
     });
     await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
     expect(after?.kind).toBe('TICKET');
     expect(after?.vendorId).toBe(v.id);
-    expect(after?.itemId).toBeNull();
+    expect(after?.targets).toHaveLength(0);
     expect(after?.createdServiceRecordId).toBeNull();
   });
 
@@ -164,7 +176,7 @@ describe('handleClassifyIncomingEmail', () => {
     await ctx.prisma.vendor.create({
       data: { name: 'Acme', email: 'dispatch@acme.example' },
     });
-    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
     const e = await makeEmail({
       messageId: '<rerun@a>',
       fromAddress: 'dispatch@acme.example',
@@ -181,8 +193,6 @@ describe('handleClassifyIncomingEmail', () => {
     expect(after2?.createdServiceRecordId).toBe(firstSrId);
     const srCount = await ctx.prisma.serviceRecord.count();
     expect(srCount).toBe(1);
-    // Avoid unused-warning lint and silence type narrowing.
-    void item;
   });
 
   it('skips a missing row without throwing', async () => {
@@ -207,17 +217,22 @@ describe('handleClassifyIncomingEmail', () => {
         // User already triaged manually; classifier re-run must not reset.
         state: 'LINKED',
         vendorId: v.id,
-        itemId: item.id,
         createdServiceRecordId: sr.id,
+        targets: { create: [{ itemId: item.id }] },
       },
     });
 
     await handle([{ data: { id: e.id } }]);
 
-    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
     expect(after?.state).toBe('LINKED');
-    // Metadata still refreshes on re-run; only state is preserved.
+    // Metadata still refreshes on re-run; only state and user-set targets are preserved.
     expect(after?.kind).toBe('TICKET');
+    expect(after?.targets).toHaveLength(1);
+    expect(after?.targets[0].itemId).toBe(item.id);
   });
 
   it('preserves ARCHIVED state on re-run', async () => {

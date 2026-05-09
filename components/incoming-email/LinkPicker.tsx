@@ -1,7 +1,12 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  type AvailableItem,
+  type AvailableSystem,
+  TargetsPicker,
+} from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -12,17 +17,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { attachIncomingEmail } from '@/lib/incoming-email/actions';
+import type { TargetInput } from '@/lib/targets/schema';
 
-type Option = { id: string; name: string };
+type VendorOption = { id: string; name: string };
 
 type Props = {
   emailId: string;
   initialVendorId: string | null;
-  initialItemId: string | null;
-  initialSystemId: string | null;
-  vendors: Option[];
-  items: Option[];
-  systems: Option[];
+  initialTargets: TargetInput[];
+  vendors: VendorOption[];
+  items: AvailableItem[];
+  systems: AvailableSystem[];
 };
 
 const NONE = '__none__';
@@ -30,104 +35,81 @@ const NONE = '__none__';
 export function LinkPicker({
   emailId,
   initialVendorId,
-  initialItemId,
-  initialSystemId,
+  initialTargets,
   vendors,
   items,
   systems,
 }: Props) {
   const [pending, start] = useTransition();
+  const [vendorId, setVendorId] = useState<string | null>(initialVendorId);
+  const [targets, setTargets] = useState<TargetInput[]>(initialTargets);
+  const [dirty, setDirty] = useState(false);
 
-  const submit = (patch: {
-    vendorId?: string | null;
-    itemId?: string | null;
-    systemId?: string | null;
-  }) => {
+  const submit = () => {
     start(async () => {
-      const r = await attachIncomingEmail({ id: emailId, ...patch });
+      const r = await attachIncomingEmail({ id: emailId, vendorId, targets });
       if (!r.ok) {
         toast.error(r.formError ?? 'Failed to update link');
         return;
       }
       toast.success('Link saved');
+      setDirty(false);
     });
   };
 
-  const handle = (kind: 'vendor' | 'item' | 'system') => (raw: string | null) => {
-    const value = raw == null || raw === NONE ? null : raw;
-    submit(
-      kind === 'vendor'
-        ? { vendorId: value }
-        : kind === 'item'
-          ? { itemId: value }
-          : { systemId: value },
-    );
+  const onVendorChange = (raw: string | null) => {
+    setVendorId(raw == null || raw === NONE ? null : raw);
+    setDirty(true);
   };
 
-  return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      <PickerField
-        label="Vendor"
-        value={initialVendorId}
-        options={vendors}
-        onChange={handle('vendor')}
-        disabled={pending}
-      />
-      <PickerField
-        label="Item"
-        value={initialItemId}
-        options={items}
-        onChange={handle('item')}
-        disabled={pending}
-      />
-      <PickerField
-        label="System"
-        value={initialSystemId}
-        options={systems}
-        onChange={handle('system')}
-        disabled={pending}
-      />
-    </div>
-  );
-}
+  const onTargetsChange = (next: TargetInput[]) => {
+    setTargets(next);
+    setDirty(true);
+  };
 
-function PickerField({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string | null;
-  options: Option[];
-  onChange: (v: string | null) => void;
-  disabled: boolean;
-}) {
-  const itemsForSelect = [
+  const vendorItems = [
     { label: '— none —', value: NONE },
-    ...options.map((o) => ({ label: o.name, value: o.id })),
+    ...vendors.map((v) => ({ label: v.name, value: v.id })),
   ];
+
   return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <Select
-        items={itemsForSelect}
-        value={value ?? NONE}
-        onValueChange={onChange}
-        disabled={disabled}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={`— select ${label.toLowerCase()} —`} />
-        </SelectTrigger>
-        <SelectContent>
-          {itemsForSelect.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="link-picker-vendor">Vendor</Label>
+        <Select
+          items={vendorItems}
+          value={vendorId ?? NONE}
+          onValueChange={onVendorChange}
+          disabled={pending}
+        >
+          <SelectTrigger id="link-picker-vendor" className="w-full sm:w-1/2">
+            <SelectValue placeholder="— select vendor —" />
+          </SelectTrigger>
+          <SelectContent>
+            {vendorItems.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Items &amp; systems</Label>
+        <TargetsPicker
+          value={targets}
+          onChange={onTargetsChange}
+          availableItems={items}
+          availableSystems={systems}
+        />
+      </div>
+
+      <div className="flex justify-end">
+        <Button onClick={submit} disabled={pending || !dirty}>
+          {pending ? 'Saving…' : 'Save links'}
+        </Button>
+      </div>
     </div>
   );
 }
