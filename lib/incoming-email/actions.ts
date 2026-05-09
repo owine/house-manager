@@ -249,10 +249,13 @@ export async function createServiceRecordFromEmail(
     return { ok: false, formError: 'A service record draft already exists for this email' };
   }
 
-  if (email.targets.length === 0) {
+  // Service records can exist with vendor only (no item/system) for things
+  // like landscaping or window washing. Require either a vendor link OR at
+  // least one target — same rule the schema enforces server-side.
+  if (!email.vendorId && email.targets.length === 0) {
     return {
       ok: false,
-      formError: 'Link this email to at least one item or system first',
+      formError: 'Link this email to a vendor or at least one item/system first',
     };
   }
 

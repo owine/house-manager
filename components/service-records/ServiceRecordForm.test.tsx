@@ -79,7 +79,7 @@ describe('ServiceRecordForm with TargetsPicker', () => {
     expect(chips).toHaveTextContent('Furnace blower');
   });
 
-  it('blocks submit and surfaces an error when no targets are selected', async () => {
+  it('blocks submit and surfaces an error when no vendor and no targets are selected', async () => {
     const action = makeAction({ ok: true, data: { id: 'sr-1' } });
     const user = userEvent.setup();
     render(
@@ -95,7 +95,7 @@ describe('ServiceRecordForm with TargetsPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Save record' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/at least one item or system/i)).toBeInTheDocument();
+      expect(screen.getByText(/pick a vendor or at least one item\/system/i)).toBeInTheDocument();
     });
     expect(action).not.toHaveBeenCalled();
   });
@@ -122,6 +122,30 @@ describe('ServiceRecordForm with TargetsPicker', () => {
       summary: 'Annual tune-up',
     });
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/service/sr-new'));
+  });
+
+  it('submits with vendor only and zero targets (e.g. landscaping)', async () => {
+    const action = makeAction({ ok: true, data: { id: 'sr-vendor-only' } });
+    const user = userEvent.setup();
+    render(
+      <ServiceRecordForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        vendors={[{ id: 'v1', name: 'GreenLawn LLC' }]}
+        defaultValues={{ vendorId: 'v1' }}
+        action={action}
+        submitLabel="Save record"
+      />,
+    );
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: 'Save record' }));
+
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({
+      targets: [],
+      vendorId: 'v1',
+      summary: 'Annual tune-up',
+    });
   });
 
   it('submits with targets: [{ systemId }] when only a system is selected', async () => {

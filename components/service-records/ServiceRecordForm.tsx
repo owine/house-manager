@@ -100,8 +100,12 @@ export function ServiceRecordForm({
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((formData) => {
-    if (targets.length === 0) {
-      setTargetsError('Select at least one item or system');
+    // The Zod schema enforces "vendor OR at least one target". Pre-flight
+    // here mirrors that rule so the user gets feedback without the
+    // round-trip when both are empty.
+    const hasVendor = Boolean((formData as { vendorId?: string }).vendorId);
+    if (!hasVendor && targets.length === 0) {
+      setTargetsError('Pick a vendor or at least one item/system');
       return;
     }
     setTargetsError(null);
