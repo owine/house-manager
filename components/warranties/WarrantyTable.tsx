@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { type TargetSummary, TargetsChips } from '@/components/targets/TargetsChips';
 import {
   Table,
   TableBody,
@@ -23,6 +24,12 @@ type WarrantyRow = {
   startsOn: Date;
   endsOn: Date;
   cost: DecimalLike | null;
+  /**
+   * Multi-target chip set. On an item-detail page this surfaces "what else
+   * does this warranty cover" — the current item is implied by context, the
+   * chips show every other item / system on the same policy.
+   */
+  targets: TargetSummary[];
 };
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -42,6 +49,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
         <TableRow>
           <TableHead>Provider</TableHead>
           <TableHead>Policy #</TableHead>
+          <TableHead>Coverage</TableHead>
           <TableHead>Starts on</TableHead>
           <TableHead>Ends on</TableHead>
           <TableHead>Status</TableHead>
@@ -58,6 +66,9 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
               </Link>
             </TableCell>
             <TableCell>{warranty.policyNumber ?? '—'}</TableCell>
+            <TableCell>
+              <TargetsChips targets={warranty.targets} />
+            </TableCell>
             <TableCell>{formatCalendarDate(warranty.startsOn)}</TableCell>
             <TableCell>{formatCalendarDate(warranty.endsOn)}</TableCell>
             <TableCell>
