@@ -15,8 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { DeleteVendorButton } from '@/components/vendors/DeleteVendorButton';
-import { VendorLinkedItemsSection } from '@/components/vendors/VendorLinkedItemsSection';
-import { VendorLinkedSystemsSection } from '@/components/vendors/VendorLinkedSystemsSection';
+import { VendorLinksSection } from '@/components/vendors/VendorLinksSection';
 import { VendorMetaCard } from '@/components/vendors/VendorMetaCard';
 import { VendorOverflowMenu } from '@/components/vendors/VendorOverflowMenu';
 import { formatCalendarDate } from '@/lib/format/date';
@@ -37,26 +36,22 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
   if (!vendor || !links) notFound();
 
   const linksTab = (
-    <div className="space-y-4">
-      <VendorLinkedItemsSection
-        items={links.itemLinks.map((l) => ({
-          id: l.id,
-          itemId: l.itemId,
-          freeformName: l.freeformName,
-          role: l.role,
-          item: l.item,
-        }))}
-      />
-      <VendorLinkedSystemsSection
-        systems={links.systemLinks.map((l) => ({
-          id: l.id,
-          systemId: l.systemId,
-          freeformName: l.freeformName,
-          role: l.role,
-          system: l.system,
-        }))}
-      />
-    </div>
+    <VendorLinksSection
+      items={links.itemLinks.map((l) => ({
+        id: l.id,
+        itemId: l.itemId,
+        freeformName: l.freeformName,
+        role: l.role,
+        item: l.item,
+      }))}
+      systems={links.systemLinks.map((l) => ({
+        id: l.id,
+        systemId: l.systemId,
+        freeformName: l.freeformName,
+        role: l.role,
+        system: l.system,
+      }))}
+    />
   );
 
   const overviewTab = (

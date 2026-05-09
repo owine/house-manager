@@ -88,7 +88,7 @@ export async function getVendorWithLinks(id: string) {
         freeformName: true,
         role: true,
         notes: true,
-        item: { select: { id: true, name: true } },
+        item: { select: { id: true, name: true, systemId: true } },
       },
       orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
     }),
