@@ -67,30 +67,47 @@ async function classifyOne(id: string): Promise<void> {
   });
 
   // Persist classification metadata regardless of whether the auto-stub fires.
-  // We always update `kind` and the FK guesses since those are pure derived
-  // metadata, but `state` is user-meaningful: if the user has already triaged
-  // (LINKED) or dismissed (ARCHIVED) this email, don't reset to AUTO_LINKED /
-  // UNTRIAGED. Only transition state when it was still UNTRIAGED or a prior
-  // AUTO_LINKED (which a re-run is allowed to refresh).
-  const stateUpdate =
-    row.state === 'UNTRIAGED' || row.state === 'AUTO_LINKED'
-      ? {
-          state:
-            result.vendorId || result.itemId || result.systemId
-              ? ('AUTO_LINKED' as const)
-              : ('UNTRIAGED' as const),
-        }
-      : {};
+  // `kind` and `vendorId` are pure derived guesses and always get refreshed.
+  // Targets are replace-set: drop existing AUTO-derived target rows, recreate
+  // from the classifier output. We do NOT preserve manually-added targets
+  // here — the user-set state (LINKED / ARCHIVED) gates whether the worker
+  // owns this row at all.
+  //
+  // `state` is user-meaningful: if the user has already triaged (LINKED) or
+  // dismissed (ARCHIVED) this email, don't reset to AUTO_LINKED/UNTRIAGED and
+  // don't touch their targets either. Only transition when state is still
+  // UNTRIAGED or a prior AUTO_LINKED (which a re-run is allowed to refresh).
+  const ownsRow = row.state === 'UNTRIAGED' || row.state === 'AUTO_LINKED';
 
-  await prisma.incomingEmail.update({
-    where: { id },
-    data: {
-      kind: result.kind,
-      vendorId: result.vendorId,
-      itemId: result.itemId,
-      systemId: result.systemId,
-      ...stateUpdate,
-    },
+  await prisma.$transaction(async (tx) => {
+    if (ownsRow) {
+      await tx.incomingEmailTarget.deleteMany({ where: { incomingEmailId: id } });
+      if (result.targets.length > 0) {
+        await tx.incomingEmailTarget.createMany({
+          data: result.targets.map((t) => ({
+            incomingEmailId: id,
+            itemId: t.itemId,
+            systemId: t.systemId,
+          })),
+        });
+      }
+    }
+
+    await tx.incomingEmail.update({
+      where: { id },
+      data: {
+        kind: result.kind,
+        vendorId: result.vendorId,
+        ...(ownsRow
+          ? {
+              state:
+                result.vendorId || result.targets.length > 0
+                  ? ('AUTO_LINKED' as const)
+                  : ('UNTRIAGED' as const),
+            }
+          : {}),
+      },
+    });
   });
 
   if (!result.shouldAutoStubServiceRecord) {
@@ -111,12 +128,6 @@ async function classifyOne(id: string): Promise<void> {
     return;
   }
 
-  // Item beats system when both are set — same precedence as the manual
-  // promote path in lib/incoming-email/actions.ts.
-  const target = result.itemId
-    ? { itemId: result.itemId }
-    : { systemId: result.systemId as string };
-
   const trimmedSubject = row.subject.trim();
   const summary = (trimmedSubject.length > 0 ? trimmedSubject : '(no subject)').slice(0, 200);
 
@@ -128,7 +139,15 @@ async function classifyOne(id: string): Promise<void> {
           performedOn: row.receivedAt,
           summary,
           notes: '[Auto-created from inbound email — review and edit.]',
-          targets: { create: [target] },
+          targets: {
+            // Each classified target → one ServiceRecordTarget. v1 returns at
+            // most one target so this is a single row in practice; the array
+            // shape lets a future multi-target classifier just work.
+            create: result.targets.map((t) => ({
+              itemId: t.itemId,
+              systemId: t.systemId,
+            })),
+          },
         },
         select: { id: true },
       });

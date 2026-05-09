@@ -12,8 +12,8 @@ export type InboxRow = {
   state: 'UNTRIAGED' | 'AUTO_LINKED' | 'LINKED' | 'ARCHIVED';
   archivedAt: Date | null;
   hasVendor: boolean;
-  hasItem: boolean;
-  hasSystem: boolean;
+  itemTargetCount: number;
+  systemTargetCount: number;
   attachmentCount: number;
 };
 
@@ -41,9 +41,8 @@ export async function listInboxEmails(
       state: true,
       archivedAt: true,
       vendorId: true,
-      itemId: true,
-      systemId: true,
       _count: { select: { attachments: true } },
+      targets: { select: { itemId: true, systemId: true } },
     },
   });
   return rows.map((r) => ({
@@ -56,8 +55,8 @@ export async function listInboxEmails(
     state: r.state,
     archivedAt: r.archivedAt,
     hasVendor: r.vendorId !== null,
-    hasItem: r.itemId !== null,
-    hasSystem: r.systemId !== null,
+    itemTargetCount: r.targets.filter((t) => t.itemId !== null).length,
+    systemTargetCount: r.targets.filter((t) => t.systemId !== null).length,
     attachmentCount: r._count.attachments,
   }));
 }
@@ -67,8 +66,6 @@ export async function getInboxEmail(id: string) {
     where: { id },
     include: {
       vendor: { select: { id: true, name: true } },
-      item: { select: { id: true, name: true } },
-      system: { select: { id: true, name: true } },
       attachments: {
         select: {
           id: true,
@@ -79,6 +76,15 @@ export async function getInboxEmail(id: string) {
         },
       },
       createdServiceRecord: { select: { id: true, summary: true } },
+      targets: {
+        select: {
+          id: true,
+          itemId: true,
+          systemId: true,
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 }
@@ -103,13 +109,33 @@ export async function loadLinkPickerOptions() {
     prisma.item.findMany({
       where: { archivedAt: null },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        archivedAt: true,
+        category: { select: { name: true } },
+      },
     }),
     prisma.system.findMany({
       where: { archivedAt: null },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        items: { select: { id: true, archivedAt: true } },
+      },
     }),
   ]);
-  return { vendors, items, systems };
+  // Reshape items to the AvailableItem shape <TargetsPicker> expects.
+  return {
+    vendors,
+    items: items.map((i) => ({
+      id: i.id,
+      name: i.name,
+      categoryName: i.category?.name ?? null,
+      archivedAt: i.archivedAt,
+    })),
+    systems,
+  };
 }

@@ -79,8 +79,10 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
           <LinkPicker
             emailId={email.id}
             initialVendorId={email.vendorId}
-            initialItemId={email.itemId}
-            initialSystemId={email.systemId}
+            initialTargets={email.targets.map((t) => ({
+              itemId: t.itemId,
+              systemId: t.systemId,
+            }))}
             vendors={options.vendors}
             items={options.items}
             systems={options.systems}
@@ -89,7 +91,7 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
           <InboxActionButtons
             emailId={email.id}
             isArchived={email.archivedAt !== null}
-            canPromote={email.itemId !== null || email.systemId !== null}
+            canPromote={email.targets.length > 0}
             promotedServiceRecordId={email.createdServiceRecord?.id ?? null}
           />
           {email.createdServiceRecord && (

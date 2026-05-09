@@ -246,8 +246,8 @@ describe('classifyEmail — entity match', () => {
         subject: 'Service report — Heat Pump tune-up',
       }),
     );
-    expect(r.itemId).toBeNull();
-    expect(r.systemId).toBeNull();
+    expect(r.targets.find((t) => t.itemId)).toBeUndefined();
+    expect(r.targets.find((t) => t.systemId)).toBeUndefined();
   });
 
   it('matches an item by name in the subject when vendor matched', () => {
@@ -257,7 +257,7 @@ describe('classifyEmail — entity match', () => {
         subject: 'Service report — Heat Pump tune-up',
       }),
     );
-    expect(r.itemId).toBe('i_hp');
+    expect(r.targets[0]?.itemId).toBe('i_hp');
   });
 
   it('matches an item by name in the body when vendor matched', () => {
@@ -268,7 +268,7 @@ describe('classifyEmail — entity match', () => {
         bodyText: 'Replaced filter on the Water Heater. All good.',
       }),
     );
-    expect(r.itemId).toBe('i_wh');
+    expect(r.targets[0]?.itemId).toBe('i_wh');
   });
 
   it('returns null when 2+ distinct items match (ambiguous list email)', () => {
@@ -281,7 +281,7 @@ describe('classifyEmail — entity match', () => {
     // All three same length (10, 7, 12) — longest is Water Heater alone, so
     // pickBestEntity returns it. Adjust to test the equally-long ambiguous
     // case explicitly.
-    expect(['i_wh']).toContain(r.itemId);
+    expect(['i_wh']).toContain(r.targets[0]?.itemId);
   });
 
   it('returns null when 2+ items of equal length match (true ambiguity)', () => {
@@ -296,7 +296,7 @@ describe('classifyEmail — entity match', () => {
         items,
       }),
     );
-    expect(r.itemId).toBeNull();
+    expect(r.targets.find((t) => t.itemId)).toBeUndefined();
   });
 
   it('respects word boundaries — does not match substrings', () => {
@@ -307,7 +307,7 @@ describe('classifyEmail — entity match', () => {
       }),
     );
     // 'Heat Pump' should NOT match 'Heath'.
-    expect(r.itemId).toBeNull();
+    expect(r.targets.find((t) => t.itemId)).toBeUndefined();
   });
 
   it('skips entities with names shorter than 3 characters (false-positive guard)', () => {
@@ -317,7 +317,7 @@ describe('classifyEmail — entity match', () => {
         subject: 'AC running fine',
       }),
     );
-    expect(r.itemId).toBeNull();
+    expect(r.targets.find((t) => t.itemId)).toBeUndefined();
   });
 
   it('handles names with regex special characters', () => {
@@ -329,7 +329,7 @@ describe('classifyEmail — entity match', () => {
         items,
       }),
     );
-    expect(r.itemId).toBe('sp');
+    expect(r.targets[0]?.itemId).toBe('sp');
   });
 
   it('matches a system when items do not match', () => {
@@ -339,7 +339,7 @@ describe('classifyEmail — entity match', () => {
         subject: 'Annual HVAC tune-up complete',
       }),
     );
-    expect(r.systemId).toBe('s_hvac');
+    expect(r.targets[0]?.systemId).toBe('s_hvac');
   });
 
   it('prefers item over system when both match', () => {
@@ -349,8 +349,8 @@ describe('classifyEmail — entity match', () => {
         subject: 'Tune-up on Heat Pump (HVAC system)',
       }),
     );
-    expect(r.itemId).toBe('i_hp');
-    expect(r.systemId).toBeNull();
+    expect(r.targets[0]?.itemId).toBe('i_hp');
+    expect(r.targets.find((t) => t.systemId)).toBeUndefined();
   });
 });
 
@@ -383,7 +383,7 @@ describe('classifyEmail — auto-stub gating', () => {
       }),
     );
     expect(r.kind).toBe('INVOICE');
-    expect(r.itemId).toBe('i_hp');
+    expect(r.targets[0]?.itemId).toBe('i_hp');
     expect(r.shouldAutoStubServiceRecord).toBe(false);
   });
 
