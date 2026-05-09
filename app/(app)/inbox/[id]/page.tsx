@@ -49,6 +49,44 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Link to</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <LinkPicker
+            emailId={email.id}
+            initialVendorId={email.vendorId}
+            initialTargets={email.targets.map((t) => ({
+              itemId: t.itemId,
+              systemId: t.systemId,
+            }))}
+            vendors={options.vendors}
+            items={options.items}
+            systems={options.systems}
+          />
+          <Separator />
+          <InboxActionButtons
+            emailId={email.id}
+            isArchived={email.archivedAt !== null}
+            canCreateServiceRecord={email.targets.length > 0}
+            canReclassify={
+              email.archivedAt === null &&
+              (email.state === 'UNTRIAGED' || email.state === 'AUTO_LINKED')
+            }
+            createdServiceRecordId={email.createdServiceRecord?.id ?? null}
+          />
+          {email.createdServiceRecord && (
+            <p className="text-sm text-muted-foreground">
+              A service record was created from this email:{' '}
+              <span className="font-medium text-foreground">
+                {email.createdServiceRecord.summary}
+              </span>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {email.attachments.length > 0 && (
         <Card>
           <CardHeader>
@@ -70,44 +108,6 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Link to</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <LinkPicker
-            emailId={email.id}
-            initialVendorId={email.vendorId}
-            initialTargets={email.targets.map((t) => ({
-              itemId: t.itemId,
-              systemId: t.systemId,
-            }))}
-            vendors={options.vendors}
-            items={options.items}
-            systems={options.systems}
-          />
-          <Separator />
-          <InboxActionButtons
-            emailId={email.id}
-            isArchived={email.archivedAt !== null}
-            canPromote={email.targets.length > 0}
-            canReclassify={
-              email.archivedAt === null &&
-              (email.state === 'UNTRIAGED' || email.state === 'AUTO_LINKED')
-            }
-            promotedServiceRecordId={email.createdServiceRecord?.id ?? null}
-          />
-          {email.createdServiceRecord && (
-            <p className="text-sm text-muted-foreground">
-              A service record draft was created from this email:{' '}
-              <span className="font-medium text-foreground">
-                {email.createdServiceRecord.summary}
-              </span>
-            </p>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

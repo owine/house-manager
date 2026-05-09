@@ -36,19 +36,14 @@ beforeEach(async () => {
   itemId = item.id;
 });
 
-describe('Attachment CHECK constraint', () => {
-  it('rejects an INSERT with all four FKs null', async () => {
-    await expect(
-      ctx.prisma.$executeRaw`
-        INSERT INTO "attachments"
-          (id, filename, "mimeType", "sizeBytes", "storagePath", "uploadedById", "createdAt", "aiIndexable")
-        VALUES
-          ('a-1', 'x.pdf', 'application/pdf', 1, 'a-1/original.pdf', 'test-user', NOW(), true);
-      `,
-    ).rejects.toThrow(/Attachment_exactly_one_parent/);
-  });
+describe('Attachment parent FKs (multi-parent allowed)', () => {
+  // The Attachment_exactly_one_parent CHECK was dropped to support inbox-email
+  // → service-record promotion (the same PDF needs to live in both contexts
+  // simultaneously). The two cases below — zero parents, multi parent — used
+  // to be CHECK-rejected and are now permitted at the schema level. App code
+  // never produces zero-parent rows; we trust callers.
 
-  it('rejects an INSERT with two FKs set', async () => {
+  it('accepts an INSERT with two FKs set', async () => {
     const w = await ctx.prisma.warranty.create({
       data: {
         provider: 'Acme',
@@ -66,7 +61,7 @@ describe('Attachment CHECK constraint', () => {
           ('a-2', 'x.pdf', 'application/pdf', 1, 'a-2/original.pdf', 'test-user',
            ${itemId}, ${w.id}, NOW(), true);
       `,
-    ).rejects.toThrow(/Attachment_exactly_one_parent/);
+    ).resolves.toBeDefined();
   });
 
   it('accepts an INSERT with exactly one FK set', async () => {

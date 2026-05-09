@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
   type AvailableItem,
@@ -9,6 +10,7 @@ import {
 } from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -19,7 +21,7 @@ import {
 import {
   archiveIncomingEmail,
   attachIncomingEmail,
-  promoteToServiceRecord,
+  createServiceRecordFromEmail,
   reclassifyIncomingEmail,
   unarchiveIncomingEmail,
 } from '@/lib/incoming-email/actions';
@@ -49,28 +51,32 @@ export function LinkPicker({
   const [pending, start] = useTransition();
   const [vendorId, setVendorId] = useState<string | null>(initialVendorId);
   const [targets, setTargets] = useState<TargetInput[]>(initialTargets);
-  const [dirty, setDirty] = useState(false);
 
-  const submit = () => {
+  // Auto-save: vendor changes commit immediately; target-set changes commit
+  // when the popover closes. The action's `targets` field is omitted when we
+  // only changed vendor (and vice versa) so the server only mutates what
+  // actually changed in the round-trip.
+  const submit = (patch: { vendorId?: string | null; targets?: TargetInput[] }) => {
     start(async () => {
-      const r = await attachIncomingEmail({ id: emailId, vendorId, targets });
+      const r = await attachIncomingEmail({ id: emailId, ...patch });
       if (!r.ok) {
         toast.error(r.formError ?? 'Failed to update link');
         return;
       }
       toast.success('Link saved');
-      setDirty(false);
     });
   };
 
   const onVendorChange = (raw: string | null) => {
-    setVendorId(raw == null || raw === NONE ? null : raw);
-    setDirty(true);
+    const next = raw == null || raw === NONE ? null : raw;
+    setVendorId(next);
+    if (next !== vendorId) submit({ vendorId: next });
   };
 
-  const onTargetsChange = (next: TargetInput[]) => {
-    setTargets(next);
-    setDirty(true);
+  // Capture targets-at-popover-open so the close-side commit can detect a
+  // no-op (popover opened, nothing toggled) and skip the round-trip.
+  const onTargetsCommit = (next: TargetInput[]) => {
+    submit({ targets: next });
   };
 
   const vendorItems = [
@@ -103,20 +109,101 @@ export function LinkPicker({
 
       <div className="space-y-1.5">
         <Label>Items &amp; systems</Label>
-        <TargetsPicker
+        <TargetsPickerDropdown
           value={targets}
-          onChange={onTargetsChange}
+          onChange={setTargets}
+          onCommit={onTargetsCommit}
           availableItems={items}
           availableSystems={systems}
         />
       </div>
-
-      <div className="flex justify-end">
-        <Button onClick={submit} disabled={pending || !dirty}>
-          {pending ? 'Saving…' : 'Save links'}
-        </Button>
-      </div>
     </div>
+  );
+}
+
+/**
+ * Compact wrapper around the shared <TargetsPicker> for the inbox detail page,
+ * which doesn't have the screen real estate that service-record / warranty /
+ * reminder forms do. The trigger button shows a one-line summary of selected
+ * items + systems; the picker itself opens in a popover anchored to the
+ * trigger. The shared TargetsPicker stays untouched — other call sites still
+ * get the inline experience.
+ */
+function targetsEqual(a: TargetInput[], b: TargetInput[]): boolean {
+  if (a.length !== b.length) return false;
+  // Order-insensitive equality on (itemId|systemId) keys. Replace-set semantics
+  // on the server side don't care about order, so neither should we.
+  const key = (t: TargetInput) => `${t.itemId ?? ''}::${t.systemId ?? ''}`;
+  const aSet = new Set(a.map(key));
+  return b.every((t) => aSet.has(key(t)));
+}
+
+function TargetsPickerDropdown({
+  value,
+  onChange,
+  onCommit,
+  availableItems,
+  availableSystems,
+}: {
+  value: TargetInput[];
+  onChange: (next: TargetInput[]) => void;
+  /** Called when the popover closes IF the value actually changed. */
+  onCommit: (next: TargetInput[]) => void;
+  availableItems: AvailableItem[];
+  availableSystems: AvailableSystem[];
+}) {
+  const [open, setOpen] = useState(false);
+  // Snapshot of `value` at the moment the popover opened. We compare against
+  // this on close to decide whether to fire onCommit (skip if no-op).
+  const [snapshot, setSnapshot] = useState<TargetInput[]>(value);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next) {
+      setSnapshot(value);
+    } else if (!targetsEqual(snapshot, value)) {
+      onCommit(value);
+    }
+  };
+  const summary = useMemo(() => {
+    const itemNames = value
+      .filter((t) => t.itemId)
+      .map((t) => availableItems.find((i) => i.id === t.itemId)?.name)
+      .filter((n): n is string => Boolean(n));
+    const systemNames = value
+      .filter((t) => t.systemId)
+      .map((t) => availableSystems.find((s) => s.id === t.systemId)?.name)
+      .filter((n): n is string => Boolean(n));
+    const all = [...itemNames, ...systemNames];
+    if (all.length === 0) return '— select items / systems —';
+    if (all.length <= 2) return all.join(', ');
+    return `${all.slice(0, 2).join(', ')} +${all.length - 2} more`;
+  }, [value, availableItems, availableSystems]);
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            className="w-full justify-between text-left font-normal sm:w-1/2"
+          >
+            <span className="truncate">{summary}</span>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        }
+      />
+      <PopoverContent className="w-[min(36rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto p-0">
+        <div className="p-3">
+          <TargetsPicker
+            value={value}
+            onChange={onChange}
+            availableItems={availableItems}
+            availableSystems={availableSystems}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -124,13 +211,13 @@ export function LinkPicker({
 export function InboxActionButtons({
   emailId,
   isArchived,
-  canPromote,
+  canCreateServiceRecord,
   canReclassify,
-  promotedServiceRecordId,
+  createdServiceRecordId,
 }: {
   emailId: string;
   isArchived: boolean;
-  canPromote: boolean;
+  canCreateServiceRecord: boolean;
   /**
    * True only for UNTRIAGED + AUTO_LINKED rows that aren't archived. The
    * worker's state guard means a reclassify on LINKED/ARCHIVED rows would
@@ -138,7 +225,7 @@ export function InboxActionButtons({
    * which is more confusing than helpful — hide the button instead.
    */
   canReclassify: boolean;
-  promotedServiceRecordId: string | null;
+  createdServiceRecordId: string | null;
 }) {
   const [pending, start] = useTransition();
 
@@ -150,11 +237,11 @@ export function InboxActionButtons({
       else toast.success(isArchived ? 'Unarchived' : 'Archived');
     });
 
-  const onPromote = () =>
+  const onCreateServiceRecord = () =>
     start(async () => {
-      const r = await promoteToServiceRecord({ id: emailId });
-      if (!r.ok) toast.error(r.formError ?? 'Failed to promote');
-      else toast.success('Service record drafted');
+      const r = await createServiceRecordFromEmail({ id: emailId });
+      if (!r.ok) toast.error(r.formError ?? 'Failed to create service record');
+      else toast.success('Service record created');
     });
 
   const onReclassify = () =>
@@ -166,14 +253,14 @@ export function InboxActionButtons({
 
   return (
     <div className="flex flex-wrap gap-2">
-      {promotedServiceRecordId ? (
+      {createdServiceRecordId ? (
         <Button
           variant="outline"
-          render={<a href={`/service/${promotedServiceRecordId}`}>View drafted service record</a>}
+          render={<a href={`/service/${createdServiceRecordId}`}>View service record</a>}
         />
       ) : (
-        <Button onClick={onPromote} disabled={pending || !canPromote}>
-          Promote to service record
+        <Button onClick={onCreateServiceRecord} disabled={pending || !canCreateServiceRecord}>
+          Create service record
         </Button>
       )}
       {canReclassify && (

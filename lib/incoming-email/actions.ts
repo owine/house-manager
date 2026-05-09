@@ -192,16 +192,18 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
  * exists for this email; the caller (UI) gates the button on the same.
  *
  * Each `IncomingEmailTarget` becomes one `ServiceRecordTarget` on the new
- * record — multi-target emails fan out cleanly.
+ * record — multi-target emails fan out cleanly. Attachments on the email
+ * are also linked to the new record (multi-parent attachments mean both
+ * the inbox row and the service record show the same files).
  */
-const promoteSchema = z.object({ id: z.string().min(1) });
+const createServiceRecordSchema = z.object({ id: z.string().min(1) });
 
-export async function promoteToServiceRecord(
+export async function createServiceRecordFromEmail(
   input: unknown,
 ): Promise<ActionResult<{ serviceRecordId: string }>> {
   const u = await requireUser();
   if (!u) return { ok: false, formError: 'Unauthorized' };
-  const parsed = promoteSchema.safeParse(input);
+  const parsed = createServiceRecordSchema.safeParse(input);
   if (!parsed.success) return { ok: false, formError: 'Invalid input' };
 
   const email = await prisma.incomingEmail.findUnique({
@@ -253,18 +255,27 @@ export async function promoteToServiceRecord(
       where: { id: email.id },
       data: { createdServiceRecordId: sr.id, state: 'LINKED' },
     });
-    return sr;
+    // Link the email's attachments to the new ServiceRecord too. Multi-parent
+    // attachments mean the same PDF/photo shows up in both the inbox detail
+    // (still tied to the email) and the service record (tied via this update).
+    // Single source of truth on disk; no file copy.
+    const attachLink = await tx.attachment.updateMany({
+      where: { incomingEmailId: email.id, serviceRecordId: null },
+      data: { serviceRecordId: sr.id },
+    });
+    return { sr, attachmentsLinked: attachLink.count };
   });
   log.info(
     {
       incomingEmailId: email.id,
-      serviceRecordId: created.id,
+      serviceRecordId: created.sr.id,
       targetCount: email.targets.length,
+      attachmentsLinked: created.attachmentsLinked,
       by: u.id,
     },
-    'incoming-email: promoted to service record',
+    'incoming-email: service record created',
   );
   revalidateInbox(email.id);
   revalidatePath('/service');
-  return { ok: true, data: { serviceRecordId: created.id } };
+  return { ok: true, data: { serviceRecordId: created.sr.id } };
 }
