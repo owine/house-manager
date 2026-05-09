@@ -56,7 +56,19 @@ export async function getItem(id: string) {
       },
       warrantyTargets: {
         orderBy: { warranty: { endsOn: 'desc' } },
-        include: { warranty: true },
+        include: {
+          warranty: {
+            include: {
+              targets: {
+                include: {
+                  // item.systemId for the chip dedup logic
+                  item: { select: { id: true, name: true, systemId: true } },
+                  system: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
       },
       serviceRecordTargets: {
         orderBy: { serviceRecord: { performedOn: 'desc' } },

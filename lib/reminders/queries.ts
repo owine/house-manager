@@ -4,42 +4,25 @@ import type { ListParams } from '@/lib/url-params';
 const TARGETS_INCLUDE = {
   targets: {
     include: {
-      item: { select: { id: true, name: true } },
+      // `item.systemId` lets <TargetsChips> dedupe item chips whose parent
+      // system is also in the same target set.
+      item: { select: { id: true, name: true, systemId: true } },
       system: { select: { id: true, name: true } },
     },
   },
 } as const;
 
-// Helper: derive a single primary `item` field from a reminder's targets so
-// that existing per-item-page rendering (one item-target per reminder after
-// backfill) keeps working tactically. Multi-target rendering is introduced
-// in a later task.
-function withDerived<
-  R extends {
-    targets: {
-      itemId: string | null;
-      nextDueOn: Date;
-      item: { id: string; name: string } | null;
-    }[];
-  },
->(
+// Helper: derive an aggregate `nextDueOn` (earliest across targets) for the
+// reminder list view. The single-item derivation that used to live here is
+// gone — multi-target chip rendering replaces it.
+function withDerivedNextDueOn<R extends { targets: { nextDueOn: Date }[] }>(
   reminder: R,
-): R & {
-  item: { id: string; name: string } | null;
-  itemId: string | null;
-  nextDueOn: Date | null;
-} {
-  const itemTarget = reminder.targets.find((t) => t.item !== null);
+): R & { nextDueOn: Date | null } {
   const earliest = reminder.targets.reduce<Date | null>(
     (acc, t) => (acc === null || t.nextDueOn < acc ? t.nextDueOn : acc),
     null,
   );
-  return {
-    ...reminder,
-    item: itemTarget?.item ?? null,
-    itemId: itemTarget?.itemId ?? null,
-    nextDueOn: earliest,
-  };
+  return { ...reminder, nextDueOn: earliest };
 }
 
 export async function getReminder(id: string) {
@@ -58,7 +41,7 @@ export async function getReminder(id: string) {
     },
   });
   if (!row) return null;
-  return withDerived(row);
+  return withDerivedNextDueOn(row);
 }
 
 export async function listReminders(params: ListParams) {
@@ -90,7 +73,7 @@ export async function listReminders(params: ListParams) {
     prisma.reminder.count({ where }),
   ]);
 
-  const derived = allRows.map(withDerived);
+  const derived = allRows.map(withDerivedNextDueOn);
   const FAR_FUTURE = Number.POSITIVE_INFINITY;
   derived.sort((a, b) => {
     const aDue = a.nextDueOn?.getTime() ?? FAR_FUTURE;
@@ -112,7 +95,7 @@ export async function listRemindersForItem(itemId: string) {
     include: TARGETS_INCLUDE,
   });
   return rows
-    .map(withDerived)
+    .map(withDerivedNextDueOn)
     .sort((a, b) => (a.nextDueOn?.getTime() ?? 0) - (b.nextDueOn?.getTime() ?? 0));
 }
 
@@ -129,7 +112,7 @@ export async function getRemindersForSystem(systemId: string) {
     include: TARGETS_INCLUDE,
   });
   return rows
-    .map(withDerived)
+    .map(withDerivedNextDueOn)
     .sort((a, b) => (a.nextDueOn?.getTime() ?? 0) - (b.nextDueOn?.getTime() ?? 0));
 }
 

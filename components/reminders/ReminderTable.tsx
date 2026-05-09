@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { type TargetSummary, TargetsChips } from '@/components/targets/TargetsChips';
 import {
   Table,
   TableBody,
@@ -15,7 +16,12 @@ type Row = {
   title: string;
   nextDueOn: Date | null;
   active: boolean;
-  item: { id: string; name: string } | null;
+  /**
+   * Multi-target chip set. The chip renderer dedupes item chips whose
+   * parent system is also in the same target set; this matches the
+   * behavior shipped on /service in PR #85.
+   */
+  targets: TargetSummary[];
 };
 
 export function ReminderTable({ reminders }: { reminders: Row[] }) {
@@ -24,7 +30,7 @@ export function ReminderTable({ reminders }: { reminders: Row[] }) {
       <TableHeader>
         <TableRow>
           <TableHead>Title</TableHead>
-          <TableHead>Item</TableHead>
+          <TableHead>Targets</TableHead>
           <TableHead>Next due</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
@@ -38,13 +44,7 @@ export function ReminderTable({ reminders }: { reminders: Row[] }) {
               </Link>
             </TableCell>
             <TableCell>
-              {r.item ? (
-                <Link href={`/items/${r.item.id}`} className="underline underline-offset-2">
-                  {r.item.name}
-                </Link>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
+              <TargetsChips targets={r.targets} />
             </TableCell>
             <TableCell>{r.nextDueOn ? formatCalendarDate(r.nextDueOn) : '—'}</TableCell>
             <TableCell>

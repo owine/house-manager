@@ -8,7 +8,7 @@ export async function getWarranty(id: string) {
     include: {
       targets: {
         include: {
-          item: { select: { id: true, name: true } },
+          item: { select: { id: true, name: true, systemId: true } },
           system: { select: { id: true, name: true } },
         },
       },
@@ -52,7 +52,7 @@ export async function getWarrantiesForSystem(systemId: string) {
     include: {
       targets: {
         include: {
-          item: { select: { id: true, name: true } },
+          item: { select: { id: true, name: true, systemId: true } },
           system: { select: { id: true, name: true } },
         },
       },

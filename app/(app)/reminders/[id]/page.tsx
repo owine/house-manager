@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
@@ -7,6 +6,7 @@ import { MarkCompleteButton } from '@/components/reminders/MarkCompleteButton';
 import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteDialog';
 import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMenu';
 import { ReminderStatusBadge } from '@/components/reminders/ReminderStatusBadge';
+import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
@@ -36,17 +36,11 @@ export default async function ReminderDetailPage({ params }: { params: Params })
     <div className="mx-auto max-w-3xl">
       <PageHeader title={r.title} actions={<ReminderOverflowMenu reminderId={r.id} />} />
 
-      <div className="mb-4 flex items-center gap-3 text-sm">
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
-        {r.item && (
-          <span className="text-muted-foreground">
-            for{' '}
-            <Link
-              href={`/items/${r.item.id}`}
-              className="underline underline-offset-2 text-foreground"
-            >
-              {r.item.name}
-            </Link>
+        {r.targets.length > 0 && (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            for <TargetsChips targets={r.targets} />
           </span>
         )}
       </div>
@@ -103,7 +97,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
           <CompleteReminderForm
             reminderId={r.id}
             autoCreateServiceRecord={r.autoCreateServiceRecord}
-            hasItem={r.itemId != null}
+            hasItem={r.targets.some((t) => t.itemId !== null)}
           />
         )}
       </div>
