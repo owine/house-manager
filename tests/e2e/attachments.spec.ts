@@ -28,9 +28,11 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   await page.getByRole('link', { name: 'Files' }).click();
   await expect(page.locator('text=No files yet')).toBeVisible();
 
-  // Upload the fixture.
+  // Upload the fixture. PR #89 replaced the unicode "✓ <filename>" status
+  // glyph with a lucide check icon next to the bare filename, so we now
+  // assert on the filename's appearance in the status list directly.
   await page.setInputFiles('input[type=file]', 'tests/fixtures/sample.jpg');
-  await expect(page.locator('text=✓ sample.jpg')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=sample.jpg').first()).toBeVisible({ timeout: 10_000 });
 
   // Verify a card with the file rendered (Delete button is the visible signal).
   // Note: the dev server doesn't run the worker process, so the thumbnail
