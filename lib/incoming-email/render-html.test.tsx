@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { renderSanitizedEmailHtml } from './render-html';
 
 function render(html: string): string {
-  return renderToStaticMarkup(<>{renderSanitizedEmailHtml(html)}</>);
+  return renderToStaticMarkup(renderSanitizedEmailHtml(html));
 }
 
 describe('renderSanitizedEmailHtml', () => {
