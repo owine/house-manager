@@ -153,27 +153,31 @@ export function TargetsPicker({
           {selectedSystems.map((t) => (
             <Badge key={`s:${t.systemId}`} variant="secondary" className="gap-1 pr-1">
               <span>System: {systemNameById.get(t.systemId) ?? t.systemId}</span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label={`Remove system ${systemNameById.get(t.systemId) ?? t.systemId}`}
                 onClick={() => onChange(removeSystem(value, t.systemId))}
-                className="rounded-sm hover:bg-foreground/10"
+                className="size-4 rounded-sm hover:bg-foreground/10"
               >
                 <X className="size-3" />
-              </button>
+              </Button>
             </Badge>
           ))}
           {selectedItems.map((t) => (
             <Badge key={`i:${t.itemId}`} variant="outline" className="gap-1 pr-1">
               <span>{itemNameById.get(t.itemId) ?? t.itemId}</span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label={`Remove item ${itemNameById.get(t.itemId) ?? t.itemId}`}
                 onClick={() => onChange(removeItem(value, t.itemId))}
-                className="rounded-sm hover:bg-foreground/10"
+                className="size-4 rounded-sm hover:bg-foreground/10"
               >
                 <X className="size-3" />
-              </button>
+              </Button>
             </Badge>
           ))}
         </div>
