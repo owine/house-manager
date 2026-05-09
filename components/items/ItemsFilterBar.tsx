@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -40,6 +42,7 @@ export function ItemsFilterBar({
 }: Props) {
   const [category, setCategory] = useState<string>(selectedCategorySlug || ALL_CATEGORIES);
   const [location, setLocation] = useState<string>(selectedLocation || ALL_LOCATIONS);
+  const [archived, setArchived] = useState<boolean>(showArchived);
 
   const hasFilters =
     q.length > 0 || selectedCategorySlug.length > 0 || selectedLocation.length > 0 || showArchived;
@@ -119,16 +122,21 @@ export function ItemsFilterBar({
         </Select>
       </div>
 
-      <label className="flex flex-row items-center gap-1.5 text-sm">
-        <input
-          type="checkbox"
-          name="archived"
-          value="true"
-          defaultChecked={showArchived}
-          className="h-4 w-4 accent-primary rounded border-input"
+      {/* Hidden form-GET input mirrors the controlled Checkbox state.
+          Base UI's Checkbox renders a styled non-form button, so the form
+          itself needs the mirror input to drive the URL query. */}
+      {archived && <input type="hidden" name="archived" value="true" />}
+      <Label
+        htmlFor="items-filter-archived"
+        className="flex items-center gap-1.5 text-sm font-normal"
+      >
+        <Checkbox
+          id="items-filter-archived"
+          checked={archived}
+          onCheckedChange={(c) => setArchived(c === true)}
         />
         Show archived
-      </label>
+      </Label>
 
       <Button type="submit" variant="outline">
         Filter
