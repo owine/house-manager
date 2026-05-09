@@ -74,4 +74,69 @@ describe('TargetsChips', () => {
     // Only the two well-formed targets render.
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
   });
+
+  it('dedups item chips whose parent system is also in the target set', () => {
+    // System "HVAC" + two of its items + an unrelated item. The two items
+    // belonging to HVAC should be hidden (the system implies them); the
+    // unrelated item stays.
+    render(
+      <TargetsChips
+        targets={[
+          {
+            id: 'sys',
+            itemId: null,
+            systemId: 'hvac',
+            item: null,
+            system: { id: 'hvac', name: 'HVAC' },
+          },
+          {
+            id: 'i-hp',
+            itemId: 'hp',
+            systemId: null,
+            item: { id: 'hp', name: 'Heat Pump', systemId: 'hvac' },
+            system: null,
+          },
+          {
+            id: 'i-furnace',
+            itemId: 'fu',
+            systemId: null,
+            item: { id: 'fu', name: 'Furnace', systemId: 'hvac' },
+            system: null,
+          },
+          {
+            id: 'i-fridge',
+            itemId: 'fr',
+            systemId: null,
+            item: { id: 'fr', name: 'Fridge', systemId: null },
+            system: null,
+          },
+        ]}
+      />,
+    );
+    const list = screen.getByTestId('targets-chips');
+    // Two chips render: the HVAC system + the unrelated Fridge item.
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.queryByTestId('targets-chip-i-hp')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('targets-chip-i-furnace')).not.toBeInTheDocument();
+    expect(screen.getByTestId('targets-chip-sys')).toBeInTheDocument();
+    expect(screen.getByTestId('targets-chip-i-fridge')).toBeInTheDocument();
+  });
+
+  it('keeps an item chip when its parent system is NOT in the target set', () => {
+    // Item belongs to a system, but the system isn't a target — chip stays.
+    render(
+      <TargetsChips
+        targets={[
+          {
+            id: 'i-hp',
+            itemId: 'hp',
+            systemId: null,
+            item: { id: 'hp', name: 'Heat Pump', systemId: 'hvac' },
+            system: null,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('targets-chip-i-hp')).toBeInTheDocument();
+  });
 });

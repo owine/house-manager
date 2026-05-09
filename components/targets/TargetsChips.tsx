@@ -5,7 +5,13 @@ export interface TargetSummary {
   id: string;
   itemId: string | null;
   systemId: string | null;
-  item: { id: string; name: string } | null;
+  /**
+   * Optional `systemId` on an item target — when set, lets the chip renderer
+   * dedupe item chips that belong to a system already in the same target
+   * set (showing the system implies its items, so the item chips become
+   * noise). Callers that don't have system context just omit it.
+   */
+  item: { id: string; name: string; systemId?: string | null } | null;
   system: { id: string; name: string } | null;
 }
 
@@ -26,6 +32,14 @@ type Resolved = {
 };
 
 function resolve(targets: TargetSummary[]): Resolved[] {
+  // Collect the set of system ids in this target list — items whose
+  // `systemId` matches one of these are duplicative (the system chip
+  // already implies them) and get hidden.
+  const systemIdsPresent = new Set<string>();
+  for (const t of targets) {
+    if (t.system) systemIdsPresent.add(t.system.id);
+  }
+
   const out: Resolved[] = [];
   for (const t of targets) {
     if (t.system) {
@@ -36,6 +50,8 @@ function resolve(targets: TargetSummary[]): Resolved[] {
         name: t.system.name,
       });
     } else if (t.item) {
+      // Skip an item chip when its parent system is also in the target set.
+      if (t.item.systemId && systemIdsPresent.has(t.item.systemId)) continue;
       out.push({
         key: t.id,
         kind: 'item',
