@@ -15,6 +15,7 @@ export default defineConfig({
       'tests/unit/**/*.test.ts',
       'tests/integration/**/*.test.ts',
       'lib/**/*.test.ts',
+      'lib/**/*.test.tsx',
       'worker/**/*.test.ts',
       'components/**/*.test.tsx',
     ],
