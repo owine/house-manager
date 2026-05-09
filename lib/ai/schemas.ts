@@ -76,7 +76,7 @@ export const incomingEmailExtractionSchema = z.object({
     ),
   rationale: z
     .string()
-    .max(200)
-    .describe('One sentence explaining how confident the extraction is and any caveats.'),
+    .max(1000)
+    .describe('One or two sentences explaining how confident the extraction is and any caveats.'),
 });
 export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSchema>;
