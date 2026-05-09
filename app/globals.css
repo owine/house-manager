@@ -84,10 +84,28 @@
   --color-input: var(--border);
   --color-ring: var(--focus);
 
-  /* Typography + radius */
+  /* Sidebar — shadcn's sidebar primitive uses these via Tailwind classes
+     (`bg-sidebar`, `text-sidebar-foreground`, `bg-sidebar-accent`, etc.).
+     Without them, the classes resolve to empty `var()` and silently drop
+     their declarations. Mapped onto our existing tokens so the sidebar
+     reads as a slightly elevated panel. */
+  --color-sidebar: var(--bg-elevated);
+  --color-sidebar-foreground: var(--fg);
+  --color-sidebar-accent: var(--border);
+  --color-sidebar-accent-foreground: var(--fg);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--focus);
+
+  /* Typography + radius. The radius *scale* (sm/md/lg/xl) is what shadcn's
+     `rounded-md`, `rounded-lg`, etc. compile against in Tailwind v4 — and
+     what `min(var(--radius-md), 10px)` in our Button variants needs. */
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 body {
