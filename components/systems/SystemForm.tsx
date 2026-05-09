@@ -211,5 +211,3 @@ export function SystemForm({ defaultValues, action, submitLabel, redirectTo }: P
     </Form>
   );
 }
-
-export default SystemForm;

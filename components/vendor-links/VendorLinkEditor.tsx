@@ -230,5 +230,3 @@ export function VendorLinkEditor({
     </div>
   );
 }
-
-export default VendorLinkEditor;

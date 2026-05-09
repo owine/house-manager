@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "app/**/{page,layout,template,error,not-found,loading,default,route,opengraph-image,twitter-image,sitemap,robots,manifest,icon,apple-icon}.{ts,tsx}",
+    "app/api/**/route.{ts,tsx}",
+    "middleware.ts",
+    "instrumentation.ts",
+    "next.config.{js,ts,mjs}",
+    "worker/index.ts",
+    "prisma/seed.ts",
+    "scripts/**/*.{js,mjs,ts}",
+    "tests/setup/**/*.ts"
+  ],
+  "ignore": ["prisma/schema.prisma", "public/sw.js"],
+  "ignoreDependencies": ["pino-pretty"],
+  "rules": {
+    "duplicates": "off",
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn"
+  },
+  "workspaces": {
+    ".": {
+      "ignore": ["components/ui/**"]
+    }
+  }
+}

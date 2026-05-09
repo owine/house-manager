@@ -291,5 +291,3 @@ export function TargetsPicker({
     </div>
   );
 }
-
-export default TargetsPicker;

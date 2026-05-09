@@ -137,5 +137,3 @@ export function VendorLinkChips({
     </TooltipProvider>
   );
 }
-
-export default VendorLinkChips;

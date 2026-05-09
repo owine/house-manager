@@ -71,5 +71,3 @@ export function CostRollup({ rollup }: Props) {
     </Card>
   );
 }
-
-export default CostRollup;
