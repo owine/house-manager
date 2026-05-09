@@ -217,7 +217,7 @@ describe('setIncomingEmailKind', () => {
   });
 });
 
-describe('promoteToServiceRecord', () => {
+describe('createServiceRecordFromEmail', () => {
   it('creates a draft ServiceRecord with one target per IncomingEmailTarget', async () => {
     const v = await ctx.prisma.vendor.create({ data: { name: 'Acme' } });
     const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
@@ -233,7 +233,7 @@ describe('promoteToServiceRecord', () => {
         targets: { create: [{ itemId: item.id }] },
       },
     });
-    const r = await actions.promoteToServiceRecord({ id: e.id });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error('expected ok');
     const sr = await ctx.prisma.serviceRecord.findUnique({
@@ -265,7 +265,7 @@ describe('promoteToServiceRecord', () => {
         },
       },
     });
-    const r = await actions.promoteToServiceRecord({ id: e.id });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error('expected ok');
     const sr = await ctx.prisma.serviceRecord.findUnique({
@@ -295,14 +295,48 @@ describe('promoteToServiceRecord', () => {
         targets: { create: [{ itemId: item.id }] },
       },
     });
-    const r = await actions.promoteToServiceRecord({ id: e.id });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
     expect(r.ok).toBe(false);
   });
 
   it('rejects when no targets are linked', async () => {
     const e = await makeEmail();
-    const r = await actions.promoteToServiceRecord({ id: e.id });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
     expect(r.ok).toBe(false);
+  });
+
+  it('links existing email attachments to the new service record (multi-parent)', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    const e = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<attach@a>',
+        fromAddress: 'a@a',
+        subject: 'Service report',
+        receivedAt: new Date(),
+        headersJson: {},
+        targets: { create: [{ itemId: item.id }] },
+      },
+    });
+    const att = await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1234,
+        storagePath: 'fake/invoice.pdf',
+        uploadedById: 'u1',
+      },
+    });
+    const r = await actions.createServiceRecordFromEmail({ id: e.id });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error();
+
+    // Same attachment row, now also linked to the SR. Both FKs set
+    // (multi-parent semantics).
+    const after = await ctx.prisma.attachment.findUnique({ where: { id: att.id } });
+    expect(after?.incomingEmailId).toBe(e.id);
+    expect(after?.serviceRecordId).toBe(r.data.serviceRecordId);
+    expect(after?.storagePath).toBe('fake/invoice.pdf');
   });
 });
 
