@@ -9,8 +9,8 @@ type Props = {
 export function CalendarPanel({ icsToken, appUrl }: Props) {
   if (!icsToken) {
     return (
-      <div>
-        <p style={{ color: 'var(--fg-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
           Generate a calendar feed URL to subscribe to your reminders in your calendar app.
         </p>
         <CalendarPanelGenerateButton />
@@ -21,8 +21,8 @@ export function CalendarPanel({ icsToken, appUrl }: Props) {
   const calendarUrl = `${appUrl}/api/calendar/${icsToken}.ics`;
 
   return (
-    <div>
-      <p style={{ color: 'var(--fg-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
         Subscribe to this iCalendar URL in your calendar app:
       </p>
       <CalendarPanelControls url={calendarUrl} />

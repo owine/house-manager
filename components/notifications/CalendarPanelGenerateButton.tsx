@@ -1,6 +1,8 @@
 'use client';
+import { Calendar, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { regenerateIcsToken } from '@/lib/notifications/actions';
 
 export function CalendarPanelGenerateButton() {
@@ -20,13 +22,9 @@ export function CalendarPanelGenerateButton() {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={pending}
-      style={{ padding: '0.5rem 1rem' }}
-    >
+    <Button type="button" variant="outline" onClick={handleClick} disabled={pending}>
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
       {pending ? 'Generating…' : 'Generate calendar URL'}
-    </button>
+    </Button>
   );
 }

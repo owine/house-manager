@@ -1,5 +1,7 @@
 'use client';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
 import { reindexAll } from '@/lib/search/actions';
 
 export function RebuildIndexButton() {
@@ -7,9 +9,11 @@ export function RebuildIndexButton() {
   const [status, setStatus] = useState<string | null>(null);
 
   return (
-    <div>
-      <button
+    <div className="space-y-2">
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -23,13 +27,10 @@ export function RebuildIndexButton() {
           })
         }
       >
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         {pending ? 'Enqueueing…' : 'Rebuild search index'}
-      </button>
-      {status && (
-        <p style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
-          {status}
-        </p>
-      )}
+      </Button>
+      {status && <p className="text-sm text-muted-foreground">{status}</p>}
     </div>
   );
 }
