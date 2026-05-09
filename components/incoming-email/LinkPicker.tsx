@@ -16,7 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { attachIncomingEmail } from '@/lib/incoming-email/actions';
+import {
+  archiveIncomingEmail,
+  attachIncomingEmail,
+  promoteToServiceRecord,
+  reclassifyIncomingEmail,
+  unarchiveIncomingEmail,
+} from '@/lib/incoming-email/actions';
 import type { TargetInput } from '@/lib/targets/schema';
 
 type VendorOption = { id: string; name: string };
@@ -138,9 +144,6 @@ export function InboxActionButtons({
 
   const onArchive = () =>
     start(async () => {
-      const { archiveIncomingEmail, unarchiveIncomingEmail } = await import(
-        '@/lib/incoming-email/actions'
-      );
       const action = isArchived ? unarchiveIncomingEmail : archiveIncomingEmail;
       const r = await action({ id: emailId });
       if (!r.ok) toast.error(r.formError ?? 'Failed');
@@ -149,7 +152,6 @@ export function InboxActionButtons({
 
   const onPromote = () =>
     start(async () => {
-      const { promoteToServiceRecord } = await import('@/lib/incoming-email/actions');
       const r = await promoteToServiceRecord({ id: emailId });
       if (!r.ok) toast.error(r.formError ?? 'Failed to promote');
       else toast.success('Service record drafted');
@@ -157,7 +159,6 @@ export function InboxActionButtons({
 
   const onReclassify = () =>
     start(async () => {
-      const { reclassifyIncomingEmail } = await import('@/lib/incoming-email/actions');
       const r = await reclassifyIncomingEmail({ id: emailId });
       if (!r.ok) toast.error(r.formError ?? 'Failed to reclassify');
       else toast.success('Reclassify queued — refresh in a moment');
