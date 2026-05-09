@@ -165,5 +165,3 @@ export function MarkCompleteDialog({
     </Dialog>
   );
 }
-
-export default MarkCompleteDialog;

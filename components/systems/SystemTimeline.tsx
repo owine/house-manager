@@ -139,5 +139,3 @@ export function SystemTimeline({ events, systemId }: Props) {
     </Card>
   );
 }
-
-export default SystemTimeline;

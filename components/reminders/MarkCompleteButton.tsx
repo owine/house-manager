@@ -66,5 +66,3 @@ export function MarkCompleteButton({ reminderId, reminderTitle, targets }: Props
     </>
   );
 }
-
-export default MarkCompleteButton;

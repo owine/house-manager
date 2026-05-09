@@ -167,5 +167,3 @@ export function ComponentsList({ systemId, components, orphanItems }: Props) {
     </Card>
   );
 }
-
-export default ComponentsList;

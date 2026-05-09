@@ -83,5 +83,3 @@ export function SystemHeader({ system, onArchive, onUnarchive }: Props) {
     </header>
   );
 }
-
-export default SystemHeader;

@@ -223,5 +223,3 @@ export function DeleteVendorDialog({
     </Dialog>
   );
 }
-
-export default DeleteVendorDialog;

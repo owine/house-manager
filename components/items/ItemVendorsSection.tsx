@@ -116,5 +116,3 @@ export function ItemVendorsSection({ itemId, links, vendors }: Props) {
     </Card>
   );
 }
-
-export default ItemVendorsSection;

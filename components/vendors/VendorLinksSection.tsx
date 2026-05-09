@@ -213,5 +213,3 @@ export function VendorLinksSection({ items, systems }: Props) {
     </Card>
   );
 }
-
-export default VendorLinksSection;

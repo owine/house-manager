@@ -105,5 +105,3 @@ export function TargetsChips({ targets, inert = false }: TargetsChipsProps) {
     </ul>
   );
 }
-
-export default TargetsChips;

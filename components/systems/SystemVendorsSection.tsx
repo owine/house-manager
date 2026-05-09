@@ -116,5 +116,3 @@ export function SystemVendorsSection({ systemId, links, vendors }: Props) {
     </Card>
   );
 }
-
-export default SystemVendorsSection;

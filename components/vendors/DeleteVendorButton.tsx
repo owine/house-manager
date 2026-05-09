@@ -51,5 +51,3 @@ export function DeleteVendorButton({ vendorId, vendorName, itemCount, systemCoun
     </>
   );
 }
-
-export default DeleteVendorButton;
