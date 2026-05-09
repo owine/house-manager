@@ -119,11 +119,19 @@ export function InboxActionButtons({
   emailId,
   isArchived,
   canPromote,
+  canReclassify,
   promotedServiceRecordId,
 }: {
   emailId: string;
   isArchived: boolean;
   canPromote: boolean;
+  /**
+   * True only for UNTRIAGED + AUTO_LINKED rows that aren't archived. The
+   * worker's state guard means a reclassify on LINKED/ARCHIVED rows would
+   * only refresh kind+vendor metadata (silently leaving targets alone),
+   * which is more confusing than helpful — hide the button instead.
+   */
+  canReclassify: boolean;
   promotedServiceRecordId: string | null;
 }) {
   const [pending, start] = useTransition();
@@ -147,6 +155,14 @@ export function InboxActionButtons({
       else toast.success('Service record drafted');
     });
 
+  const onReclassify = () =>
+    start(async () => {
+      const { reclassifyIncomingEmail } = await import('@/lib/incoming-email/actions');
+      const r = await reclassifyIncomingEmail({ id: emailId });
+      if (!r.ok) toast.error(r.formError ?? 'Failed to reclassify');
+      else toast.success('Reclassify queued — refresh in a moment');
+    });
+
   return (
     <div className="flex flex-wrap gap-2">
       {promotedServiceRecordId ? (
@@ -157,6 +173,11 @@ export function InboxActionButtons({
       ) : (
         <Button onClick={onPromote} disabled={pending || !canPromote}>
           Promote to service record
+        </Button>
+      )}
+      {canReclassify && (
+        <Button variant="outline" onClick={onReclassify} disabled={pending}>
+          Reclassify
         </Button>
       )}
       <Button variant="outline" onClick={onArchive} disabled={pending}>
