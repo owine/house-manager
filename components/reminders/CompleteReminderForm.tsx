@@ -89,6 +89,7 @@ export function CompleteReminderForm({ reminderId, autoCreateServiceRecord, hasI
             <Input
               id="complete-cost"
               type="number"
+              className="w-32"
               step="0.01"
               value={cost}
               onChange={(e) => setCost(e.target.value)}

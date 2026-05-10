@@ -115,7 +115,7 @@ export function HouseProfileForm({ defaultValues }: Props) {
             <FormItem>
               <FormLabel>Climate zone</FormLabel>
               <FormControl>
-                <Input list="iecc-zones" {...field} />
+                <Input list="iecc-zones" className="w-24" {...field} />
               </FormControl>
               <datalist id="iecc-zones">
                 {IECC_ZONES.map((zone) => (

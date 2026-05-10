@@ -133,6 +133,7 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
               <FormControl>
                 <Input
                   type="time"
+                  className="w-32"
                   value={field.value ?? ''}
                   onChange={(e) => field.onChange(e.target.value || null)}
                   onBlur={field.onBlur}
@@ -154,6 +155,7 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
               <FormControl>
                 <Input
                   type="time"
+                  className="w-32"
                   value={field.value ?? ''}
                   onChange={(e) => field.onChange(e.target.value || null)}
                   onBlur={field.onBlur}

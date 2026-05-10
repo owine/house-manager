@@ -74,12 +74,12 @@ export function ServiceRecordFilterBar({
 
       <div className="flex flex-col gap-1 text-sm">
         <label htmlFor="filter-from">From</label>
-        <Input id="filter-from" type="date" name="from" defaultValue={from} />
+        <Input id="filter-from" type="date" className="w-40" name="from" defaultValue={from} />
       </div>
 
       <div className="flex flex-col gap-1 text-sm">
         <label htmlFor="filter-to">To</label>
-        <Input id="filter-to" type="date" name="to" defaultValue={to} />
+        <Input id="filter-to" type="date" className="w-40" name="to" defaultValue={to} />
       </div>
 
       <Button type="submit" variant="outline">

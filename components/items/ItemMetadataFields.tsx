@@ -68,6 +68,7 @@ export function ItemMetadataFields({ slug }: Props) {
                       <FormControl>
                         <Input
                           type="number"
+                          className="w-24"
                           step="any"
                           value={field.value ?? ''}
                           onChange={(e) =>

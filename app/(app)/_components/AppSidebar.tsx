@@ -38,17 +38,30 @@ type NavItem = {
   badgeKey?: BadgeKey;
 };
 
-const PRIMARY: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: Home },
-  { href: '/items', label: 'Items', icon: Package },
-  { href: '/systems', label: 'Systems', icon: Layers },
-  { href: '/vendors', label: 'Vendors', icon: Users },
-  { href: '/service', label: 'Service', icon: Wrench },
-  { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
-  { href: '/reminders', label: 'Reminders', icon: Calendar },
-  { href: '/checklists', label: 'Checklists', icon: ListChecks },
-  { href: '/notes', label: 'Notes', icon: StickyNote },
-  { href: '/search', label: 'Search', icon: Search },
+// Sidebar nav grouped by intent so the user's mental model maps cleanly to
+// the menu: orientation (where am I?) → inventory (what do I own?) →
+// workflows (what needs doing?) → history & search (what happened?).
+const NAV_GROUPS: NavItem[][] = [
+  // Orientation
+  [{ href: '/dashboard', label: 'Dashboard', icon: Home }],
+  // Inventory — the things being managed
+  [
+    { href: '/items', label: 'Items', icon: Package },
+    { href: '/systems', label: 'Systems', icon: Layers },
+    { href: '/vendors', label: 'Vendors', icon: Users },
+  ],
+  // Workflows — what needs your attention
+  [
+    { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
+    { href: '/reminders', label: 'Reminders', icon: Calendar },
+    { href: '/checklists', label: 'Checklists', icon: ListChecks },
+  ],
+  // History & search — what's been done, plus a way to find it
+  [
+    { href: '/service', label: 'Service', icon: Wrench },
+    { href: '/notes', label: 'Notes', icon: StickyNote },
+    { href: '/search', label: 'Search', icon: Search },
+  ],
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -75,36 +88,38 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {PRIMARY.map((item) => {
-                const badgeCount = item.badgeKey ? badges?.[item.badgeKey] : undefined;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={<Link href={item.href} />}
-                      isActive={isActive(pathname, item.href)}
-                      tooltip={item.label}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                      {badgeCount !== undefined && badgeCount > 0 && (
-                        <span
-                          role="status"
-                          aria-label={`${badgeCount} untriaged`}
-                          className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-                        >
-                          {badgeCount > 99 ? '99+' : badgeCount}
-                        </span>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NAV_GROUPS.map((group, idx) => (
+          <SidebarGroup key={group[0]?.href ?? idx}>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.map((item) => {
+                  const badgeCount = item.badgeKey ? badges?.[item.badgeKey] : undefined;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        render={<Link href={item.href} />}
+                        isActive={isActive(pathname, item.href)}
+                        tooltip={item.label}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.label}</span>
+                        {badgeCount !== undefined && badgeCount > 0 && (
+                          <span
+                            role="status"
+                            aria-label={`${badgeCount} untriaged`}
+                            className="ml-auto rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                          >
+                            {badgeCount > 99 ? '99+' : badgeCount}
+                          </span>
+                        )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
 
         <SidebarSeparator />
 
