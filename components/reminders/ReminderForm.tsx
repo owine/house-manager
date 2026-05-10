@@ -186,6 +186,7 @@ export function ReminderForm({
               <FormControl>
                 <Input
                   type="date"
+                  className="w-40"
                   name={field.name}
                   ref={field.ref}
                   onBlur={field.onBlur}
@@ -218,6 +219,7 @@ export function ReminderForm({
               <FormControl>
                 <Input
                   type="number"
+                  className="w-24"
                   min={0}
                   max={365}
                   name={field.name}

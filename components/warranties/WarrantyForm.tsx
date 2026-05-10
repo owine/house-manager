@@ -208,6 +208,7 @@ export function WarrantyForm({
               <FormControl>
                 <Input
                   type="date"
+                  className="w-40"
                   name={field.name}
                   ref={field.ref}
                   onBlur={field.onBlur}
@@ -240,6 +241,7 @@ export function WarrantyForm({
               <FormControl>
                 <Input
                   type="date"
+                  className="w-40"
                   name={field.name}
                   ref={field.ref}
                   onBlur={field.onBlur}
@@ -286,6 +288,7 @@ export function WarrantyForm({
               <FormControl>
                 <Input
                   type="number"
+                  className="w-32"
                   step="0.01"
                   min="0"
                   name={field.name}

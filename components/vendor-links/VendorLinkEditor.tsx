@@ -210,6 +210,7 @@ export function VendorLinkEditor({
             <Input
               id={`${baseId}-contract-ends`}
               type="date"
+              className="w-40"
               value={toDateInputValue(currentContractEndsOn)}
               onChange={(e) => emit({ contractEndsOn: parseDateInput(e.target.value) })}
             />
