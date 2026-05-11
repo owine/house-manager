@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import {
@@ -30,6 +31,7 @@ export async function createChecklist(input: unknown): Promise<ActionResult<{ id
   }
   const created = await prisma.checklist.create({ data: parsed.data });
   await enqueueSearchIndex('checklist', created.id, 'upsert');
+  await enqueueEmbed('CHECKLIST_ITEM', created.id);
   revalidatePath('/checklists');
   return { ok: true, data: { id: created.id } };
 }
@@ -47,6 +49,7 @@ export async function updateChecklist(input: unknown): Promise<ActionResult<{ id
   const { id, ...data } = parsed.data;
   await prisma.checklist.update({ where: { id }, data });
   await enqueueSearchIndex('checklist', id, 'upsert');
+  await enqueueEmbed('CHECKLIST_ITEM', id);
   revalidatePath('/checklists');
   revalidatePath(`/checklists/${id}`);
   return { ok: true, data: { id } };
@@ -57,6 +60,7 @@ export async function deleteChecklist(id: string): Promise<ActionResult> {
   if (!u) return { ok: false, formError: 'Unauthorized' };
   await prisma.checklist.delete({ where: { id } });
   await enqueueSearchIndex('checklist', id, 'delete');
+  await enqueueEmbed('CHECKLIST_ITEM', id);
   revalidatePath('/checklists');
   return { ok: true, data: undefined };
 }
@@ -82,6 +86,7 @@ export async function addChecklistItem(input: unknown): Promise<ActionResult<{ i
     data: { checklistId, title, itemId: itemId ?? null, position: (last?.position ?? -1) + 1 },
   });
   await enqueueSearchIndex('checklist', checklistId, 'upsert');
+  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
   revalidatePath(`/checklists/${checklistId}`);
   return { ok: true, data: { id: created.id } };
 }
@@ -94,6 +99,7 @@ export async function deleteChecklistItem(input: { id: string }): Promise<Action
     select: { checklistId: true },
   });
   await enqueueSearchIndex('checklist', row.checklistId, 'upsert');
+  await enqueueEmbed('CHECKLIST_ITEM', row.checklistId);
   revalidatePath(`/checklists/${row.checklistId}`);
   return { ok: true, data: undefined };
 }
@@ -136,6 +142,7 @@ export async function reorderChecklistItems(input: unknown): Promise<ActionResul
     ),
   );
   await enqueueSearchIndex('checklist', checklistId, 'upsert');
+  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
   revalidatePath(`/checklists/${checklistId}`);
   return { ok: true, data: undefined };
 }

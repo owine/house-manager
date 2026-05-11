@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
@@ -43,6 +44,7 @@ export async function createItem(input: unknown): Promise<ActionResult<{ id: str
     data: { ...rest, categoryId: category.id, metadata: metadataResult.data as object },
   });
   await enqueueSearchIndex('item', item.id, 'upsert');
+  await enqueueEmbed('ITEM', item.id);
 
   revalidatePath('/items');
   revalidatePath('/dashboard');
@@ -95,6 +97,7 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
 
   await prisma.item.update({ where: { id }, data });
   await enqueueSearchIndex('item', id, 'upsert');
+  await enqueueEmbed('ITEM', id);
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
@@ -108,6 +111,7 @@ export async function archiveItem(id: string): Promise<ActionResult> {
 
   await prisma.item.update({ where: { id }, data: { archivedAt: new Date() } });
   await enqueueSearchIndex('item', id, 'upsert');
+  await enqueueEmbed('ITEM', id);
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
@@ -121,6 +125,7 @@ export async function restoreItem(id: string): Promise<ActionResult> {
 
   await prisma.item.update({ where: { id }, data: { archivedAt: null } });
   await enqueueSearchIndex('item', id, 'upsert');
+  await enqueueEmbed('ITEM', id);
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);

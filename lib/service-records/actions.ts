@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
@@ -83,6 +84,7 @@ export async function createServiceRecord(input: unknown): Promise<ActionResult<
     },
   });
   await enqueueSearchIndex('service', record.id, 'upsert');
+  await enqueueEmbed('SERVICE_RECORD', record.id);
 
   revalidatePath('/service');
   revalidatePath('/dashboard');
@@ -147,6 +149,7 @@ export async function updateServiceRecord(input: unknown): Promise<ActionResult<
     }
   });
   await enqueueSearchIndex('service', id, 'upsert');
+  await enqueueEmbed('SERVICE_RECORD', id);
 
   revalidatePath('/service');
   revalidatePath(`/service/${id}`);
@@ -172,6 +175,7 @@ export async function deleteServiceRecord(id: string): Promise<ActionResult> {
 
   await prisma.serviceRecord.delete({ where: { id } });
   await enqueueSearchIndex('service', id, 'delete');
+  await enqueueEmbed('SERVICE_RECORD', id);
 
   revalidatePath('/service');
   revalidatePath('/dashboard');

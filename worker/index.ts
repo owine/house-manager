@@ -10,6 +10,7 @@ import {
   type ClassifyIncomingEmailJob,
   handleClassifyIncomingEmail,
 } from './jobs/classify-incoming-email';
+import { type EmbedContentJob, handleEmbedContent } from './jobs/embed-content';
 import {
   type ExtractIncomingEmailJob,
   handleExtractIncomingEmail,
@@ -126,8 +127,14 @@ async function main() {
     handleExtractIncomingEmail,
   );
 
+  // Ask/RAG vector indexer (Plan 4c) — fired by every entity create / update
+  // / archive that produces embeddable content, and by the admin Rebuild +
+  // startup backfill paths. Batch up to 4 entities at a time; the per-batch
+  // Voyage call is the latency-bound step.
+  await boss.work<EmbedContentJob>(Queue.EmbedContent, { batchSize: 4 }, handleEmbedContent);
+
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content jobs',
   );
 
   const shutdown = async (signal: string) => {

@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import type { TargetInput } from '@/lib/targets/schema';
 import { createWarrantySchema, updateWarrantySchema } from './schema';
@@ -71,6 +72,7 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
       targets: { create: targetsToCreateData(targets) },
     },
   });
+  await enqueueEmbed('WARRANTY', warranty.id);
 
   revalidatePath('/dashboard');
   revalidateForTargets(targets);
@@ -137,6 +139,7 @@ export async function updateWarranty(input: unknown): Promise<ActionResult<{ id:
       }
     }
   });
+  await enqueueEmbed('WARRANTY', id);
 
   revalidatePath('/dashboard');
   // Revalidate previous + new target paths
@@ -160,6 +163,7 @@ export async function deleteWarranty(id: string): Promise<ActionResult> {
   if (!existing) return { ok: false, formError: 'Warranty not found' };
 
   await prisma.warranty.delete({ where: { id } });
+  await enqueueEmbed('WARRANTY', id);
 
   revalidatePath('/dashboard');
   for (const t of existing.targets) {
