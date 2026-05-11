@@ -50,7 +50,8 @@ function revalidateForTargets(targets: TargetInput[]) {
 
 export async function createWarranty(input: unknown): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
-  if (!session?.user) return { ok: false, formError: 'Unauthorized' };
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+  const userId = session.user.id;
 
   const parsed = createWarrantySchema.safeParse(input);
   if (!parsed.success) {
@@ -65,7 +66,7 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
   const targetErr = await validateTargets(data.targets);
   if (targetErr) return { ok: false, formError: targetErr };
 
-  const { targets, ...rest } = data;
+  const { targets, createExpiryReminder, expiryReminderLeadDays, ...rest } = data;
   const warranty = await prisma.warranty.create({
     data: {
       ...rest,
@@ -73,6 +74,27 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
     },
   });
   await enqueueEmbed('WARRANTY', warranty.id);
+
+  if (createExpiryReminder) {
+    await prisma.reminder.create({
+      data: {
+        title: `${warranty.provider} warranty expires`,
+        description: warranty.policyNumber
+          ? `Policy ${warranty.policyNumber}. Coverage ends ${warranty.endsOn.toISOString().slice(0, 10)}.`
+          : `Coverage ends ${warranty.endsOn.toISOString().slice(0, 10)}.`,
+        recurrence: { kind: 'once' },
+        leadTimeDays: expiryReminderLeadDays,
+        notifyUserIds: [userId],
+        targets: {
+          create: targets.map((t) => ({
+            itemId: t.itemId ?? null,
+            systemId: t.systemId ?? null,
+            nextDueOn: warranty.endsOn,
+          })),
+        },
+      },
+    });
+  }
 
   revalidatePath('/dashboard');
   revalidateForTargets(targets);

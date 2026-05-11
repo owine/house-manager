@@ -33,11 +33,12 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
   }
 
   const onKindChange = (next: string | null) => {
-    if (next !== 'interval' && next !== 'monthly' && next !== 'yearly') return;
+    if (next !== 'interval' && next !== 'monthly' && next !== 'yearly' && next !== 'once') return;
     setKind(next);
     if (next === 'interval') emit({ kind: 'interval', days });
     else if (next === 'monthly') emit({ kind: 'monthly', dayOfMonth });
-    else emit({ kind: 'yearly', month, day });
+    else if (next === 'yearly') emit({ kind: 'yearly', month, day });
+    else emit({ kind: 'once' });
   };
 
   return (
@@ -125,6 +126,13 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             }}
             className="w-16"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <RadioGroupItem id="recur-once" value="once" />
+          <Label htmlFor="recur-once" className="text-sm font-normal">
+            Once on the due date (does not repeat)
+          </Label>
         </div>
       </RadioGroup>
     </fieldset>

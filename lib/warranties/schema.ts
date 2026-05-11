@@ -9,6 +9,12 @@ const warrantyBase = z.object({
   endsOn: z.coerce.date(),
   coverage: z.string().max(20_000).optional(),
   cost: z.coerce.number().nonnegative().optional(),
+  // Auto-create a `kind:'once'` Reminder firing N days before endsOn.
+  // Defaults are biased toward "on" so the user gets a heads-up for free.
+  // Edits to the warranty don't sync the reminder — the user can edit /
+  // delete the reminder independently after creation.
+  createExpiryReminder: z.boolean().default(true),
+  expiryReminderLeadDays: z.number().int().min(0).max(365).default(30),
 });
 
 export const createWarrantySchema = warrantyBase.refine((data) => data.endsOn >= data.startsOn, {
