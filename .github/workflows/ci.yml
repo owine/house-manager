@@ -129,11 +129,22 @@ jobs:
       - name: Apply committed migrations to a fresh DB
         run: pnpm db:deploy
       - name: Verify schema.prisma has no uncommitted drift vs the deployed DB
+        # Prisma 7 cannot model vector indexes; the IVFFlat index on
+        # `embeddings(embedding)` is declared in raw SQL inside the migration,
+        # so `migrate diff` always reports it as a removed index relative to
+        # schema.prisma. Filter that one known line out before checking the
+        # exit status. Any other diff content fails the job.
         run: |
-          pnpm exec prisma migrate diff \
+          set -o pipefail
+          diff_output=$(pnpm exec prisma migrate diff \
             --from-config-datasource \
-            --to-schema prisma/schema.prisma \
-            --exit-code
+            --to-schema prisma/schema.prisma 2>&1 || true)
+          echo "$diff_output"
+          residual=$(echo "$diff_output" | grep -vE '^\s*(\[\*\] Changed the `embeddings` table|\s*\[-\] Removed index on columns \(embedding\)|Loaded Prisma config from|No difference detected\.|$)' || true)
+          if [ -n "$residual" ]; then
+            echo "::error::Unexpected schema drift (see above)"
+            exit 1
+          fi
 
   unit:
     runs-on: ubuntu-latest
