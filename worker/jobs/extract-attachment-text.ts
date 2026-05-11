@@ -5,6 +5,7 @@ import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 import { ocrImageBuffer } from '@/lib/ocr/tesseract';
+import { renderPdfPagesToPng } from '@/lib/pdf/render';
 import { extractPdfText } from '@/lib/pdf/text';
 
 const log = getLogger('worker.extract-attachment-text');
@@ -100,10 +101,29 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
       if (text.length >= TEXT_LAYER_FALLBACK_THRESHOLD) {
         extractedText = text;
       } else {
-        // No usable text layer. Page-render OCR fallback lives in a
-        // follow-up — for now mark as needing OCR.
-        extractedError = 'pdf_needs_ocr_fallback_unimplemented';
-        log.info({ attachmentId }, 'extract-attachment-text: PDF text layer too short');
+        // Image-only / scanned PDF: render each page to PNG and OCR via
+        // Tesseract. Capped at 20 pages (lib/pdf/render.ts) so a 200-page
+        // manual doesn't monopolize a worker tick. OCR'd pages get joined
+        // with a form-feed-ish separator so downstream chunking knows
+        // where one page ends and another begins.
+        const pages = await renderPdfPagesToPng(buf);
+        if (pages.length === 0) {
+          extractedError = 'pdf_render_failed';
+          log.info({ attachmentId }, 'extract-attachment-text: PDF page render returned 0 pages');
+        } else {
+          const pageTexts: string[] = [];
+          for (const [i, png] of pages.entries()) {
+            const pageText = await ocrImageBuffer(png);
+            if (pageText) {
+              pageTexts.push(`[page ${i + 1}]\n${pageText}`);
+            }
+          }
+          extractedText = pageTexts.join('\n\n');
+          ocrUsed = extractedText.length > 0;
+          if (extractedText.length === 0) {
+            extractedError = 'pdf_ocr_returned_empty';
+          }
+        }
       }
     } else if (mime.startsWith('image/')) {
       extractedText = await ocrImageBuffer(buf);
