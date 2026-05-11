@@ -23,7 +23,7 @@ export type ProposedReminder = z.infer<typeof proposedReminderSchema>;
 export const proposeRemindersResponseSchema = z.object({
   proposals: z.array(proposedReminderSchema).max(10),
 });
-export type ProposeRemindersResponse = z.infer<typeof proposeRemindersResponseSchema>;
+type ProposeRemindersResponse = z.infer<typeof proposeRemindersResponseSchema>;
 
 export const proposedChecklistItemSchema = z.object({
   title: z.string().min(3).max(120),
@@ -37,7 +37,7 @@ export const proposeChecklistResponseSchema = z.object({
   description: z.string().max(500).optional(),
   items: z.array(proposedChecklistItemSchema).min(1).max(20),
 });
-export type ProposeChecklistResponse = z.infer<typeof proposeChecklistResponseSchema>;
+type ProposeChecklistResponse = z.infer<typeof proposeChecklistResponseSchema>;
 
 // ─── Incoming-email extraction ──────────────────────────────────────────────
 //
@@ -88,7 +88,7 @@ export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSche
 // the UI can deep-link to the source. Citation label is the human-readable
 // title (e.g. "Annual spring tune-up — 2026-04-12") rendered on the chip.
 // ──────────────────────────────────────────────────────────────────────────────
-export const askCitationSchema = z.object({
+const askCitationSchema = z.object({
   entityType: z.enum([
     'ITEM',
     'NOTE',
@@ -124,4 +124,4 @@ export const askQuestionInputSchema = z.object({
     .array(z.enum(['ITEM', 'NOTE', 'SERVICE_RECORD', 'CHECKLIST_ITEM', 'WARRANTY', 'ATTACHMENT']))
     .optional(),
 });
-export type AskQuestionInput = z.infer<typeof askQuestionInputSchema>;
+type AskQuestionInput = z.infer<typeof askQuestionInputSchema>;

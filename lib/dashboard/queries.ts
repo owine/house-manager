@@ -4,7 +4,7 @@ import { listUpcomingReminders } from '@/lib/reminders/queries';
 // NOTE: "item-restored" events are deferred until an event log table exists.
 // Plan 3 reminders/notifications work may introduce one; add the 5th event type then.
 
-export type ActivityTarget = {
+type ActivityTarget = {
   id: string;
   itemId: string | null;
   systemId: string | null;

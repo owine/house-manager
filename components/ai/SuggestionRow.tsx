@@ -22,7 +22,7 @@ type ChecklistRow = {
   _selected: boolean;
   _editing: boolean;
 };
-export type Row = ReminderRow | ChecklistRow;
+type Row = ReminderRow | ChecklistRow;
 
 type Props = {
   index: number;

@@ -12,7 +12,7 @@ export const updateChecklistSchema = z.object({
   active: z.boolean().optional(),
 });
 
-export const checklistItemInputSchema = z.object({
+const checklistItemInputSchema = z.object({
   title: z.string().min(1).max(120),
   itemId: z.string().min(1).nullable().optional(),
 });

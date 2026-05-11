@@ -12,7 +12,7 @@ const log = getLogger('incoming-email.actions');
 // every persisted Attachment to the existing user. Memoized after first lookup.
 let cachedSystemUserId: string | null = null;
 
-export async function getSystemUploaderUserId(): Promise<string> {
+async function getSystemUploaderUserId(): Promise<string> {
   if (cachedSystemUserId) return cachedSystemUserId;
   const user = await prisma.user.findFirst({
     where: {},

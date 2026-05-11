@@ -33,7 +33,7 @@ import type { ActionResult } from '@/lib/result';
 // Use z.input so purchaseDate stays as string in form state (resolver coerces via z.coerce.date)
 type ItemFormValues = z.input<typeof createItemSchema>;
 
-export type SystemOption = { id: string; name: string };
+type SystemOption = { id: string; name: string };
 
 type Props = {
   categories: Category[];

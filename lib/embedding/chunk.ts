@@ -9,7 +9,7 @@
 
 export const TOKEN_CHARS = 4;
 export const TARGET_TOKENS_PER_CHUNK = 500;
-export const OVERLAP_TOKENS = 50;
+const OVERLAP_TOKENS = 50;
 
 export function estimateTokens(text: string): number {
   if (!text) return 0;

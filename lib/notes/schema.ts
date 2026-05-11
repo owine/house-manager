@@ -12,4 +12,4 @@ export const updateNoteSchema = createNoteSchema.partial().extend({
 });
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
-export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+type UpdateNoteInput = z.infer<typeof updateNoteSchema>;

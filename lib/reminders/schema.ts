@@ -37,7 +37,7 @@ export const updateReminderSchema = createReminderSchema.partial().extend({
   active: z.boolean().optional(),
 });
 
-export type UpdateReminderInput = z.infer<typeof updateReminderSchema>;
+type UpdateReminderInput = z.infer<typeof updateReminderSchema>;
 
 // Per-target completion. `targetIds` selects which targets to mark complete;
 // each one becomes its own ReminderCompletion row and advances its target's
@@ -56,4 +56,4 @@ export const completeReminderSchema = z.object({
     .optional(),
 });
 
-export type CompleteReminderInput = z.infer<typeof completeReminderSchema>;
+type CompleteReminderInput = z.infer<typeof completeReminderSchema>;

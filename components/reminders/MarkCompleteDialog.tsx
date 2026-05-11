@@ -22,7 +22,7 @@ export type ReminderTargetSummary = {
   kind: 'item' | 'system';
 };
 
-export type CompleteReminderInput = {
+type CompleteReminderInput = {
   id: string;
   targetIds?: string[];
   notes?: string;

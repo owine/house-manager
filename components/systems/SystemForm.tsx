@@ -24,7 +24,7 @@ import { createSystemSchema, type SystemCreateInput } from '@/lib/systems/schema
 
 type FormValues = z.input<typeof createSystemSchema>;
 
-export type SystemFormDefaults = Partial<SystemCreateInput & { id: string }>;
+type SystemFormDefaults = Partial<SystemCreateInput & { id: string }>;
 
 type Props = {
   defaultValues?: SystemFormDefaults;

@@ -14,11 +14,7 @@
   "ignore": ["prisma/schema.prisma", "public/sw.js"],
   "ignoreDependencies": ["pino-pretty"],
   "rules": {
-    "duplicates": "off",
-    "exports": "warn",
-    "types": "warn",
-    "nsExports": "warn",
-    "nsTypes": "warn"
+    "duplicates": "off"
   },
   "workspaces": {
     ".": {

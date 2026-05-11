@@ -37,9 +37,9 @@ export type ClassifyInput = {
   systems: ClassifyEntity[];
 };
 
-export type ClassifyKind = 'ESTIMATE' | 'INVOICE' | 'TICKET' | 'UNKNOWN';
+type ClassifyKind = 'ESTIMATE' | 'INVOICE' | 'TICKET' | 'UNKNOWN';
 
-export type ClassifyTarget = { itemId: string | null; systemId: string | null };
+type ClassifyTarget = { itemId: string | null; systemId: string | null };
 
 export type ClassifyResult = {
   kind: ClassifyKind;
