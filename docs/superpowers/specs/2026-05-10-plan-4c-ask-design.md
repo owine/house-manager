@@ -1,7 +1,7 @@
 # Plan 4c — Ask: RAG over user content with citations
 
 **Date:** 2026-05-10
-**Status:** Draft for review
+**Status:** Approved — ready for implementation plan
 **Authors:** Oliver Wine (with Claude)
 **Parent spec:** `docs/superpowers/specs/2026-04-26-house-manager-design.md`
 **Builds on:** Plans 1, 2a, 2b, 2c, 3, 4a, 4ab, 4b, 5a, 5b — all shipped to main as of 2026-05-10. Plus Systems (PR #55) and Inbox (PRs #75–#78).
@@ -358,14 +358,21 @@ Reuse the per-user rate limiter from Plan 4b (`lib/ai/rate-limit.ts`). Same dail
 - `Attachment.indexable: false` lets the user opt out per-attachment for sensitive docs (passport scans, tax returns).
 - Serial numbers, exact addresses, and other PII fields are excluded from the canonical text (same redaction policy as Plan 4b's `buildInventoryBlock` / `coarsenLocation`).
 
-## Open questions / TBDs
+## Resolved decisions
 
-1. **Reindex trigger UX.** When a user toggles `Attachment.indexable` or edits a heavy Item, does the user need a "Re-index now" affordance, or is the worker-driven reindex on row update enough? Plan: rely on row-update triggers + a single admin "Rebuild all embeddings" button (mirror of the existing Meilisearch rebuild button).
-2. **Vector dimension choice.** Voyage `voyage-3.5-lite` is 1024. `voyage-3-large` is 2048 and higher quality. Trade-off: 2x storage, 2x cosine compute. Default to lite; document the upgrade path in the migration's comment.
-3. **Citation linking when source is an attachment.** An attachment doesn't have a "view" page of its own — it lives under its parent (Item, ServiceRecord, etc.). Citation should link to the parent with a query-string anchor to the attachment row (`/items/abc?attachment=xyz`). The parent page needs a small scroll-to-attachment behavior.
-4. **Plan 4a / Meilisearch overlap.** Should Find and Ask share a unified search endpoint? Probably no in v1: their UX is genuinely different (instant typo-tolerant keyword vs. natural-language Q&A). A blended `/search` view that runs both is a polish item for after Ask is live and we see usage patterns.
-5. **Worker memory budget.** Tesseract.js + Voyage batching could push the worker container above its current implicit memory budget on the Pi. Plan should include a Docker memory limit + a watchdog log warning at, say, 800MB RSS.
-6. **Backfill on first deploy.** Existing rows have no embeddings. First deploy must enqueue a full-corpus reindex (one-shot startup job, idempotent). The Meilisearch reindex job is a working precedent.
+These were open in the first draft and resolved in design review on 2026-05-10. Each item names the choice + rationale so the implementer doesn't have to reopen the trade-off.
+
+1. **Vector dimension** — `voyage-3.5-lite` (1024-dim). Household-scale corpus is in the thousands of chunks, not millions; lite's quality is sufficient and the storage / IVFFlat cost is half what `voyage-3-large` would be. Upgrade path: change the env-driven model name and run the admin rebuild; the `Embedding.embedding` column would need a one-shot migration to widen `vector(1024)` → `vector(2048)`.
+
+2. **Reindex trigger** — both paths. Worker auto-reindexes on every entity create / update / archive (the default). An admin `Rebuild all embeddings` button on `/admin/ai` is the escape hatch for prompt-template changes, model swaps, or post-migration recovery. Mirrors Plan 4a's Meilisearch rebuild button.
+
+3. **Citation linking for attachments** — query-string anchor on the parent. An attachment doesn't have its own page; the citation chip links to the parent entity with `?attachment=<id>` and the parent's detail page scrolls + highlights that row. Tiny shared behaviour on the parent pages; no new routes.
+
+4. **Find / Ask UI overlap** — keep them separate in v1. `/search` stays Meilisearch keyword (instant, typo-tolerant); `/ask` is the new natural-language path. Sidebar gets both entries under Workflows. Blending them into one endpoint with mode toggles is a backlog item to revisit after seeing usage; the two have genuinely different UX expectations and shipping them separately is cheaper.
+
+5. **First-deploy backfill** — one-shot worker startup job, idempotent. On worker boot, scan each indexable entity type for rows with no `Embedding` row (or where `Embedding.contentHash` is stale) and enqueue per-entity `embed-content` jobs. Mirrors `worker/index.ts`'s existing missed-tick-recovery pattern. The admin rebuild button (decision 2) calls into the same code path with a "force reindex everything" flag.
+
+6. **Worker memory budget** — soft cap with a watchdog log warning at 800MB RSS; no hard Docker limit. A periodic RSS check (every 60s) logs a structured `module: 'worker.memory'` warning when crossed, which surfaces in Sentry. Avoids OOM-kill loops on a single heavy attachment while still surfacing trouble. Plan implementer notes the watchdog is small enough to add in the same task as Tesseract.js init.
 
 ## What ships
 
