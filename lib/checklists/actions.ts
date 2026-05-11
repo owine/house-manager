@@ -125,6 +125,36 @@ export async function toggleChecklistItem(input: unknown): Promise<ActionResult>
   return { ok: true, data: undefined };
 }
 
+export async function resetChecklist(input: { id: string }): Promise<ActionResult> {
+  const u = await requireUser();
+  if (!u) return { ok: false, formError: 'Unauthorized' };
+  await prisma.checklistItem.updateMany({
+    where: { checklistId: input.id, completedAt: { not: null } },
+    data: { completedAt: null },
+  });
+  revalidatePath(`/checklists/${input.id}`);
+  revalidatePath('/checklists');
+  return { ok: true, data: undefined };
+}
+
+export async function setChecklistActive(input: {
+  id: string;
+  active: boolean;
+}): Promise<ActionResult> {
+  const u = await requireUser();
+  if (!u) return { ok: false, formError: 'Unauthorized' };
+  await prisma.checklist.update({
+    where: { id: input.id },
+    data: { active: input.active },
+  });
+  // The search-index already excludes inactive checklists upstream; an upsert
+  // on the active state lets the indexer remove/restore appropriately.
+  await enqueueSearchIndex('checklist', input.id, input.active ? 'upsert' : 'delete');
+  revalidatePath(`/checklists/${input.id}`);
+  revalidatePath('/checklists');
+  return { ok: true, data: undefined };
+}
+
 export async function reorderChecklistItems(input: unknown): Promise<ActionResult> {
   const u = await requireUser();
   if (!u) return { ok: false, formError: 'Unauthorized' };

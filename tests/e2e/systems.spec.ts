@@ -107,9 +107,16 @@ test('logs a service record on a system and dedupes across system + components',
   await expect(chips.getByText('Furnace Test')).toBeVisible();
 
   await page.getByLabel('Performed on').fill('2026-04-01');
+  await page.getByLabel('Performed on').press('Tab'); // commit React state
   await page.getByLabel('Summary').fill('Spring tune-up');
-  await page.getByRole('button', { name: 'Save record' }).click();
-  await expect(page).toHaveURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 });
+
+  // Race-safe submit: arm the navigation wait BEFORE the click so a fast
+  // server-action response can't beat us to it. Previously this used a
+  // post-click `toHaveURL` and was flaky on busy CI runners.
+  await Promise.all([
+    page.waitForURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 }),
+    page.getByRole('button', { name: 'Save record' }).click(),
+  ]);
   const serviceRecordId = page.url().match(/\/service\/(c[a-z0-9]+)$/)?.[1];
   if (!serviceRecordId) throw new Error('service record id not found in URL');
 

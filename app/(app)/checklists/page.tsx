@@ -6,13 +6,17 @@ import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 export const metadata: Metadata = { title: 'Checklists' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
+import { ChecklistCard } from '@/components/checklists/ChecklistCard';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { listChecklists } from '@/lib/checklists/queries';
 
-export default async function ChecklistsPage() {
-  const checklists = await listChecklists();
+type SearchParams = Promise<{ archived?: string }>;
+
+export default async function ChecklistsPage({ searchParams }: { searchParams: SearchParams }) {
+  const { archived } = await searchParams;
+  const showArchived = archived === '1' || archived === 'true';
+  const checklists = await listChecklists({ includeArchived: showArchived });
   const isEmpty = checklists.length === 0;
 
   return (
@@ -21,18 +25,31 @@ export default async function ChecklistsPage() {
         <PageHeader
           title={`Checklists (${checklists.length})`}
           actions={
-            <Button render={<Link href="/checklists/new" />}>
-              <Plus className="h-4 w-4" />
-              New checklist
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href={showArchived ? '/checklists' : '/checklists?archived=1'} />}
+              >
+                {showArchived ? 'Active only' : 'Show archived'}
+              </Button>
+              <Button render={<Link href="/checklists/new" />}>
+                <Plus className="h-4 w-4" />
+                New checklist
+              </Button>
+            </div>
           }
         />
       }
       isEmpty={isEmpty}
       empty={
         <EmptyState
-          title="No checklists yet"
-          description="Create one manually, or generate one from the dashboard."
+          title={showArchived ? 'No archived checklists' : 'No checklists yet'}
+          description={
+            showArchived
+              ? 'Switch back to active to see your live checklists.'
+              : 'Create one manually, or generate one from the dashboard.'
+          }
           action={
             <Button render={<Link href="/checklists/new" />}>
               <Plus className="h-4 w-4" />
@@ -45,18 +62,7 @@ export default async function ChecklistsPage() {
       <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {checklists.map((c) => (
           <li key={c.id}>
-            <Link href={`/checklists/${c.id}`} className="block">
-              <Card className="transition-shadow hover:shadow-md">
-                <CardHeader>
-                  <CardTitle>{c.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {c._count.items} {c._count.items === 1 ? 'item' : 'items'}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
+            <ChecklistCard checklist={c} />
           </li>
         ))}
       </ul>

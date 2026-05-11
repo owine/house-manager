@@ -266,10 +266,10 @@ describe('checklist queries', () => {
     expect(names).toContain('Active 2');
 
     const cl1Row = list.find((c) => c.id === cl1.id);
-    expect(cl1Row?._count.items).toBe(2);
+    expect(cl1Row?.totalItems).toBe(2);
 
     const cl2Row = list.find((c) => c.id === cl2.id);
-    expect(cl2Row?._count.items).toBe(0);
+    expect(cl2Row?.totalItems).toBe(0);
   });
 
   it('getChecklist returns items in position order with linked Item joined', async () => {
