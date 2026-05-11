@@ -1,9 +1,3 @@
-# pnpm settings. Required for pnpm v11+ (which no longer reads settings
-# from package.json's `pnpm` field or from `.npmrc` aside from auth/registry).
-# Works with v10 too — v10 reads overrides from either location.
-
-# Empty save-prefix mirrors the prior `.npmrc` behavior: `pnpm add` saves
-# exact versions (no `^` or `~`), matching this project's patch-pin policy.
 savePrefix: ""
 
 # Opt out of v11's default 1-day quarantine on newly-published packages.
@@ -36,4 +30,4 @@ allowBuilds:
 overrides:
   "postcss@<8.5.12": "8.5.14"
   "uuid@<14.0.0": "14.0.0"
-  "@hono/node-server@<2.0.1": "2.0.1"
+  "@hono/node-server@<2.0.1": "2.0.2"
