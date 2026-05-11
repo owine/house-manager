@@ -126,6 +126,18 @@ a:not([data-slot]) {
   color: var(--app-accent);
 }
 
+/* Markdown block spacing — Tailwind preflight zeroes default <p>/<h*>/<ul>
+ * margins, so blank-line paragraph breaks render flush. Scope to .markdown
+ * so it only affects rendered note bodies (not arbitrary <p> in the app). */
+.markdown > * + * {
+  margin-top: 0.75rem;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 1.5rem;
+  list-style: revert;
+}
+
 /* Markdown code/pre/blockquote adapt to theme */
 code {
   background: var(--badge-bg);
