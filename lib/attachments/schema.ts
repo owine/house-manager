@@ -8,8 +8,6 @@ export const uploadAttachmentSchema = z.object({
   parentId: z.string().min(1),
 });
 
-type UploadAttachmentInput = z.infer<typeof uploadAttachmentSchema>;
-
 const httpUrl = z
   .string()
   .url()
@@ -23,5 +21,3 @@ export const addAttachmentLinkSchema = z.object({
   externalProvider: z.string().max(50).optional(),
   externalProviderId: z.string().max(200).optional(),
 });
-
-type AddAttachmentLinkInput = z.infer<typeof addAttachmentLinkSchema>;

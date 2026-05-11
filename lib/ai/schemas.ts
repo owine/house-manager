@@ -23,8 +23,6 @@ export type ProposedReminder = z.infer<typeof proposedReminderSchema>;
 export const proposeRemindersResponseSchema = z.object({
   proposals: z.array(proposedReminderSchema).max(10),
 });
-type ProposeRemindersResponse = z.infer<typeof proposeRemindersResponseSchema>;
-
 export const proposedChecklistItemSchema = z.object({
   title: z.string().min(3).max(120),
   itemId: z.string().nullable().describe('ID of household item this row is about, or null'),
@@ -37,8 +35,6 @@ export const proposeChecklistResponseSchema = z.object({
   description: z.string().max(500).optional(),
   items: z.array(proposedChecklistItemSchema).min(1).max(20),
 });
-type ProposeChecklistResponse = z.infer<typeof proposeChecklistResponseSchema>;
-
 // ─── Incoming-email extraction ──────────────────────────────────────────────
 //
 // Extracted structured data from a vendor invoice / work ticket / estimate
@@ -124,4 +120,3 @@ export const askQuestionInputSchema = z.object({
     .array(z.enum(['ITEM', 'NOTE', 'SERVICE_RECORD', 'CHECKLIST_ITEM', 'WARRANTY', 'ATTACHMENT']))
     .optional(),
 });
-type AskQuestionInput = z.infer<typeof askQuestionInputSchema>;

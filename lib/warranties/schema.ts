@@ -33,4 +33,3 @@ export const updateWarrantySchema = warrantyBase
   );
 
 export type CreateWarrantyInput = z.infer<typeof createWarrantySchema>;
-type UpdateWarrantyInput = z.infer<typeof updateWarrantySchema>;

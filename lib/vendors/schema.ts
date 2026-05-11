@@ -16,4 +16,3 @@ export const updateVendorSchema = createVendorSchema.partial().extend({
 });
 
 export type CreateVendorInput = z.infer<typeof createVendorSchema>;
-type UpdateVendorInput = z.infer<typeof updateVendorSchema>;

@@ -16,5 +16,3 @@ export const updateSystemWithIdSchema = createSystemSchema.partial().extend({
 });
 
 export type SystemCreateInput = z.infer<typeof createSystemSchema>;
-type SystemUpdateInput = z.infer<typeof updateSystemSchema>;
-type SystemUpdateWithIdInput = z.infer<typeof updateSystemWithIdSchema>;
