@@ -57,7 +57,9 @@ describe('chunkText', () => {
 
     // Tail of chunk[0] should appear at the start of chunk[1] (overlap).
     const overlapChars = 200; // OVERLAP_TOKENS * TOKEN_CHARS
-    const tail = chunks[0]!.slice(-overlapChars);
-    expect(chunks[1]!.startsWith(tail)).toBe(true);
+    const [first, second] = chunks;
+    if (!first || !second) throw new Error('expected at least two chunks');
+    const tail = first.slice(-overlapChars);
+    expect(second.startsWith(tail)).toBe(true);
   });
 });

@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { createNoteSchema, updateNoteSchema } from './schema';
@@ -34,6 +35,7 @@ export async function createNote(input: unknown): Promise<ActionResult<{ id: str
     data: { ...rest, itemId: itemId ?? null },
   });
   await enqueueSearchIndex('note', note.id, 'upsert');
+  await enqueueEmbed('NOTE', note.id);
 
   revalidatePath('/notes');
   revalidatePath('/dashboard');
@@ -75,6 +77,7 @@ export async function updateNote(input: unknown): Promise<ActionResult<{ id: str
 
   await prisma.note.update({ where: { id }, data: updateData });
   await enqueueSearchIndex('note', id, 'upsert');
+  await enqueueEmbed('NOTE', id);
 
   const newItemId = itemId;
 
@@ -96,6 +99,7 @@ export async function deleteNote(id: string): Promise<ActionResult> {
 
   await prisma.note.delete({ where: { id } });
   await enqueueSearchIndex('note', id, 'delete');
+  await enqueueEmbed('NOTE', id);
 
   revalidatePath('/notes');
   revalidatePath('/dashboard');
