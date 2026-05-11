@@ -94,9 +94,9 @@ export async function embedEntity(
 
   await prisma.$transaction(async (tx) => {
     await tx.embedding.deleteMany({ where: { entityType, entityId } });
-    for (let i = 0; i < chunks.length; i++) {
-      const text = chunks[i]!;
-      const emb = embeddings[i]!;
+    for (const [i, text] of chunks.entries()) {
+      const emb = embeddings[i];
+      if (!emb) throw new Error(`missing embedding at index ${i}`);
       const id = cuid();
       const vectorLiteral = `[${Array.from(emb).join(',')}]`;
       await tx.$executeRaw`

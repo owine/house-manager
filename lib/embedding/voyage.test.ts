@@ -54,9 +54,11 @@ describe('embedTexts', () => {
     const result = await embedTexts(['hello', 'world']);
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toBeInstanceOf(Float32Array);
-    expect(Array.from(result[0]!)).toEqual([0.1, 0.2, 0.3].map((n) => Math.fround(n)));
-    expect(Array.from(result[1]!)).toEqual([0.4, 0.5, 0.6].map((n) => Math.fround(n)));
+    const [a, b] = result;
+    if (!a || !b) throw new Error('expected two embeddings');
+    expect(a).toBeInstanceOf(Float32Array);
+    expect(Array.from(a)).toEqual([0.1, 0.2, 0.3].map((n) => Math.fround(n)));
+    expect(Array.from(b)).toEqual([0.4, 0.5, 0.6].map((n) => Math.fround(n)));
   });
 
   it('splits batches when input exceeds VOYAGE_MAX_BATCH', async () => {
