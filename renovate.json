@@ -6,14 +6,31 @@
     ":semanticCommits",
     "group:allNonMajor",
     "customManagers:dockerfileVersions",
-    "customManagers:githubActionsVersions",
-    "customManagers:biomeVersions"
+    "customManagers:githubActionsVersions"
   ],
   "timezone": "America/Chicago",
   "schedule": ["* * * * 1"],
   "automergeSchedule": ["at any time"],
   "rangeStrategy": "pin",
-  "enabledManagers": ["npm", "github-actions", "dockerfile", "nvm", "pre-commit", "custom.regex"],
+  "enabledManagers": [
+    "npm",
+    "github-actions",
+    "dockerfile",
+    "nvm",
+    "pre-commit",
+    "custom.regex",
+    "custom.jsonata"
+  ],
+  "customManagers": [
+    {
+      "customType": "jsonata",
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@biomejs/biome",
+      "fileFormat": "json",
+      "managerFilePatterns": ["**/biome.{json,jsonc}"],
+      "matchStrings": ["{\"currentValue\": $split($.\"$schema\",(\"/\"))[-2]}"]
+    }
+  ],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["* * * * 1"]
