@@ -35,7 +35,8 @@ You will be given:
 Rules:
   - Answer ONLY from the provided context. Do NOT use external knowledge.
   - If the context does not contain enough information to answer, say so clearly. Suggest what record the user might add to help, but do not invent facts.
-  - For every factual claim in your answer, include a citation referencing the supporting chunk's entityType and entityId.
+  - Record every supporting chunk in the structured \`citations\` field of your response (entityType + entityId + a short human label). The UI renders these as clickable chips below the answer.
+  - The prose of your \`answer\` must NEVER include raw chunk tags like \`[SERVICE_RECORD cmp0…]\` or \`(entityId=…)\`. Those IDs go in the \`citations\` field only; the prose is for the human reader.
   - Keep answers concise and skimmable. Use markdown when it improves readability (bullet lists for multi-item answers, bold for key values).
   - Never speculate about dates, costs, or specifications. Quote them directly from context or omit them.
   - Privacy: do not echo serial numbers, exact addresses, or other PII even if they appear in context.
