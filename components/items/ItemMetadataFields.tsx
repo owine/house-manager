@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { metadataSchemaFor } from '@/lib/categories';
+import { categoryConfigFor, metadataSchemaFor, visibleMetadataFields } from '@/lib/categories';
 
 type Props = { slug: string };
 
@@ -40,10 +40,22 @@ export function ItemMetadataFields({ slug }: Props) {
   const { control } = form;
 
   const schema = metadataSchemaFor(slug);
+  const config = categoryConfigFor(slug);
 
-  // ZodObject has .shape — render one field per key
+  // Watch the discriminator (e.g. `metadata.applianceType`) so the form
+  // re-renders when the user picks a subtype and the relevant fields appear.
+  // `useFormContext().watch` is unconditional but safe to call with `undefined`
+  // when the category has no typeField.
+  const watchedType = form.watch(config?.typeField ? `metadata.${config.typeField}` : '__none__');
+  const currentTypeValue =
+    config?.typeField && typeof watchedType === 'string' && watchedType.length > 0
+      ? watchedType
+      : undefined;
+
+  // ZodObject has .shape — render one field per visible key
   if (schema instanceof z.ZodObject) {
     const shape = (schema as z.ZodObject<z.ZodRawShape>).shape;
+    const visible = new Set(visibleMetadataFields(slug, Object.keys(shape), currentTypeValue));
 
     return (
       <Card>
@@ -51,121 +63,123 @@ export function ItemMetadataFields({ slug }: Props) {
           <CardTitle>Metadata</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {Object.entries(shape).map(([key, rawNode]) => {
-            const node = unwrap(rawNode as z.ZodTypeAny);
-            const label = toLabel(key);
-            const fieldName = `metadata.${key}` as const;
+          {Object.entries(shape)
+            .filter(([key]) => visible.has(key))
+            .map(([key, rawNode]) => {
+              const node = unwrap(rawNode as z.ZodTypeAny);
+              const label = toLabel(key);
+              const fieldName = `metadata.${key}` as const;
 
-            if (node instanceof z.ZodNumber) {
-              return (
-                <FormField
-                  key={key}
-                  control={control}
-                  name={fieldName}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{label}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          className="w-24"
-                          step="any"
-                          value={field.value ?? ''}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === '' ? undefined : Number(e.target.value),
-                            )
-                          }
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              );
-            }
-
-            // ZodEnum: .options is available in both Zod 3 and Zod 4.
-            // Zod 4 also has _def.entries (an object); fall back to its keys if needed.
-            if (node instanceof z.ZodEnum) {
-              // Cast via unknown to avoid version-specific generic shape mismatches.
-              const enumAny = node as unknown as {
-                options?: string[];
-                _def?: { entries?: Record<string, string> };
-              };
-              const opts: string[] = Array.isArray(enumAny.options)
-                ? enumAny.options
-                : Object.keys(enumAny._def?.entries ?? {});
-
-              return (
-                <FormField
-                  key={key}
-                  control={control}
-                  name={fieldName}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{label}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? ''}>
+              if (node instanceof z.ZodNumber) {
+                return (
+                  <FormField
+                    key={key}
+                    control={control}
+                    name={fieldName}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="— select —" />
-                          </SelectTrigger>
+                          <Input
+                            type="number"
+                            className="w-24"
+                            step="any"
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === '' ? undefined : Number(e.target.value),
+                              )
+                            }
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                          />
                         </FormControl>
-                        <SelectContent>
-                          {opts.map((v) => (
-                            <SelectItem key={v} value={v}>
-                              {v}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              );
-            }
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                );
+              }
 
-            if (node instanceof z.ZodBoolean) {
+              // ZodEnum: .options is available in both Zod 3 and Zod 4.
+              // Zod 4 also has _def.entries (an object); fall back to its keys if needed.
+              if (node instanceof z.ZodEnum) {
+                // Cast via unknown to avoid version-specific generic shape mismatches.
+                const enumAny = node as unknown as {
+                  options?: string[];
+                  _def?: { entries?: Record<string, string> };
+                };
+                const opts: string[] = Array.isArray(enumAny.options)
+                  ? enumAny.options
+                  : Object.keys(enumAny._def?.entries ?? {});
+
+                return (
+                  <FormField
+                    key={key}
+                    control={control}
+                    name={fieldName}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="— select —" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {opts.map((v) => (
+                              <SelectItem key={v} value={v}>
+                                {v}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                );
+              }
+
+              if (node instanceof z.ZodBoolean) {
+                return (
+                  <FormField
+                    key={key}
+                    control={control}
+                    name={fieldName}
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                        <FormControl>
+                          <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                        </FormControl>
+                        <FormLabel className="cursor-pointer">{label}</FormLabel>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                );
+              }
+
+              // ZodString and fallback → text input
               return (
                 <FormField
                   key={key}
                   control={control}
                   name={fieldName}
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                    <FormItem>
+                      <FormLabel>{label}</FormLabel>
                       <FormControl>
-                        <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                        <Input {...field} value={field.value ?? ''} />
                       </FormControl>
-                      <FormLabel className="cursor-pointer">{label}</FormLabel>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               );
-            }
-
-            // ZodString and fallback → text input
-            return (
-              <FormField
-                key={key}
-                control={control}
-                name={fieldName}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{label}</FormLabel>
-                    <FormControl>
-                      <Input {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            );
-          })}
+            })}
         </CardContent>
       </Card>
     );
