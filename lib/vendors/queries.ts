@@ -109,12 +109,3 @@ export async function getVendorWithLinks(id: string) {
 
   return { vendor, itemLinks, systemLinks };
 }
-
-export async function listAllVendorKinds() {
-  const result = await prisma.vendor.findMany({
-    select: { kind: true },
-    where: { kind: { not: null } },
-    distinct: ['kind'],
-  });
-  return result.flatMap((r) => (r.kind ? [r.kind] : [])).sort();
-}

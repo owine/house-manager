@@ -41,4 +41,4 @@ export const updateServiceRecordSchema = baseServiceRecordSchema
   .extend({ id: z.string().min(1) });
 
 export type CreateServiceRecordInput = z.infer<typeof createServiceRecordSchema>;
-export type UpdateServiceRecordInput = z.infer<typeof updateServiceRecordSchema>;
+type UpdateServiceRecordInput = z.infer<typeof updateServiceRecordSchema>;

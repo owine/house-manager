@@ -15,14 +15,14 @@ export type ItemRow = {
   updatedAt: Date;
 };
 
-export type VendorRow = {
+type VendorRow = {
   id: string;
   name: string;
   notes: string | null;
   updatedAt: Date;
 };
 
-export type NoteRow = {
+type NoteRow = {
   id: string;
   title: string;
   body: string;
@@ -31,7 +31,7 @@ export type NoteRow = {
   updatedAt: Date;
 };
 
-export type ServiceRow = {
+type ServiceRow = {
   id: string;
   summary: string;
   notes: string | null;
@@ -63,7 +63,7 @@ export type AttachmentRow = {
   createdAt: Date; // Attachment has no updatedAt column — use createdAt as the sort key
 };
 
-export type ChecklistRow = {
+type ChecklistRow = {
   id: string;
   name: string;
   description: string | null;

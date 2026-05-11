@@ -30,13 +30,6 @@ export async function getWarranty(id: string) {
   return row;
 }
 
-export async function listWarrantiesForItem(itemId: string) {
-  return prisma.warranty.findMany({
-    where: { targets: { some: { itemId } } },
-    orderBy: { endsOn: 'desc' },
-  });
-}
-
 /**
  * Warranties targeted at a system, either directly (target.systemId) or
  * indirectly via an item that belongs to the system (target.item.systemId).

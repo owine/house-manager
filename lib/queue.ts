@@ -25,7 +25,7 @@ export const Queue = {
   EmbedBackfill: 'embed.backfill',
   ExtractAttachmentText: 'attachment.extract-text',
 } as const;
-export type QueueName = (typeof Queue)[keyof typeof Queue];
+type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];
 
 let bossInstance: PgBoss | null = null;
@@ -42,11 +42,4 @@ export async function getBoss(): Promise<PgBoss> {
   for (const name of QUEUES) await boss.createQueue(name);
   bossInstance = boss;
   return boss;
-}
-
-export async function stopBoss(): Promise<void> {
-  if (bossInstance) {
-    await bossInstance.stop({ graceful: true });
-    bossInstance = null;
-  }
 }

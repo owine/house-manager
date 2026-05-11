@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PARENT_TYPES = ['item', 'warranty', 'serviceRecord', 'note'] as const;
+const PARENT_TYPES = ['item', 'warranty', 'serviceRecord', 'note'] as const;
 export type ParentType = (typeof PARENT_TYPES)[number];
 
 export const uploadAttachmentSchema = z.object({
@@ -8,7 +8,7 @@ export const uploadAttachmentSchema = z.object({
   parentId: z.string().min(1),
 });
 
-export type UploadAttachmentInput = z.infer<typeof uploadAttachmentSchema>;
+type UploadAttachmentInput = z.infer<typeof uploadAttachmentSchema>;
 
 const httpUrl = z
   .string()
@@ -24,4 +24,4 @@ export const addAttachmentLinkSchema = z.object({
   externalProviderId: z.string().max(200).optional(),
 });
 
-export type AddAttachmentLinkInput = z.infer<typeof addAttachmentLinkSchema>;
+type AddAttachmentLinkInput = z.infer<typeof addAttachmentLinkSchema>;

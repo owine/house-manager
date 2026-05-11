@@ -16,14 +16,14 @@ import {
 } from '@/components/ui/dialog';
 import { assignItemToSystem, unassignItemFromSystem } from '@/lib/systems/actions';
 
-export type ComponentRow = {
+type ComponentRow = {
   id: string;
   name: string;
   manufacturer: string | null;
   model: string | null;
 };
 
-export type OrphanItem = {
+type OrphanItem = {
   id: string;
   name: string;
   manufacturer: string | null;

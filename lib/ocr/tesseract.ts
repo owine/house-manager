@@ -39,18 +39,3 @@ export async function ocrImageBuffer(buf: Buffer): Promise<string> {
   const { data } = await worker.recognize(buf);
   return (data.text ?? '').trim();
 }
-
-/**
- * Tears down the shared worker. Call from process shutdown handlers
- * (worker/index.ts shutdown signal) so tesseract.js releases its
- * internal wasm + thread-pool resources cleanly. Idempotent.
- */
-export async function shutdownOcr(): Promise<void> {
-  if (!workerPromise) return;
-  try {
-    const worker = (await workerPromise) as { terminate: () => Promise<void> };
-    await worker.terminate();
-  } finally {
-    workerPromise = null;
-  }
-}

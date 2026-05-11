@@ -4,7 +4,7 @@ import { getLogger } from '@/lib/logger';
 const log = getLogger('embedding.voyage');
 
 const VOYAGE_ENDPOINT = 'https://api.voyageai.com/v1/embeddings';
-export const VOYAGE_MODEL = 'voyage-3.5-lite';
+const VOYAGE_MODEL = 'voyage-3.5-lite';
 export const VOYAGE_DIMENSIONS = 1024;
 export const VOYAGE_MAX_BATCH = 128;
 

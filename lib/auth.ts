@@ -7,7 +7,9 @@ import { getEnv } from '@/lib/env';
 
 const env = getEnv();
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+// signIn/signOut are intentionally not re-exported — sign-in flows go via
+// `/api/auth/...` handled by Auth.js's own route handlers.
+export const { handlers, auth } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'database' },
