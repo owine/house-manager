@@ -19,6 +19,7 @@ import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
 import { retrieveTopK } from './retrieve';
+import { stripInlineCitationTags } from './strip-tags';
 
 const logger = getLogger('ask.actions');
 
@@ -182,7 +183,7 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
 
   const enrichedCitations = await enrichCitations(answer.citations);
   const enrichedAnswer: EnrichedAskAnswer = {
-    answer: answer.answer,
+    answer: stripInlineCitationTags(answer.answer),
     citations: enrichedCitations,
   };
 
