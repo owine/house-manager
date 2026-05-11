@@ -19,4 +19,3 @@ export const updateItemSchema = createItemSchema.partial().extend({
 });
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;
-type UpdateItemInput = z.infer<typeof updateItemSchema>;
