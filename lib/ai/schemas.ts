@@ -80,3 +80,48 @@ export const incomingEmailExtractionSchema = z.object({
     .describe('One or two sentences explaining how confident the extraction is and any caveats.'),
 });
 export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSchema>;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Plan 4c — Ask / RAG response schema.
+// The model is constrained to return { answer, citations } where each citation
+// is one of the EmbeddingEntityType variants plus the parent entity's ID so
+// the UI can deep-link to the source. Citation label is the human-readable
+// title (e.g. "Annual spring tune-up — 2026-04-12") rendered on the chip.
+// ──────────────────────────────────────────────────────────────────────────────
+export const askCitationSchema = z.object({
+  entityType: z.enum([
+    'ITEM',
+    'NOTE',
+    'SERVICE_RECORD',
+    'CHECKLIST_ITEM',
+    'WARRANTY',
+    'ATTACHMENT',
+  ]),
+  entityId: z.string().min(1).max(64),
+  label: z.string().max(200),
+});
+export type AskCitation = z.infer<typeof askCitationSchema>;
+
+export const askAnswerSchema = z.object({
+  answer: z
+    .string()
+    .max(4000)
+    .describe(
+      'The answer to the user question, in markdown. Cite every factual claim by referencing the supporting chunks via their entityType+entityId tags. If the provided context does not contain the answer, say so explicitly — do not invent facts.',
+    ),
+  citations: z
+    .array(askCitationSchema)
+    .max(8)
+    .describe(
+      'Up to 8 source citations from the retrieved chunks, ordered by relevance. Empty array is allowed when the question is unanswerable from context.',
+    ),
+});
+export type AskAnswer = z.infer<typeof askAnswerSchema>;
+
+export const askQuestionInputSchema = z.object({
+  question: z.string().trim().min(3, 'Question is too short').max(500, 'Question is too long'),
+  entityTypes: z
+    .array(z.enum(['ITEM', 'NOTE', 'SERVICE_RECORD', 'CHECKLIST_ITEM', 'WARRANTY', 'ATTACHMENT']))
+    .optional(),
+});
+export type AskQuestionInput = z.infer<typeof askQuestionInputSchema>;
