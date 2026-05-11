@@ -434,6 +434,9 @@ model Attachment {
 
   thumbnailPath   String?
   extractedText   String?        @db.Text
+  extractedAt     DateTime?
+  extractedError  String?
+  ocrUsed         Boolean        @default(false)
   indexedAt       DateTime?
   aiIndexable     Boolean        @default(true)
 
@@ -588,10 +591,51 @@ model AISuggestionLog {
   cacheReadTokens      Int?
   cacheCreationTokens  Int?
   latencyMs            Int?
+  // Populated for `kind = 'ASK'` rows so we can grade citation density and
+  // replay which chunks the LLM was handed. Plan 4c.
+  citationCount        Int?
+  retrievedChunkIds    String[] @default([])
   createdAt            DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+// Plan 4c — vector store for the Ask / RAG path. Polymorphic across the
+// indexable entity types: one row per (entity, chunk). `embedding` is a
+// 1024-dim vector from Voyage's voyage-3.5-lite model. `contentHash` is a
+// SHA-256 of the canonical-text representation so the worker can skip
+// re-embedding when nothing material has changed (e.g. archiving an item
+// doesn't alter the text we'd embed).
+//
+// Not modelled as discrete FK relations because that would mean six
+// per-entity tables; the cost is no cascade on entity delete. The
+// `embed-content` worker handles tombstone cleanup explicitly.
+enum EmbeddingEntityType {
+  ITEM
+  NOTE
+  SERVICE_RECORD
+  CHECKLIST_ITEM
+  WARRANTY
+  ATTACHMENT
+}
+
+model Embedding {
+  id          String              @id @default(cuid())
+  entityType  EmbeddingEntityType
+  entityId    String
+  chunkIndex  Int
+  text        String              @db.Text
+  // Voyage voyage-3.5-lite is 1024-dim. The IVFFlat index is created via
+  // raw SQL appended to this migration; Prisma can't emit it natively.
+  embedding   Unsupported("vector(1024)")
+  tokenCount  Int
+  contentHash String
+  createdAt   DateTime            @default(now())
+
+  @@index([entityType, entityId])
+  @@index([contentHash])
+  @@map("embeddings")
 }
