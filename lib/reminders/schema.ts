@@ -15,6 +15,10 @@ export const recurrenceSchema = z.discriminatedUnion('kind', [
     month: z.number().int().min(1).max(12),
     day: z.number().int().min(1).max(28),
   }),
+  // `once` fires exactly once on the target's `nextDueOn` and never again.
+  // Used for one-shot reminders (e.g. a warranty expiry). After firing, the
+  // existing NotificationLog dedupe prevents re-fires for the same cycle key.
+  z.object({ kind: z.literal('once') }),
 ]);
 
 export type Recurrence = z.infer<typeof recurrenceSchema>;

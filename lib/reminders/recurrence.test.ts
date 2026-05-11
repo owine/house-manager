@@ -31,6 +31,12 @@ describe('computeNextDueOn', () => {
     const next = computeNextDueOn({ kind: 'yearly', month: 3, day: 15 }, completed);
     expect(next.toISOString().slice(0, 10)).toBe('2026-03-15');
   });
+
+  it('once: returns the far-future sentinel so the reminder never re-fires', () => {
+    const completed = new Date('2026-05-11T00:00:00Z');
+    const next = computeNextDueOn({ kind: 'once' }, completed);
+    expect(next.getUTCFullYear()).toBe(9999);
+  });
 });
 
 describe('previewOccurrences', () => {
@@ -45,6 +51,11 @@ describe('previewOccurrences', () => {
       '2026-06-30',
       '2026-07-30',
     ]);
+  });
+
+  it('once: emits no future occurrences (caller already has nextDueOn)', () => {
+    const occ = previewOccurrences({ kind: 'once' }, new Date('2026-05-01T00:00:00Z'), 5);
+    expect(occ).toEqual([]);
   });
 
   it('returns N future occurrences for monthly', () => {

@@ -11,6 +11,7 @@ import {
   TargetsPicker,
 } from '@/components/targets/TargetsPicker';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
   FormControl,
@@ -34,6 +35,8 @@ const formSchema = z
     endsOn: z.coerce.date(),
     coverage: z.string().max(20_000).optional(),
     cost: z.coerce.number().nonnegative().optional(),
+    createExpiryReminder: z.boolean().default(true),
+    expiryReminderLeadDays: z.coerce.number().int().min(0).max(365).default(30),
   })
   .refine((data) => data.endsOn >= data.startsOn, {
     message: 'End date must be on or after start date',
@@ -98,8 +101,13 @@ export function WarrantyForm({
       endsOn: dateToInputString(defaultValues?.endsOn) as unknown as Date,
       coverage: defaultValues?.coverage ?? '',
       cost: defaultValues?.cost ?? undefined,
+      createExpiryReminder: true,
+      expiryReminderLeadDays: 30,
     },
   });
+
+  const isEdit = !!defaultValues?.id;
+  const createExpiryReminder = form.watch('createExpiryReminder');
 
   const {
     control,
@@ -129,7 +137,6 @@ export function WarrantyForm({
         if (!applied && !result.formError) toast.error('Failed to save warranty');
         return;
       }
-      const isEdit = !!defaultValues?.id;
       toast.success(isEdit ? 'Warranty updated' : 'Warranty created');
       // Default redirect: stay on the first item-target's page if there is one,
       // otherwise the warranty detail.
@@ -306,6 +313,55 @@ export function WarrantyForm({
             </FormItem>
           )}
         />
+
+        {!isEdit && (
+          <div className="space-y-3 rounded-md border border-border p-3">
+            <FormField
+              control={control}
+              name="createExpiryReminder"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value ?? true} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <FormLabel className="cursor-pointer font-normal">
+                    Create an expiration reminder
+                  </FormLabel>
+                </FormItem>
+              )}
+            />
+
+            {createExpiryReminder !== false && (
+              <FormField
+                control={control}
+                name="expiryReminderLeadDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notify how many days before expiration</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        className="w-24"
+                        min="0"
+                        max="365"
+                        step="1"
+                        name={field.name}
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                        value={typeof field.value === 'number' ? field.value : 30}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          field.onChange(v === '' ? 30 : Number(v));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+          </div>
+        )}
 
         <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
