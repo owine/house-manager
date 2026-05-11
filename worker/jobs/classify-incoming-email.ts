@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/node';
 import { prisma } from '@/lib/db';
 import { classifyEmail } from '@/lib/incoming-email/classify';
+import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 
@@ -45,7 +46,7 @@ async function classifyOne(id: string): Promise<void> {
     return;
   }
 
-  const [vendors, items, systems] = await Promise.all([
+  const [vendors, items, systems, pdfText] = await Promise.all([
     prisma.vendor.findMany({ select: { id: true, name: true, email: true, notes: true } }),
     prisma.item.findMany({
       where: { archivedAt: null },
@@ -55,13 +56,25 @@ async function classifyOne(id: string): Promise<void> {
       where: { archivedAt: null },
       select: { id: true, name: true },
     }),
+    loadPdfTextForEmail(id),
   ]);
+
+  // Augment the body the classifier sees with text extracted from any PDF
+  // attachments. Many vendor reports / invoices use a boilerplate email body
+  // ("Attached is your invoice") with the substantive content locked inside
+  // a PDF — without this, the classifier never sees the keywords that drive
+  // kind / vendor / entity matching. PDF text is appended after the original
+  // body so the email body still drives the first chunk that
+  // `BODY_CLASSIFY_LIMIT` truncates against.
+  const augmentedBody = pdfText
+    ? `${row.bodyText ?? ''}\n\n--- attached PDF text ---\n${pdfText}`
+    : (row.bodyText ?? '');
 
   const result = classifyEmail({
     fromAddress: row.fromAddress,
     fromName: row.fromName,
     subject: row.subject,
-    bodyText: row.bodyText ?? '',
+    bodyText: augmentedBody,
     vendors,
     items,
     systems,
