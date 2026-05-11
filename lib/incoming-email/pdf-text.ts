@@ -27,7 +27,6 @@ const MAX_CONCAT_CHARS = 5000; // hard cap on returned text length
  * one decodes to text via `unpdf` for cheap regex matching. No network calls.
  */
 export async function loadPdfTextForEmail(emailId: string): Promise<string> {
-  const env = getEnv();
   const rows = await prisma.attachment.findMany({
     where: { incomingEmailId: emailId, mimeType: 'application/pdf' },
     select: { filename: true, sizeBytes: true, storagePath: true },
@@ -36,6 +35,9 @@ export async function loadPdfTextForEmail(emailId: string): Promise<string> {
   });
   if (rows.length === 0) return '';
 
+  // Delay env access until we know there are PDFs to load — the FILES_DIR
+  // path is only needed for the read step below.
+  const env = getEnv();
   // Lazy-require unpdf so the dependency stays out of the hot path for emails
   // without PDFs. Top-level import would force a 1MB+ wasm/js load even
   // when classify never reaches this function.
