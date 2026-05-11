@@ -116,6 +116,11 @@ You don't pass these at runtime — they're baked into the image at build time.
 - [x] Plan 3: Reminders, Web Push, email, iCal feed
 - [x] Plan 4a: Find — Meilisearch keyword search
 - [x] Plan 4ab: UI redesign — design system, navigation, page templates
-- [ ] Plan 4b: Suggest — AI structured generation (paused at schema migration; resumes next)
-- [ ] Plan 4c: Ask — RAG over user documents + OCR
-- [ ] Plan 5: Polish & Operations
+- [x] Plan 4b: Suggest — AI structured generation
+- [x] Plan 4c: Ask — RAG over user documents + OCR (pgvector + Voyage + Tesseract.js)
+- [x] Plan 5a: Observability (Pino + Sentry)
+- [x] Plan 5b: Reliability (pg-dump backup, notify-log sweep, missed-tick recovery)
+
+Organically shipped alongside the numbered plans:
+- [x] Systems: System entity + multi-target events + multi-vendor links
+- [x] Inbox: inbound email ingestion + classify + auto-stub draft service records

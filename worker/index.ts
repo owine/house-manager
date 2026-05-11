@@ -3,6 +3,7 @@
 // live SDK to report through. The DSN gate makes init a no-op when unset.
 import * as Sentry from '@sentry/node';
 import { getLogger } from '@/lib/logger';
+import { startMemoryWatchdog } from '@/lib/observability/memory-watchdog';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
@@ -10,6 +11,7 @@ import {
   type ClassifyIncomingEmailJob,
   handleClassifyIncomingEmail,
 } from './jobs/classify-incoming-email';
+import { handleEmbedBackfill } from './jobs/embed-backfill';
 import { type EmbedContentJob, handleEmbedContent } from './jobs/embed-content';
 import {
   type ExtractAttachmentTextJob,
@@ -147,8 +149,34 @@ async function main() {
     handleExtractAttachmentText,
   );
 
+  // Embedding backfill (Plan 4c). Scans each entity table for rows missing
+  // embeddings and enqueues per-entity embed-content jobs. Idempotent.
+  // Fired by both the admin Rebuild button and the worker startup recovery
+  // below.
+  await boss.work(Queue.EmbedBackfill, { batchSize: 1 }, async () => {
+    await handleEmbedBackfill();
+  });
+
+  // Startup backfill — fire-and-forget a one-shot embed-backfill at every
+  // boot. The handler itself is a no-op when ASK_ENABLED=false, so this is
+  // safe to run unconditionally. Failure is non-fatal: the admin Rebuild
+  // button is the manual recovery path.
+  try {
+    await boss.send(Queue.EmbedBackfill, {});
+    logger.info({ event: 'startup.embed-backfill.kicked' }, 'embed-backfill enqueued');
+  } catch (e) {
+    Sentry.captureException(e);
+    logger.error({ err: e }, 'startup embed-backfill enqueue failed');
+  }
+
+  // Memory watchdog (Plan 4c) — Tesseract.js + Voyage batching can push the
+  // worker container above its implicit memory budget on a Pi. The watchdog
+  // logs a structured warning when RSS crosses 800 MB; Sentry picks it up
+  // through the Plan 5a integration.
+  startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
+
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content, attachment.extract-text jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content, embed.backfill, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {
