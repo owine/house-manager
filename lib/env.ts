@@ -44,6 +44,20 @@ const EnvSchema = z.object({
   SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
   SENTRY_AUTH_TOKEN: z.string().optional(),
+  // Plan 4c — Ask / RAG. Opt-in per deployment via ASK_ENABLED; when the
+  // flag is false the indexing jobs no-op and the Ask UI is hidden. The
+  // VOYAGE_API_KEY pairs with `ASK_ENABLED=true` for embedding generation.
+  // OCR_BACKEND switches the attachment-text extractor: 'tesseract' runs
+  // local OCR for image PDFs / image attachments; 'none' is for CI to
+  // avoid the Tesseract.js wasm load.
+  VOYAGE_API_KEY: z.string().min(1).optional(),
+  // Truthy literals from the env file collapse to a single boolean.
+  ASK_ENABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  OCR_BACKEND: z.enum(['tesseract', 'none']).default('tesseract'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
