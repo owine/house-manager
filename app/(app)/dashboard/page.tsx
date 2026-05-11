@@ -3,7 +3,9 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = { title: 'Dashboard' };
 
 import { auth } from '@/lib/auth';
+import { listChecklists } from '@/lib/checklists/queries';
 import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
+import { ActiveChecklistsCard } from './ActiveChecklistsCard';
 import { DashboardGreeting } from './DashboardGreeting';
 import { OverviewStatsCard } from './OverviewStatsCard';
 import { QuickActionsCard } from './QuickActionsCard';
@@ -12,11 +14,12 @@ import { SeasonalChecklistCard } from './SeasonalChecklistCard';
 import { UpcomingRemindersCard } from './UpcomingRemindersCard';
 
 export default async function Dashboard() {
-  const [session, stats, activity, reminders] = await Promise.all([
+  const [session, stats, activity, reminders, checklists] = await Promise.all([
     auth(),
     quickStats(),
     recentActivity(10),
     upcomingReminders(5),
+    listChecklists(),
   ]);
 
   return (
@@ -35,6 +38,8 @@ export default async function Dashboard() {
         <UpcomingRemindersCard reminders={reminders} />
         <RecentActivityList activity={activity} />
       </div>
+
+      <ActiveChecklistsCard checklists={checklists} />
 
       <SeasonalChecklistCard />
     </div>

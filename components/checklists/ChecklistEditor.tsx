@@ -12,6 +12,8 @@ import {
   deleteChecklist,
   deleteChecklistItem,
   reorderChecklistItems,
+  resetChecklist,
+  setChecklistActive,
   toggleChecklistItem,
   updateChecklist,
 } from '@/lib/checklists/actions';
@@ -30,6 +32,7 @@ type Props = {
     id: string;
     name: string;
     description: string | null;
+    active: boolean;
     items: ItemRow[];
   };
 };
@@ -97,6 +100,31 @@ export function ChecklistEditor({ checklist }: Props) {
     });
   }
 
+  function onReset() {
+    startTransition(async () => {
+      const r = await resetChecklist({ id: checklist.id });
+      if (!r.ok) {
+        toast.error(r.formError ?? 'Failed to reset');
+        return;
+      }
+      toast.success('Checklist reset — every item is now unchecked');
+      router.refresh();
+    });
+  }
+
+  function onToggleArchive() {
+    const next = !checklist.active;
+    startTransition(async () => {
+      const r = await setChecklistActive({ id: checklist.id, active: next });
+      if (!r.ok) {
+        toast.error(r.formError ?? 'Failed to update');
+        return;
+      }
+      toast.success(next ? 'Checklist restored' : 'Checklist archived');
+      router.refresh();
+    });
+  }
+
   function onDeleteChecklist() {
     startTransition(async () => {
       const r = await deleteChecklist(checklist.id);
@@ -110,6 +138,10 @@ export function ChecklistEditor({ checklist }: Props) {
   }
 
   const orderedItems = [...checklist.items].sort((a, b) => a.position - b.position);
+  const completedCount = orderedItems.filter((i) => i.completedAt !== null).length;
+  const totalCount = orderedItems.length;
+  const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const allDone = totalCount > 0 && completedCount === totalCount;
 
   return (
     <div className="space-y-8">
@@ -124,10 +156,34 @@ export function ChecklistEditor({ checklist }: Props) {
       />
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Items</h2>
           <SuggestChecklistItemsButton checklistId={checklist.id} checklistName={checklist.name} />
         </div>
+        {totalCount > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                {completedCount}/{totalCount} done
+              </span>
+              <span className={allDone ? 'font-medium text-green-600 dark:text-green-400' : ''}>
+                {pct}%
+              </span>
+            </div>
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className={`h-full transition-all ${allDone ? 'bg-green-600 dark:bg-green-400' : 'bg-primary'}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
         {orderedItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">No items yet. Add one below.</p>
         ) : (
@@ -193,7 +249,14 @@ export function ChecklistEditor({ checklist }: Props) {
         </form>
       </section>
 
-      <section className="border-t pt-6">
+      <section className="flex flex-wrap items-center gap-2 border-t pt-6">
+        <Button variant="outline" disabled={pending || completedCount === 0} onClick={onReset}>
+          Reset items
+        </Button>
+        <Button variant="outline" disabled={pending} onClick={onToggleArchive}>
+          {checklist.active ? 'Archive' : 'Restore'}
+        </Button>
+        <div className="flex-1" />
         <Button variant="destructive" disabled={pending} onClick={onDeleteChecklist}>
           Delete checklist
         </Button>
