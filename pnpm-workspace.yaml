@@ -18,16 +18,17 @@ minimumReleaseAge: 0
 # explicit approval. Keep this list minimal — entries here run arbitrary
 # code at install time. Each was vetted at the time of inclusion.
 allowBuilds:
-  "@prisma/engines": true   # downloads Prisma query engine binaries
-  "@sentry/cli": true       # downloads sentry-cli native binary
-  "cpu-features": true      # builds native CPU feature detection (transitive of ssh2)
-  "esbuild": true           # builds platform-specific esbuild binary
-  "lefthook": true          # installs git hooks
-  "msw": true               # writes service-worker file (transitive)
-  "prisma": true             # CLI ships native binaries
-  "protobufjs": true        # generates static protobuf code (transitive)
-  "sharp": true             # builds libvips bindings
-  "ssh2": true              # optional native crypto (transitive)
+  "@prisma/engines": true # downloads Prisma query engine binaries
+  "@sentry/cli": true # downloads sentry-cli native binary
+  "cpu-features": true # builds native CPU feature detection (transitive of ssh2)
+  "esbuild": true # builds platform-specific esbuild binary
+  "lefthook": true # installs git hooks
+  "msw": true # writes service-worker file (transitive)
+  "prisma": true # CLI ships native binaries
+  "protobufjs": true # generates static protobuf code (transitive)
+  "sharp": true # builds libvips bindings
+  "ssh2": true # optional native crypto (transitive)
+  tesseract.js: true # downloads English language data at install time (Plan 4c)
 
 # Dependency overrides. Moved here from package.json's `pnpm.overrides`
 # so v11 reads them — v11 stopped reading the package.json field in

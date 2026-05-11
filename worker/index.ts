@@ -12,6 +12,10 @@ import {
 } from './jobs/classify-incoming-email';
 import { type EmbedContentJob, handleEmbedContent } from './jobs/embed-content';
 import {
+  type ExtractAttachmentTextJob,
+  handleExtractAttachmentText,
+} from './jobs/extract-attachment-text';
+import {
   type ExtractIncomingEmailJob,
   handleExtractIncomingEmail,
 } from './jobs/extract-incoming-email';
@@ -133,8 +137,18 @@ async function main() {
   // Voyage call is the latency-bound step.
   await boss.work<EmbedContentJob>(Queue.EmbedContent, { batchSize: 4 }, handleEmbedContent);
 
+  // Attachment text extractor (Plan 4c). Reads each uploaded attachment off
+  // disk, dispatches by mime type (unpdf for PDFs, Tesseract for images,
+  // direct read for text), writes back `extractedText` + flags, and chains
+  // an embed-content job. batchSize: 1 because OCR is heavy.
+  await boss.work<ExtractAttachmentTextJob>(
+    Queue.ExtractAttachmentText,
+    { batchSize: 1 },
+    handleExtractAttachmentText,
+  );
+
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {
