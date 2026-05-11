@@ -6,6 +6,7 @@ import {
   Inbox,
   Layers,
   ListChecks,
+  MessageCircleQuestionMark,
   Package,
   Search,
   Settings,
@@ -53,6 +54,7 @@ const NAV_GROUPS: NavItem[][] = [
   // Workflows — what needs your attention
   [
     { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
+    { href: '/ask', label: 'Ask', icon: MessageCircleQuestionMark },
     { href: '/reminders', label: 'Reminders', icon: Calendar },
     { href: '/checklists', label: 'Checklists', icon: ListChecks },
   ],
