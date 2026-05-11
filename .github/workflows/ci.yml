@@ -224,6 +224,11 @@ jobs:
       # SENTRY_DSN intentionally unset in CI; SDK no-ops gracefully.
       # NEXT_PUBLIC_SENTRY_DSN intentionally unset; browser SDK no-ops gracefully.
       # SENTRY_AUTH_TOKEN intentionally unset; source-map upload skipped.
+      # Ask/RAG (Plan 4c): feature gated off in CI to keep e2e cheap and
+      # to avoid needing a real Voyage key. OCR backend off prevents the
+      # Tesseract.js wasm load on every test run.
+      ASK_ENABLED: 'false'
+      OCR_BACKEND: 'none'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5

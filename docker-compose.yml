@@ -11,6 +11,11 @@ x-app-env: &app-env
   FILES_DIR: /data/files
   NODE_ENV: production
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  # Plan 4c — Ask / RAG. Opt-in per deployment; flip ASK_ENABLED=true and
+  # set VOYAGE_API_KEY when you want the feature live.
+  ASK_ENABLED: ${ASK_ENABLED:-false}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  OCR_BACKEND: ${OCR_BACKEND:-tesseract}
   # Optional observability vars. Set these once GlitchTip / Loki are running.
   # SENTRY_DSN: ${SENTRY_DSN:-}
   # NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
