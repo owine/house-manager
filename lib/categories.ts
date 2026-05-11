@@ -161,6 +161,172 @@ const hvacVisibility: Record<string, string[]> = {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Vehicle
+// Cars, trucks, SUVs, motorcycles, ATVs/UTVs, RVs, trailers, boats, golf carts,
+// e-bikes. Mileage matters for road vehicles; engine-hours matter for boats /
+// ATVs / RVs. VIN/oil/tire fields gate on the relevant subset.
+// ──────────────────────────────────────────────────────────────────────────────
+const vehicleSchema = z.object({
+  vehicleType: z
+    .enum([
+      'car',
+      'truck',
+      'suv',
+      'motorcycle',
+      'atv-utv',
+      'rv',
+      'trailer',
+      'boat',
+      'golf-cart',
+      'e-bike',
+      'other',
+    ])
+    .optional(),
+  vin: z.string().length(17).optional(),
+  licensePlate: z.string().optional(),
+  fuelType: z.enum(['gasoline', 'diesel', 'electric', 'hybrid', 'propane']).optional(),
+  mileage: z.number().nonnegative().optional(),
+  engineHours: z.number().nonnegative().optional(),
+  engineDisplacement: z.string().optional(),
+  tireSize: z.string().optional(),
+  batteryGroupSize: z.string().optional(),
+  oilType: z.string().optional(),
+  oilCapacityQuarts: z.number().positive().optional(),
+  color: z.string().optional(),
+});
+
+const vehicleVisibility: Record<string, string[]> = {
+  vin: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv'],
+  mileage: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv'],
+  engineHours: ['boat', 'atv-utv', 'rv'],
+  engineDisplacement: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv', 'boat'],
+  tireSize: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv', 'trailer'],
+  batteryGroupSize: ['car', 'truck', 'suv', 'motorcycle', 'rv', 'boat'],
+  oilType: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv', 'boat'],
+  oilCapacityQuarts: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv', 'boat'],
+  fuelType: ['car', 'truck', 'suv', 'motorcycle', 'atv-utv', 'rv', 'boat', 'golf-cart'],
+  // licensePlate, color: always visible
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tool
+// Shop/garage gear (drills, saws, generators, compressors, pressure washers,
+// welders, shop vacs, ladders, jacks) and lawn equipment (mowers, trimmers,
+// blowers, edgers, leaf vacuums). The user opted to keep lawn gear here rather
+// than under landscaping, so this bucket is the catch-all for "tools and
+// powered equipment."
+// ──────────────────────────────────────────────────────────────────────────────
+const toolSchema = z.object({
+  toolType: z
+    .enum([
+      'power-tool',
+      'hand-tool',
+      'lawn-mower',
+      'lawn-trimmer',
+      'blower',
+      'edger',
+      'leaf-vacuum',
+      'generator',
+      'air-compressor',
+      'pressure-washer',
+      'welder',
+      'shop-vac',
+      'ladder',
+      'jack',
+      'other',
+    ])
+    .optional(),
+  powerSource: z.enum(['battery', 'corded', 'gas', 'manual']).optional(),
+  voltage: z.number().positive().optional(),
+  batteryPlatform: z.string().optional(),
+  amperage: z.number().positive().optional(),
+  maxPsi: z.number().positive().optional(),
+  tankGallons: z.number().positive().optional(),
+  outputWatts: z.number().positive().optional(),
+  weightCapacityLbs: z.number().positive().optional(),
+  bladeSize: z.string().optional(),
+  chuckSize: z.string().optional(),
+  cuttingWidthInches: z.number().positive().optional(),
+  bagCapacityBushels: z.number().positive().optional(),
+});
+
+const toolVisibility: Record<string, string[]> = {
+  voltage: ['power-tool', 'lawn-mower', 'lawn-trimmer', 'blower', 'edger', 'leaf-vacuum'],
+  batteryPlatform: ['power-tool', 'lawn-mower', 'lawn-trimmer', 'blower', 'edger', 'leaf-vacuum'],
+  amperage: ['power-tool', 'pressure-washer', 'shop-vac', 'welder'],
+  maxPsi: ['air-compressor', 'pressure-washer'],
+  tankGallons: ['air-compressor', 'shop-vac'],
+  outputWatts: ['generator', 'welder'],
+  weightCapacityLbs: ['ladder', 'jack'],
+  bladeSize: ['power-tool', 'lawn-mower'],
+  chuckSize: ['power-tool'],
+  cuttingWidthInches: ['lawn-mower', 'lawn-trimmer', 'edger'],
+  bagCapacityBushels: ['lawn-mower', 'leaf-vacuum'],
+  // powerSource: always visible (it's the cross-cutting "how is this powered?")
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Landscaping
+// Plants (trees, shrubs, beds), lawn areas, irrigation, fences, hardscape,
+// deck/retaining-wall. Lawn equipment lives under `tool`.
+// `coverageArea` (string) is kept for back-compat with anything already
+// recorded; the new numeric `coverageAreaSqFt` is preferred going forward.
+// ──────────────────────────────────────────────────────────────────────────────
+const landscapingSchema = z.object({
+  landscapingType: z
+    .enum([
+      'tree',
+      'shrub',
+      'perennial-bed',
+      'garden-bed',
+      'mulch-bed',
+      'lawn-area',
+      'irrigation-zone',
+      'irrigation-controller',
+      'sprinkler-head',
+      'fence-section',
+      'deck',
+      'hardscape',
+      'retaining-wall',
+      'other',
+    ])
+    .optional(),
+  coverageArea: z.string().optional(),
+  coverageAreaSqFt: z.number().nonnegative().optional(),
+  speciesOrCultivar: z.string().optional(),
+  plantedDate: z.string().optional(),
+  zoneCount: z.number().int().positive().optional(),
+  sprinklerHeadCount: z.number().int().positive().optional(),
+  fenceMaterial: z
+    .enum(['wood', 'vinyl', 'chain-link', 'aluminum', 'wrought-iron', 'composite', 'other'])
+    .optional(),
+  fenceLinearFeet: z.number().positive().optional(),
+  fenceHeightFeet: z.number().positive().optional(),
+  hardscapeMaterial: z.string().optional(),
+});
+
+const landscapingVisibility: Record<string, string[]> = {
+  speciesOrCultivar: ['tree', 'shrub', 'perennial-bed', 'garden-bed'],
+  plantedDate: ['tree', 'shrub', 'perennial-bed', 'garden-bed', 'lawn-area'],
+  coverageAreaSqFt: [
+    'lawn-area',
+    'perennial-bed',
+    'garden-bed',
+    'mulch-bed',
+    'hardscape',
+    'deck',
+    'retaining-wall',
+  ],
+  zoneCount: ['irrigation-controller'],
+  sprinklerHeadCount: ['irrigation-zone', 'irrigation-controller'],
+  fenceMaterial: ['fence-section'],
+  fenceLinearFeet: ['fence-section'],
+  fenceHeightFeet: ['fence-section'],
+  hardscapeMaterial: ['hardscape', 'retaining-wall', 'deck'],
+  // coverageArea (string, legacy): always visible
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
 // The rest — unchanged shape for now. Same widening pattern can apply later.
 // ──────────────────────────────────────────────────────────────────────────────
 export const categoryConfigs: Record<string, CategoryConfig> = {
@@ -193,24 +359,19 @@ export const categoryConfigs: Record<string, CategoryConfig> = {
     }),
   },
   vehicle: {
-    schema: z.object({
-      vin: z.string().length(17).optional(),
-      licensePlate: z.string().optional(),
-      mileage: z.number().nonnegative().optional(),
-      fuelType: z.enum(['gasoline', 'diesel', 'electric', 'hybrid']).optional(),
-    }),
+    schema: vehicleSchema,
+    typeField: 'vehicleType',
+    visibility: vehicleVisibility,
   },
   tool: {
-    schema: z.object({
-      powerSource: z.enum(['battery', 'corded', 'gas', 'manual']).optional(),
-      voltage: z.number().positive().optional(),
-    }),
+    schema: toolSchema,
+    typeField: 'toolType',
+    visibility: toolVisibility,
   },
   landscaping: {
-    schema: z.object({
-      type: z.string().optional(),
-      coverageArea: z.string().optional(),
-    }),
+    schema: landscapingSchema,
+    typeField: 'landscapingType',
+    visibility: landscapingVisibility,
   },
   other: {
     schema: freeformMetadataSchema,
