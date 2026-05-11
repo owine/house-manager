@@ -74,9 +74,30 @@ describe('embedTexts', () => {
     expect(result).toHaveLength(total);
   });
 
-  it('throws VoyageRetryableError on 429', async () => {
-    fetchMock.mockReturnValueOnce(Promise.resolve(new Response('rate limited', { status: 429 })));
+  it('retries inline on 429, then surfaces VoyageRetryableError after exhausting attempts', async () => {
+    // 6 consecutive 429s: 1 initial + 5 retries before the error escapes.
+    for (let i = 0; i < 6; i++) {
+      fetchMock.mockReturnValueOnce(
+        Promise.resolve(
+          new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } }),
+        ),
+      );
+    }
     await expect(embedTexts(['hello'])).rejects.toBeInstanceOf(VoyageRetryableError);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('recovers when a 429 is followed by a 200', async () => {
+    fetchMock
+      .mockReturnValueOnce(
+        Promise.resolve(
+          new Response('rate limited', { status: 429, headers: { 'retry-after': '0' } }),
+        ),
+      )
+      .mockReturnValueOnce(mockOkResponse([[0.1, 0.2]]));
+    const result = await embedTexts(['hello']);
+    expect(result).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('throws VoyageRetryableError on 500', async () => {

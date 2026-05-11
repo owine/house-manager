@@ -135,9 +135,10 @@ async function main() {
 
   // Ask/RAG vector indexer (Plan 4c) — fired by every entity create / update
   // / archive that produces embeddable content, and by the admin Rebuild +
-  // startup backfill paths. Batch up to 4 entities at a time; the per-batch
-  // Voyage call is the latency-bound step.
-  await boss.work<EmbedContentJob>(Queue.EmbedContent, { batchSize: 4 }, handleEmbedContent);
+  // startup backfill paths. `batchSize: 1` so we don't fan out parallel
+  // Voyage calls — the free tier is 3 RPM and even paid tiers don't benefit
+  // from concurrency given our small per-entity payload.
+  await boss.work<EmbedContentJob>(Queue.EmbedContent, { batchSize: 1 }, handleEmbedContent);
 
   // Attachment text extractor (Plan 4c). Reads each uploaded attachment off
   // disk, dispatches by mime type (unpdf for PDFs, Tesseract for images,
