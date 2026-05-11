@@ -12,8 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { AskAnswer as AskAnswerType } from '@/lib/ai/schemas';
-import { askQuestion } from '@/lib/ask/actions';
+import { askQuestion, type EnrichedAskAnswer } from '@/lib/ask/actions';
 import { AskAnswer } from './AskAnswer';
 
 const EXAMPLES = [
@@ -36,7 +35,7 @@ const SCOPE_OPTIONS = [
 export function AskForm() {
   const [question, setQuestion] = useState('');
   const [scope, setScope] = useState<string>('all');
-  const [answer, setAnswer] = useState<AskAnswerType | null>(null);
+  const [answer, setAnswer] = useState<EnrichedAskAnswer | null>(null);
   const [pending, startTransition] = useTransition();
 
   function submit(value?: string) {

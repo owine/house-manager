@@ -5,9 +5,15 @@ import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/cl
 import { createSuggestionLog } from '@/lib/ai/log';
 import { ASK_SYSTEM_PROMPT } from '@/lib/ai/prompts';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
-import { type AskAnswer, askAnswerSchema, askQuestionInputSchema } from '@/lib/ai/schemas';
+import {
+  type AskAnswer,
+  type AskCitation,
+  askAnswerSchema,
+  askQuestionInputSchema,
+} from '@/lib/ai/schemas';
 import { classifyAnthropicError, userFacingMessage } from '@/lib/ai/suggest/_shared';
 import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { embedTexts } from '@/lib/embedding/voyage';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
@@ -21,9 +27,27 @@ const logger = getLogger('ask.actions');
 // context window.
 const RETRIEVAL_K = 12;
 
+/**
+ * Citation with optional parent-entity info for ATTACHMENT rows. The LLM
+ * returns plain `AskCitation` (entityType + entityId); the action enriches
+ * attachments by looking up their parent FK so the UI can deep-link
+ * `/items/<id>?attachment=<aid>` instead of rendering a non-link chip.
+ */
+export type EnrichedAskCitation = AskCitation & {
+  parent?: {
+    entityType: 'ITEM' | 'NOTE' | 'SERVICE_RECORD' | 'WARRANTY';
+    entityId: string;
+  };
+};
+
+export type EnrichedAskAnswer = {
+  answer: string;
+  citations: EnrichedAskCitation[];
+};
+
 export type AskQuestionData = {
   logId: string;
-  answer: AskAnswer;
+  answer: EnrichedAskAnswer;
 };
 
 /**
@@ -156,6 +180,12 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
   const answer = (result as { parsed_output: AskAnswer }).parsed_output;
   const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
 
+  const enrichedCitations = await enrichCitations(answer.citations);
+  const enrichedAnswer: EnrichedAskAnswer = {
+    answer: answer.answer,
+    citations: enrichedCitations,
+  };
+
   const log = await createSuggestionLog({
     userId,
     kind: 'ask',
@@ -184,5 +214,49 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
     'ask: complete',
   );
 
-  return { ok: true, data: { logId: log.id, answer } };
+  return { ok: true, data: { logId: log.id, answer: enrichedAnswer } };
+}
+
+/**
+ * For each ATTACHMENT citation the LLM produced, look up the attachment's
+ * parent FK and decorate the citation with `parent: { entityType, entityId }`
+ * so the UI can render a real deep-link chip (`/items/<parent>?attachment=<aid>`)
+ * instead of a non-linked label. Non-attachment citations pass through.
+ *
+ * Single batched query — one `findMany` covers however many attachments
+ * the LLM cited, so this never blows up to N+1.
+ */
+async function enrichCitations(citations: AskCitation[]): Promise<EnrichedAskCitation[]> {
+  const attachmentIds = citations
+    .filter((c) => c.entityType === 'ATTACHMENT')
+    .map((c) => c.entityId);
+  if (attachmentIds.length === 0) return citations;
+
+  const parents = await prisma.attachment.findMany({
+    where: { id: { in: attachmentIds } },
+    select: {
+      id: true,
+      itemId: true,
+      noteId: true,
+      serviceRecordId: true,
+      warrantyId: true,
+    },
+  });
+  const byId = new Map(parents.map((p) => [p.id, p]));
+
+  return citations.map((c) => {
+    if (c.entityType !== 'ATTACHMENT') return c;
+    const p = byId.get(c.entityId);
+    if (!p) return c;
+    if (p.itemId) return { ...c, parent: { entityType: 'ITEM' as const, entityId: p.itemId } };
+    if (p.serviceRecordId)
+      return {
+        ...c,
+        parent: { entityType: 'SERVICE_RECORD' as const, entityId: p.serviceRecordId },
+      };
+    if (p.warrantyId)
+      return { ...c, parent: { entityType: 'WARRANTY' as const, entityId: p.warrantyId } };
+    if (p.noteId) return { ...c, parent: { entityType: 'NOTE' as const, entityId: p.noteId } };
+    return c;
+  });
 }

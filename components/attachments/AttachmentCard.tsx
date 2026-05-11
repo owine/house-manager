@@ -55,7 +55,10 @@ export function AttachmentCard({ a }: { a: AttachmentRow }) {
       hostname = externalUrl;
     }
     return (
-      <Card className="flex flex-col gap-2 p-2">
+      <Card
+        data-attachment-id={a.id}
+        className="flex flex-col gap-2 p-2 scroll-mt-20 transition-shadow"
+      >
         <a
           href={externalUrl}
           target="_blank"
