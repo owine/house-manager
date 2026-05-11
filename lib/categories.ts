@@ -247,9 +247,3 @@ export function visibleMetadataFields(
     return allowed.includes(currentTypeValue);
   });
 }
-
-// Kept as a named export so callers that want the freeform shape for
-// hand-rolled cases can grab it without going through metadataSchemaFor.
-{
-  freeformMetadataSchema;
-}

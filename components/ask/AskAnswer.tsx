@@ -1,8 +1,8 @@
-import type { AskAnswer as AskAnswerType } from '@/lib/ai/schemas';
+import type { EnrichedAskAnswer } from '@/lib/ask/actions';
 import { Markdown } from '@/lib/markdown';
 import { CitationChip } from './CitationChip';
 
-export function AskAnswer({ answer }: { answer: AskAnswerType }) {
+export function AskAnswer({ answer }: { answer: EnrichedAskAnswer }) {
   return (
     <div className="space-y-4">
       <div className="prose prose-sm dark:prose-invert max-w-none">

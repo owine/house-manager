@@ -1,32 +1,42 @@
 import Link from 'next/link';
-import type { AskCitation } from '@/lib/ai/schemas';
+import type { EnrichedAskCitation } from '@/lib/ask/actions';
 
-// Map an embedding entity type to the canonical detail route. Attachments
-// don't have their own page — they live under a parent (item, service
-// record, etc.) — so when this component runs into one it falls back to
-// a non-link chip until the route is resolvable. The full deep-link
-// behaviour for attachments arrives later when retrieval gives us the
-// attachment's parent context.
-function hrefFor(c: AskCitation): string | null {
-  switch (c.entityType) {
+// Map an embedding entity type to the canonical detail route. ATTACHMENT
+// citations are enriched server-side with parent FK info, so they deep-link
+// to the parent entity with `?attachment=<id>` — the AttachmentScrollHighlight
+// component on the parent page then scrolls + pulses the row.
+function hrefFor(c: EnrichedAskCitation): string | null {
+  if (c.entityType === 'ATTACHMENT' && c.parent) {
+    const base = parentRoute(c.parent.entityType, c.parent.entityId);
+    return base ? `${base}?attachment=${c.entityId}` : null;
+  }
+  return parentRoute(
+    c.entityType as 'ITEM' | 'NOTE' | 'SERVICE_RECORD' | 'WARRANTY' | 'CHECKLIST_ITEM',
+    c.entityId,
+  );
+}
+
+function parentRoute(
+  kind: 'ITEM' | 'NOTE' | 'SERVICE_RECORD' | 'WARRANTY' | 'CHECKLIST_ITEM',
+  id: string,
+): string | null {
+  switch (kind) {
     case 'ITEM':
-      return `/items/${c.entityId}`;
+      return `/items/${id}`;
     case 'NOTE':
-      return `/notes/${c.entityId}`;
+      return `/notes/${id}`;
     case 'SERVICE_RECORD':
-      return `/service/${c.entityId}`;
+      return `/service/${id}`;
     case 'WARRANTY':
-      return `/warranties/${c.entityId}`;
+      return `/warranties/${id}`;
     case 'CHECKLIST_ITEM':
-      return `/checklists/${c.entityId}`;
-    case 'ATTACHMENT':
-      return null;
+      return `/checklists/${id}`;
     default:
       return null;
   }
 }
 
-function labelPrefix(c: AskCitation): string {
+function labelPrefix(c: EnrichedAskCitation): string {
   switch (c.entityType) {
     case 'ITEM':
       return 'Item';
@@ -45,7 +55,7 @@ function labelPrefix(c: AskCitation): string {
   }
 }
 
-export function CitationChip({ citation }: { citation: AskCitation }) {
+export function CitationChip({ citation }: { citation: EnrichedAskCitation }) {
   const href = hrefFor(citation);
   const text = `${labelPrefix(citation)}: ${citation.label}`;
   const className =
