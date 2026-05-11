@@ -22,6 +22,7 @@ export const Queue = {
   ClassifyIncomingEmail: 'incoming-email.classify',
   ExtractIncomingEmail: 'incoming-email.extract',
   EmbedContent: 'embed.content',
+  ExtractAttachmentText: 'attachment.extract-text',
 } as const;
 export type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];

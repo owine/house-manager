@@ -3,6 +3,7 @@ import { resolveStoragePath } from '@/lib/attachments/storage';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { extractPdfText } from '@/lib/pdf/text';
 
 const log = getLogger('incoming-email.pdf-text');
 
@@ -38,10 +39,6 @@ export async function loadPdfTextForEmail(emailId: string): Promise<string> {
   // Delay env access until we know there are PDFs to load — the FILES_DIR
   // path is only needed for the read step below.
   const env = getEnv();
-  // Lazy-require unpdf so the dependency stays out of the hot path for emails
-  // without PDFs. Top-level import would force a 1MB+ wasm/js load even
-  // when classify never reaches this function.
-  const { extractText } = await import('unpdf');
 
   const chunks: string[] = [];
   let runningChars = 0;
@@ -57,15 +54,12 @@ export async function loadPdfTextForEmail(emailId: string): Promise<string> {
     try {
       const abs = resolveStoragePath(env.FILES_DIR, a.storagePath);
       const buf = await readFile(abs);
-      // unpdf accepts Uint8Array; Buffer is a Uint8Array on Node so cast is safe.
-      const { text } = await extractText(new Uint8Array(buf), { mergePages: true });
-      const joined = Array.isArray(text) ? text.join('\n') : (text ?? '');
       const remaining = MAX_CONCAT_CHARS - runningChars;
       if (remaining <= 0) break;
-      const slice = joined.slice(0, remaining);
-      if (slice.length > 0) {
-        chunks.push(slice);
-        runningChars += slice.length;
+      const { text } = await extractPdfText(buf, { maxChars: remaining });
+      if (text.length > 0) {
+        chunks.push(text);
+        runningChars += text.length;
       }
     } catch (err) {
       log.warn(

@@ -111,6 +111,17 @@ export async function uploadAttachment(formData: FormData): Promise<ActionResult
       }
     }
 
+    // Plan 4c: enqueue the attachment text extractor. The job is a no-op
+    // when ASK_ENABLED=false (worker checks env), and it chains its own
+    // embed-content job on success. Failure to enqueue is non-fatal — the
+    // upload itself is complete and the Phase G backfill picks orphans up.
+    try {
+      const boss = await getBoss();
+      await boss.send(Queue.ExtractAttachmentText, { attachmentId: id });
+    } catch (e) {
+      logger.error({ err: e }, 'failed to enqueue attachment text extraction');
+    }
+
     for (const p of REVALIDATE_PATH[parentType](parentId)) revalidatePath(p);
     return { ok: true, data: { id: created.id } };
   } catch (e) {
