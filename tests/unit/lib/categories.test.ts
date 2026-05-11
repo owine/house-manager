@@ -17,6 +17,96 @@ describe('categoryConfigs', () => {
     expect(categoryConfigFor('appliance')?.typeField).toBe('applianceType');
     expect(categoryConfigFor('hvac')?.typeField).toBe('hvacType');
   });
+
+  it('exposes a typeField + visibility map for vehicle, tool, and landscaping', () => {
+    expect(categoryConfigFor('vehicle')?.typeField).toBe('vehicleType');
+    expect(categoryConfigFor('tool')?.typeField).toBe('toolType');
+    expect(categoryConfigFor('landscaping')?.typeField).toBe('landscapingType');
+  });
+});
+
+describe('visibleMetadataFields — vehicle', () => {
+  it('shows mileage for cars but engineHours for boats', () => {
+    const config = categoryConfigFor('vehicle');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const car = visibleMetadataFields('vehicle', keys, 'car');
+    expect(car).toContain('mileage');
+    expect(car).toContain('vin');
+    expect(car).not.toContain('engineHours');
+
+    const boat = visibleMetadataFields('vehicle', keys, 'boat');
+    expect(boat).toContain('engineHours');
+    expect(boat).not.toContain('mileage');
+    expect(boat).not.toContain('vin');
+  });
+
+  it('shows tireSize for trailers but no engine fields', () => {
+    const config = categoryConfigFor('vehicle');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const trailer = visibleMetadataFields('vehicle', keys, 'trailer');
+    expect(trailer).toContain('tireSize');
+    expect(trailer).not.toContain('engineDisplacement');
+    expect(trailer).not.toContain('mileage');
+    expect(trailer).not.toContain('engineHours');
+  });
+});
+
+describe('visibleMetadataFields — tool', () => {
+  it('shows mower-specific fields for lawn-mower', () => {
+    const config = categoryConfigFor('tool');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const mower = visibleMetadataFields('tool', keys, 'lawn-mower');
+    expect(mower).toContain('cuttingWidthInches');
+    expect(mower).toContain('bagCapacityBushels');
+    expect(mower).toContain('bladeSize');
+    expect(mower).not.toContain('maxPsi');
+    expect(mower).not.toContain('outputWatts');
+  });
+
+  it('shows tank+psi for compressors and watts for generators', () => {
+    const config = categoryConfigFor('tool');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const compressor = visibleMetadataFields('tool', keys, 'air-compressor');
+    expect(compressor).toContain('maxPsi');
+    expect(compressor).toContain('tankGallons');
+    expect(compressor).not.toContain('outputWatts');
+
+    const generator = visibleMetadataFields('tool', keys, 'generator');
+    expect(generator).toContain('outputWatts');
+    expect(generator).not.toContain('maxPsi');
+  });
+});
+
+describe('visibleMetadataFields — landscaping', () => {
+  it('shows species + plantedDate for trees, fence fields for fence-section', () => {
+    const config = categoryConfigFor('landscaping');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const tree = visibleMetadataFields('landscaping', keys, 'tree');
+    expect(tree).toContain('speciesOrCultivar');
+    expect(tree).toContain('plantedDate');
+    expect(tree).not.toContain('fenceMaterial');
+    expect(tree).not.toContain('zoneCount');
+
+    const fence = visibleMetadataFields('landscaping', keys, 'fence-section');
+    expect(fence).toContain('fenceMaterial');
+    expect(fence).toContain('fenceLinearFeet');
+    expect(fence).toContain('fenceHeightFeet');
+    expect(fence).not.toContain('speciesOrCultivar');
+  });
+
+  it('keeps legacy `coverageArea` (string) always visible for back-compat', () => {
+    const config = categoryConfigFor('landscaping');
+    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+    const keys = Object.keys((config?.schema as any).shape);
+    const irrigation = visibleMetadataFields('landscaping', keys, 'irrigation-zone');
+    expect(irrigation).toContain('coverageArea');
+    expect(irrigation).toContain('sprinklerHeadCount');
+  });
 });
 
 describe('visibleMetadataFields', () => {
