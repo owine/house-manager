@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Calendar, Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
@@ -26,10 +26,16 @@ export default async function RemindersPage({ searchParams }: { searchParams: Se
         <PageHeader
           title={`Reminders (${total})`}
           actions={
-            <Button render={<Link href="/reminders/new" />}>
-              <Plus className="h-4 w-4" />
-              New reminder
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" render={<Link href="/reminders/calendar" />}>
+                <Calendar className="h-4 w-4" />
+                Calendar
+              </Button>
+              <Button render={<Link href="/reminders/new" />}>
+                <Plus className="h-4 w-4" />
+                New reminder
+              </Button>
+            </div>
           }
         />
       }
