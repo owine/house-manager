@@ -31,8 +31,9 @@ export default async function EditReminderPage({ params }: { params: Params }) {
     t.itemId ? { itemId: t.itemId } : { systemId: t.systemId as string },
   );
 
+  const isChore = r.kind === 'CHORE';
   return (
-    <FormPageShell header={<PageHeader title="Edit reminder" />}>
+    <FormPageShell header={<PageHeader title={isChore ? 'Edit chore' : 'Edit reminder'} />}>
       <ReminderForm
         availableItems={availableItems}
         availableSystems={availableSystems}
@@ -48,6 +49,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
         }}
         action={updateReminder}
         submitLabel="Save changes"
+        kind={r.kind}
       />
     </FormPageShell>
   );

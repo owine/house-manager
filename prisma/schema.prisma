@@ -316,6 +316,15 @@ enum IncomingEmailKind {
   UNKNOWN
 }
 
+// REMINDER — calendar-tied + notifies (current default behaviour).
+// CHORE    — ambient cadence task; no notifications by default; surfaced
+// on /chores instead of /reminders. Same underlying recurrence + targets
+// model; just a different UX lens.
+enum ReminderKind {
+  REMINDER
+  CHORE
+}
+
 enum IncomingEmailState {
   UNTRIAGED
   AUTO_LINKED
@@ -459,6 +468,7 @@ model Reminder {
   notifyUserIds           String[]
   autoCreateServiceRecord Boolean             @default(false)
   active                  Boolean             @default(true)
+  kind                    ReminderKind        @default(REMINDER)
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
@@ -466,6 +476,7 @@ model Reminder {
   completions             ReminderCompletion[]
   notificationLogs        NotificationLog[]
 
+  @@index([kind, active])
   @@map("reminders")
 }
 

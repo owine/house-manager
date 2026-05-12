@@ -23,6 +23,15 @@ export const recurrenceSchema = z.discriminatedUnion('kind', [
 
 export type Recurrence = z.infer<typeof recurrenceSchema>;
 
+// One model, two views: REMINDER is calendar-tied with notifications;
+// CHORE is the ambient-cadence cousin (no notifications fire — the
+// reminders-tick worker filters them out — but they still live in the
+// same table with the same recurrence + targets shape).
+//
+// Values match the Prisma `ReminderKind` enum verbatim so passthrough
+// to the DB needs no remapping.
+const reminderKindSchema = z.enum(['REMINDER', 'CHORE']);
+
 export const createReminderSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(20_000).optional().or(z.literal('')),
@@ -32,6 +41,7 @@ export const createReminderSchema = z.object({
   leadTimeDays: z.number().int().min(0).max(365).default(3),
   autoCreateServiceRecord: z.boolean().default(false),
   notifyUserIds: z.array(z.string().min(1)).optional(),
+  kind: reminderKindSchema.default('REMINDER'),
 });
 
 export type CreateReminderInput = z.infer<typeof createReminderSchema>;
@@ -39,6 +49,9 @@ export type CreateReminderInput = z.infer<typeof createReminderSchema>;
 export const updateReminderSchema = createReminderSchema.partial().extend({
   id: z.string().min(1),
   active: z.boolean().optional(),
+  // Override the `.default('REMINDER')` from createReminderSchema so an
+  // update that omits `kind` doesn't silently flip a CHORE back to REMINDER.
+  kind: reminderKindSchema.optional(),
 });
 
 // Per-target completion. `targetIds` selects which targets to mark complete;

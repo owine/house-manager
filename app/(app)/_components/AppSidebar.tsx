@@ -8,6 +8,7 @@ import {
   ListChecks,
   MessageCircleQuestionMark,
   Package,
+  Repeat,
   Search,
   Settings,
   Shield,
@@ -56,6 +57,7 @@ const NAV_GROUPS: NavItem[][] = [
     { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
     { href: '/ask', label: 'Ask', icon: MessageCircleQuestionMark },
     { href: '/reminders', label: 'Reminders', icon: Calendar },
+    { href: '/chores', label: 'Chores', icon: Repeat },
     { href: '/checklists', label: 'Checklists', icon: ListChecks },
   ],
   // History & search — what's been done, plus a way to find it

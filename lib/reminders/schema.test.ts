@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createReminderSchema, recurrenceSchema } from './schema';
+import { createReminderSchema, recurrenceSchema, updateReminderSchema } from './schema';
 
 describe('recurrenceSchema', () => {
   it.each([
@@ -91,5 +91,53 @@ describe('createReminderSchema', () => {
       leadTimeDays: -1,
     });
     expect(r.success).toBe(false);
+  });
+
+  it('defaults kind to REMINDER when omitted', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'X',
+      targets: [{ itemId: 'cuid-1' }],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.kind).toBe('REMINDER');
+  });
+
+  it('accepts kind=CHORE', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'Take out trash',
+      targets: [{ itemId: 'cuid-1' }],
+      recurrence: { kind: 'interval', days: 7 },
+      nextDueOn: new Date(),
+      kind: 'CHORE',
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.kind).toBe('CHORE');
+  });
+
+  it('rejects unknown kind values', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'X',
+      targets: [{ itemId: 'cuid-1' }],
+      recurrence: { kind: 'interval', days: 60 },
+      nextDueOn: new Date(),
+      kind: 'TASK',
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('updateReminderSchema', () => {
+  it('leaves kind undefined when omitted (no silent flip to REMINDER)', () => {
+    const r = updateReminderSchema.safeParse({ id: 'cuid-1', title: 'X' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.kind).toBeUndefined();
+  });
+
+  it('accepts an explicit kind change on update', () => {
+    const r = updateReminderSchema.safeParse({ id: 'cuid-1', kind: 'CHORE' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.kind).toBe('CHORE');
   });
 });
