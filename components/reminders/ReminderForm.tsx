@@ -53,6 +53,13 @@ type Props = {
     input: CreateReminderInput | (CreateReminderInput & { id: string }),
   ) => Promise<ActionResult<{ id: string }>>;
   submitLabel: string;
+  /**
+   * Kind of reminder this form is creating/editing. CHORE hides the
+   * notify-related controls (lead time, auto-service-record) since the
+   * reminders-tick worker filters them out — chores never notify.
+   * Defaults to REMINDER for backwards compatibility.
+   */
+  kind?: 'REMINDER' | 'CHORE';
 };
 
 export function ReminderForm({
@@ -62,7 +69,9 @@ export function ReminderForm({
   defaultValues,
   action,
   submitLabel,
+  kind = 'REMINDER',
 }: Props) {
+  const isChore = kind === 'CHORE';
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
@@ -94,17 +103,21 @@ export function ReminderForm({
     }
     setTargetsError(null);
     startTransition(async () => {
-      const base = { ...(data as ParsedFormValues), targets } as CreateReminderInput;
+      const base = { ...(data as ParsedFormValues), targets, kind } as CreateReminderInput;
       const payload = defaultValues?.id ? { ...base, id: defaultValues.id } : base;
       const result = await action(payload);
       if (!result.ok) {
         const applied = applyActionFieldErrors(setError, result);
         if (result.formError) setError('root', { message: result.formError });
-        if (!applied && !result.formError) toast.error('Failed to save reminder');
+        if (!applied && !result.formError)
+          toast.error(`Failed to save ${isChore ? 'chore' : 'reminder'}`);
         return;
       }
       const isEdit = !!defaultValues?.id;
-      toast.success(isEdit ? 'Reminder updated' : 'Reminder created');
+      const noun = isChore ? 'Chore' : 'Reminder';
+      toast.success(`${noun} ${isEdit ? 'updated' : 'created'}`);
+      // Detail/edit pages live under /reminders/ for both kinds; the detail
+      // page reads `kind` from the row and adjusts the back-link.
       router.push(`/reminders/${result.data.id}`);
     });
   });
@@ -210,33 +223,35 @@ export function ReminderForm({
           )}
         />
 
-        <FormField
-          control={control}
-          name="leadTimeDays"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Lead time (days)</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  className="w-24"
-                  min={0}
-                  max={365}
-                  name={field.name}
-                  ref={field.ref}
-                  onBlur={field.onBlur}
-                  disabled={field.disabled}
-                  value={typeof field.value === 'number' ? field.value : ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    field.onChange(v === '' ? undefined : Number(v));
-                  }}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!isChore && (
+          <FormField
+            control={control}
+            name="leadTimeDays"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Lead time (days)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    className="w-24"
+                    min={0}
+                    max={365}
+                    name={field.name}
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    disabled={field.disabled}
+                    value={typeof field.value === 'number' ? field.value : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      field.onChange(v === '' ? undefined : Number(v));
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={control}

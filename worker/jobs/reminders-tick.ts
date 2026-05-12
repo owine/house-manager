@@ -15,7 +15,7 @@ export async function handleRemindersTick(deps: {
 
   // Cap our look-ahead window to the largest active leadTimeDays (bounded for sanity).
   const aggregateLeadTime = await prisma.reminder.aggregate({
-    where: { active: true },
+    where: { active: true, kind: 'REMINDER' },
     _max: { leadTimeDays: true },
   });
   const maxLead = Math.min(aggregateLeadTime._max.leadTimeDays ?? 3, 30);
@@ -29,7 +29,10 @@ export async function handleRemindersTick(deps: {
   const dueTargets = await prisma.reminderTarget.findMany({
     where: {
       nextDueOn: { lte: new Date(now.getTime() + maxLead * DAY_MS) },
-      reminder: { active: true },
+      // Filter to kind=REMINDER — chores share the same recurrence + targets
+      // model but are ambient (no notifications fire). The /chores UI is the
+      // user's surface for completing them.
+      reminder: { active: true, kind: 'REMINDER' },
     },
     select: {
       reminderId: true,

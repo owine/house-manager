@@ -1,3 +1,4 @@
+import type { ReminderKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import type { ListParams } from '@/lib/url-params';
 
@@ -44,8 +45,9 @@ export async function getReminder(id: string) {
   return withDerivedNextDueOn(row);
 }
 
-export async function listReminders(params: ListParams) {
+export async function listReminders(params: ListParams, kind: ReminderKind = 'REMINDER') {
   const where = {
+    kind,
     AND: [
       params.filters.itemId?.length
         ? { targets: { some: { itemId: { in: params.filters.itemId } } } }
@@ -121,7 +123,9 @@ export async function listUpcomingReminders(limit = 5) {
   // earliest target rows up to `limit * 2` to compensate for de-dup, then
   // group by reminderId and project the earliest nextDueOn.
   const targets = await prisma.reminderTarget.findMany({
-    where: { reminder: { active: true } },
+    // Chores are excluded — this widget is "what notifications will fire soon."
+    // Chore due-dates live under /chores.
+    where: { reminder: { active: true, kind: 'REMINDER' } },
     orderBy: { nextDueOn: 'asc' },
     take: limit * 4,
     include: {
