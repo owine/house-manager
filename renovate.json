@@ -1,17 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommits",
-    "group:allNonMajor",
-    "customManagers:dockerfileVersions",
-    "customManagers:githubActionsVersions"
+    "github>owine/renovate-config",
+    "github>owine/renovate-config:automerge",
+    "github>owine/renovate-config:node",
+    "github>owine/renovate-config:docker"
   ],
-  "timezone": "America/Chicago",
-  "schedule": ["* * * * 1"],
-  "automergeSchedule": ["at any time"],
-  "rangeStrategy": "pin",
   "enabledManagers": [
     "npm",
     "github-actions",
@@ -31,104 +25,11 @@
       "matchStrings": ["{\"currentValue\": $split($.\"$schema\",(\"/\"))[-2]}"]
     }
   ],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["* * * * 1"]
-  },
-  "prHourlyLimit": 4,
-  "prConcurrentLimit": 10,
-  "vulnerabilityAlerts": {
-    "labels": ["security"],
-    "automerge": true
-  },
   "packageRules": [
     {
-      "description": "Auto-merge patch updates and lockfile maintenance once CI passes",
-      "matchUpdateTypes": ["patch", "pinDigest", "lockFileMaintenance"],
-      "automerge": true,
-      "automergeType": "pr"
-    },
-    {
-      "description": "Auto-merge minor updates too (within group:allNonMajor consolidated PR)",
-      "matchUpdateTypes": ["minor"],
-      "automerge": true,
-      "automergeType": "pr"
-    },
-    {
-      "description": "Major updates: separate PR per package, manual review",
-      "matchUpdateTypes": ["major"],
-      "automerge": false,
-      "labels": ["major-update"]
-    },
-    {
-      "description": "Group Prisma packages so client + adapter + CLI bump together (any update type)",
-      "matchPackageNames": ["@prisma/client", "@prisma/adapter-pg", "prisma"],
-      "groupName": "prisma"
-    },
-    {
-      "description": "Group Auth.js packages",
-      "matchPackageNames": ["next-auth", "@auth/prisma-adapter"],
-      "groupName": "auth.js"
-    },
-    {
-      "description": "Group testing packages (vitest + testcontainers families + vite peer)",
-      "matchPackageNames": [
-        "vitest",
-        "@vitest/coverage-v8",
-        "testcontainers",
-        "@testcontainers/postgresql",
-        "vite"
-      ],
-      "groupName": "testing"
-    },
-    {
-      "description": "Group React + types together",
-      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
-      "groupName": "react"
-    },
-    {
-      "description": "Group pg + types together",
-      "matchPackageNames": ["pg", "@types/pg"],
-      "groupName": "pg"
-    },
-    {
-      "description": "Group GitHub Actions checkout/setup-node/pnpm-setup as a unit",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": ["actions/checkout", "actions/setup-node", "pnpm/action-setup"],
-      "groupName": "github-actions-setup"
-    },
-    {
-      "description": "Group artifact actions (upload + download) so versions stay paired",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": ["actions/upload-artifact", "actions/download-artifact"],
-      "groupName": "github-actions-artifact"
-    },
-    {
-      "description": "Group all Docker actions (build/login/metadata/buildx/push)",
-      "matchManagers": ["github-actions"],
-      "matchPackageNames": [
-        "docker/build-push-action",
-        "docker/login-action",
-        "docker/metadata-action",
-        "docker/setup-buildx-action",
-        "docker/setup-qemu-action"
-      ],
-      "groupName": "docker-actions"
-    },
-    {
-      "description": "Group GitGuardian (action + ggshield CLI) so secret-scanning stays consistent",
+      "description": "GitGuardian (action + ggshield CLI) must stay version-consistent",
       "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
       "groupName": "gitguardian"
-    },
-    {
-      "description": "Pin Docker image digests in Dockerfile and GitHub Actions service images (compose is excluded via enabledManagers)",
-      "matchManagers": ["dockerfile", "github-actions"],
-      "pinDigests": true
-    },
-    {
-      "description": "Group every toolchain pin (Node + pnpm) so engines, packageManager, .nvmrc, ci.yml env vars, Dockerfile FROM, and Dockerfile corepack-prepared pnpm all move in lockstep",
-      "matchPackageNames": ["node", "pnpm"],
-      "groupName": "toolchain-versions"
     }
   ]
 }
