@@ -85,7 +85,12 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { question, entityTypes } = parsed.data;
+  const { messages, entityTypes } = parsed.data;
+  // RAG, rate-limit logging, and snapshot keys all key off the latest user
+  // turn — schema already enforces that the last message is from the user.
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage) return { ok: false, formError: 'Empty conversation' };
+  const question = lastMessage.content.trim();
 
   const rl = await checkRateLimit(userId);
   if (!rl.allowed) {
@@ -145,7 +150,14 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
           )
           .join('\n\n---\n\n');
 
-  const userContent = `Question:\n${question}\n\n---\n\nRetrieved context:\n${contextBlock}`;
+  // The retrieved-context block is wrapped around the latest user turn so
+  // Anthropic sees the chunks alongside the new question. Prior turns are
+  // forwarded verbatim — they give the model pronoun / follow-up context
+  // ("what about last year?") without re-running retrieval against them.
+  const latestUserContent = `${question}\n\n---\n\nRetrieved context:\n${contextBlock}`;
+  const anthropicMessages = messages.map((m, i) =>
+    i === messages.length - 1 ? { role: 'user' as const, content: latestUserContent } : m,
+  );
 
   // Step 5 — Anthropic call.
   const start = Date.now();
@@ -155,7 +167,7 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
       model: ANTHROPIC_MODEL,
       max_tokens: ANTHROPIC_MAX_TOKENS,
       system: [{ type: 'text', text: ASK_SYSTEM_PROMPT }],
-      messages: [{ role: 'user', content: userContent }],
+      messages: anthropicMessages,
       output_config: { format: zodOutputFormat(askAnswerSchema) },
     } as never);
   } catch (e) {

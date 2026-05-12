@@ -114,8 +114,37 @@ export const askAnswerSchema = z.object({
 });
 export type AskAnswer = z.infer<typeof askAnswerSchema>;
 
+const askMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().min(1).max(8000),
+});
+
+// Multi-turn input — `messages` is the full conversation history. The last
+// message must be from the user (it's the new turn). RAG retrieval is keyed
+// off that last user message; prior turns supply pronoun / context resolution
+// to Anthropic without re-retrieving.
+//
+// Caps:
+//   - 20 turns total per thread (10 round-trips) so the prompt stays bounded.
+//   - Per-message content max 8k chars to leave room for context block.
+//   - Latest user message has the same 3–500 char bounds as old single-turn.
 export const askQuestionInputSchema = z.object({
-  question: z.string().trim().min(3, 'Question is too short').max(500, 'Question is too long'),
+  messages: z
+    .array(askMessageSchema)
+    .min(1)
+    .max(20)
+    .refine(
+      (msgs) => {
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== 'user') return false;
+        const trimmed = last.content.trim();
+        return trimmed.length >= 3 && trimmed.length <= 500;
+      },
+      {
+        message: 'Last message must be a user question between 3 and 500 characters',
+        path: ['messages'],
+      },
+    ),
   entityTypes: z
     .array(z.enum(['ITEM', 'NOTE', 'SERVICE_RECORD', 'CHECKLIST_ITEM', 'WARRANTY', 'ATTACHMENT']))
     .optional(),
