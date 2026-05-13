@@ -3,10 +3,10 @@ pre-commit:
   commands:
     biome:
       glob: '*.{ts,tsx,js,jsx,json}'
-      run: pnpm exec biome check --staged --no-errors-on-unmatched {staged_files}
+      run: fnm exec -- pnpm exec biome check --staged --no-errors-on-unmatched {staged_files}
     typecheck:
       glob: '*.{ts,tsx}'
-      run: pnpm typecheck
+      run: fnm exec -- pnpm typecheck
     ggshield:
       # GitGuardian secret scan on staged content. Skipped when GITGUARDIAN_API_KEY
       # is unset so contributors without a GG account aren't blocked. CI runs the
@@ -21,4 +21,4 @@ pre-commit:
 pre-push:
   commands:
     test-changed:
-      run: pnpm test:unit
+      run: fnm exec -- pnpm test:unit
