@@ -6,15 +6,6 @@
     "github>owine/renovate-config:node",
     "github>owine/renovate-config:docker"
   ],
-  "enabledManagers": [
-    "npm",
-    "github-actions",
-    "dockerfile",
-    "nvm",
-    "pre-commit",
-    "custom.regex",
-    "custom.jsonata"
-  ],
   "customManagers": [
     {
       "customType": "jsonata",
