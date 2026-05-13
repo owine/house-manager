@@ -1,16 +1,9 @@
 savePrefix: ""
 
-# Opt out of v11's default 1-day quarantine on newly-published packages.
-# Renovate already gates dep currency for us, and PRs go through CI before
-# merging anyway, so the extra layer just delays patch updates without
-# adding meaningful supply-chain protection here.
-minimumReleaseAge: 0
-
-# Build-script allowlist (replaces v10's `pnpm.onlyBuiltDependencies` and
-# the silent-warning-on-ignored default). v11 makes ignored build scripts
-# a hard error via `strictDepBuilds: true`, so every package below needs
-# explicit approval. Keep this list minimal — entries here run arbitrary
-# code at install time. Each was vetted at the time of inclusion.
+# Build-script allowlist. pnpm 11+ defaults strictDepBuilds: true so any
+# package not listed here errors at install time rather than silently
+# skipping its postinstall. Keep this list minimal — entries here run
+# arbitrary code at install time. Each was vetted at the time of inclusion.
 allowBuilds:
   "@prisma/engines": true # downloads Prisma query engine binaries
   "@sentry/cli": true # downloads sentry-cli native binary
