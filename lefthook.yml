@@ -3,10 +3,10 @@ pre-commit:
   commands:
     biome:
       glob: '*.{ts,tsx,js,jsx,json}'
-      run: fnm use --silent-if-unchanged && pnpm exec biome check --staged --no-errors-on-unmatched {staged_files}
+      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm exec biome check --staged --no-errors-on-unmatched {staged_files}
     typecheck:
       glob: '*.{ts,tsx}'
-      run: fnm use --silent-if-unchanged && pnpm typecheck
+      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm typecheck
     ggshield:
       # GitGuardian secret scan on staged content. Skipped when GITGUARDIAN_API_KEY
       # is unset so contributors without a GG account aren't blocked. CI runs the
@@ -21,4 +21,4 @@ pre-commit:
 pre-push:
   commands:
     test-changed:
-      run: fnm use --silent-if-unchanged && pnpm test:unit
+      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm test:unit
