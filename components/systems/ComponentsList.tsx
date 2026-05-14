@@ -83,7 +83,7 @@ export function ComponentsList({ systemId, components, orphanItems }: Props) {
       </CardHeader>
       <CardContent>
         {components.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No components in this system yet.</p>
+          <p className="text-sm text-muted-foreground">no components in this system yet.</p>
         ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {components.map((c) => (
@@ -120,7 +120,7 @@ export function ComponentsList({ systemId, components, orphanItems }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add a component</DialogTitle>
+            <DialogTitle>add a component</DialogTitle>
             <DialogDescription>
               Pick an item that isn&apos;t already assigned to a system.
             </DialogDescription>

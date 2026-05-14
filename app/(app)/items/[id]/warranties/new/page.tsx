@@ -24,7 +24,7 @@ export default async function NewWarrantyPage({ params }: { params: Params }) {
 
   return (
     <div>
-      <h1>Add warranty for {item.name}</h1>
+      <h1>add warranty for {item.name}</h1>
       <WarrantyForm
         availableItems={availableItems}
         availableSystems={availableSystems}

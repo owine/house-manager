@@ -6,7 +6,7 @@ import { InboxList } from '@/components/incoming-email/InboxList';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type InboxTab, listInboxEmails } from '@/lib/incoming-email/queries';
 
-export const metadata: Metadata = { title: 'Inbox' };
+export const metadata: Metadata = { title: 'inbox' };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -23,7 +23,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Search
     <ListPageShell
       header={
         <PageHeader
-          title="Inbox"
+          title="inbox"
           description="Vendor estimates, invoices, and service tickets forwarded via email."
         />
       }

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Checklists' };
+export const metadata: Metadata = { title: 'checklists' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ChecklistCard } from '@/components/checklists/ChecklistCard';
@@ -23,7 +23,7 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: S
     <ListPageShell
       header={
         <PageHeader
-          title={`Checklists (${checklists.length})`}
+          title={`checklists (${checklists.length})`}
           actions={
             <div className="flex items-center gap-2">
               <Button
@@ -44,7 +44,7 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: S
       isEmpty={isEmpty}
       empty={
         <EmptyState
-          title={showArchived ? 'No archived checklists' : 'No checklists yet'}
+          title={showArchived ? 'no archived checklists' : 'no checklists yet'}
           description={
             showArchived
               ? 'Switch back to active to see your live checklists.'

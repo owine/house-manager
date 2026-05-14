@@ -48,6 +48,6 @@ test('searches across kinds, filters by facet', async ({ page, context }) => {
 
   // 4) /search page shows the result + facet count.
   await page.goto('/search?q=furnace');
-  await expect(page.getByRole('heading', { name: 'Search' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'search' })).toBeVisible();
   await expect(page.getByText(/All 1/)).toBeVisible();
 });

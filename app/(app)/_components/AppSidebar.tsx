@@ -25,12 +25,14 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
 } from '@/components/ui/sidebar';
+import { Wordmark } from '@/components/Wordmark';
 
 type BadgeKey = 'inbox';
 type NavItem = {
@@ -43,29 +45,40 @@ type NavItem = {
 // Sidebar nav grouped by intent so the user's mental model maps cleanly to
 // the menu: orientation (where am I?) → inventory (what do I own?) →
 // workflows (what needs doing?) → history & search (what happened?).
-const NAV_GROUPS: NavItem[][] = [
-  // Orientation
-  [{ href: '/dashboard', label: 'Dashboard', icon: Home }],
-  // Inventory — the things being managed
-  [
-    { href: '/items', label: 'Items', icon: Package },
-    { href: '/systems', label: 'Systems', icon: Layers },
-    { href: '/vendors', label: 'Vendors', icon: Users },
-  ],
-  // Workflows — what needs your attention
-  [
-    { href: '/inbox', label: 'Inbox', icon: Inbox, badgeKey: 'inbox' },
-    { href: '/ask', label: 'Ask', icon: MessageCircleQuestionMark },
-    { href: '/reminders', label: 'Reminders', icon: Calendar },
-    { href: '/chores', label: 'Chores', icon: Repeat },
-    { href: '/checklists', label: 'Checklists', icon: ListChecks },
-  ],
-  // History & search — what's been done, plus a way to find it
-  [
-    { href: '/service', label: 'Service', icon: Wrench },
-    { href: '/notes', label: 'Notes', icon: StickyNote },
-    { href: '/search', label: 'Search', icon: Search },
-  ],
+// Group titles use the brand's mono micro-label treatment (uppercase + tracked)
+// — the one exception to the lowercase rule. Nav labels themselves stay
+// lowercase per the voice guidelines.
+type NavGroup = { title?: string; items: NavItem[] };
+const NAV_GROUPS: NavGroup[] = [
+  {
+    items: [{ href: '/dashboard', label: 'dashboard', icon: Home }],
+  },
+  {
+    title: 'inventory',
+    items: [
+      { href: '/items', label: 'items', icon: Package },
+      { href: '/systems', label: 'systems', icon: Layers },
+      { href: '/vendors', label: 'vendors', icon: Users },
+    ],
+  },
+  {
+    title: 'workflows',
+    items: [
+      { href: '/inbox', label: 'inbox', icon: Inbox, badgeKey: 'inbox' },
+      { href: '/ask', label: 'ask', icon: MessageCircleQuestionMark },
+      { href: '/reminders', label: 'reminders', icon: Calendar },
+      { href: '/chores', label: 'chores', icon: Repeat },
+      { href: '/checklists', label: 'checklists', icon: ListChecks },
+    ],
+  },
+  {
+    title: 'history',
+    items: [
+      { href: '/service', label: 'service', icon: Wrench },
+      { href: '/notes', label: 'notes', icon: StickyNote },
+      { href: '/search', label: 'search', icon: Search },
+    ],
+  },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -86,17 +99,20 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <Link href="/dashboard" className="flex items-center gap-2 px-2 py-1.5 font-semibold">
-          <span className="text-base">House Manager</span>
+        <Link href="/dashboard" className="flex items-center px-2 py-1.5 text-base">
+          <Wordmark />
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
         {NAV_GROUPS.map((group, idx) => (
-          <SidebarGroup key={group[0]?.href ?? idx}>
+          <SidebarGroup key={group.items[0]?.href ?? idx}>
+            {group.title && (
+              <SidebarGroupLabel className="label-mono">{group.title}</SidebarGroupLabel>
+            )}
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.map((item) => {
+                {group.items.map((item) => {
                   const badgeCount = item.badgeKey ? badges?.[item.badgeKey] : undefined;
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -134,10 +150,10 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href="/settings" />}
                   isActive={isActive(pathname, '/settings')}
-                  tooltip="Settings"
+                  tooltip="settings"
                 >
                   <Settings className="h-4 w-4" />
-                  <span>Settings</span>
+                  <span>settings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {isAdmin && (
@@ -145,10 +161,10 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href="/admin" />}
                     isActive={isActive(pathname, '/admin')}
-                    tooltip="Admin"
+                    tooltip="admin"
                   >
                     <Shield className="h-4 w-4" />
-                    <span>Admin</span>
+                    <span>admin</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
@@ -160,7 +176,7 @@ export function AppSidebar({
       <SidebarFooter>
         <ThemeToggle />
         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-          Signed in as {user.name ?? 'user'}
+          signed in as {user.name ?? 'user'}
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -20,7 +20,7 @@ export default async function EditVendorPage({ params }: { params: Params }) {
   if (!vendor) notFound();
 
   return (
-    <FormPageShell header={<PageHeader title={`Edit ${vendor.name}`} />}>
+    <FormPageShell header={<PageHeader title={`edit ${vendor.name}`} />}>
       <VendorForm
         defaultValues={{
           id: vendor.id,

@@ -37,7 +37,7 @@ export function ServiceTab({ item }: Props) {
       </CardHeader>
       <CardContent className="pt-4">
         {item.serviceRecords.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No service records yet.</p>
+          <p className="text-sm text-muted-foreground">no service records yet.</p>
         ) : (
           <Table>
             <TableHeader>

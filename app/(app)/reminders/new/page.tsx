@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 
-export const metadata: Metadata = { title: 'New reminder' };
+export const metadata: Metadata = { title: 'new reminder' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
@@ -29,7 +29,7 @@ export default async function NewReminderPage({ searchParams }: { searchParams: 
   }
 
   return (
-    <FormPageShell header={<PageHeader title="New reminder" />}>
+    <FormPageShell header={<PageHeader title="new reminder" />}>
       <ReminderForm
         availableItems={availableItems}
         availableSystems={availableSystems}

@@ -20,7 +20,7 @@ export function NotesTab({ item }: Props) {
       </CardHeader>
       <CardContent className="pt-4">
         {item.itemNotes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No notes yet.</p>
+          <p className="text-sm text-muted-foreground">no notes yet.</p>
         ) : (
           <ul className="divide-y">
             {item.itemNotes.map((note) => (

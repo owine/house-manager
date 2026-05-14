@@ -4,12 +4,12 @@ import { cn } from '@/lib/utils';
 export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files' | 'reminders';
 
 const TABS: { slug: TabSlug; label: string }[] = [
-  { slug: 'overview', label: 'Overview' },
-  { slug: 'warranties', label: 'Warranties' },
-  { slug: 'service', label: 'Service' },
-  { slug: 'notes', label: 'Notes' },
-  { slug: 'files', label: 'Files' },
-  { slug: 'reminders', label: 'Reminders' },
+  { slug: 'overview', label: 'overview' },
+  { slug: 'warranties', label: 'warranties' },
+  { slug: 'service', label: 'service' },
+  { slug: 'notes', label: 'notes' },
+  { slug: 'files', label: 'files' },
+  { slug: 'reminders', label: 'reminders' },
 ];
 
 type Props = {

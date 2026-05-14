@@ -185,7 +185,7 @@ export function ChecklistEditor({ checklist }: Props) {
           </div>
         )}
         {orderedItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No items yet. Add one below.</p>
+          <p className="text-sm text-muted-foreground">no items yet. Add one below.</p>
         ) : (
           <ul className="divide-y rounded-md border">
             {orderedItems.map((row, i) => (

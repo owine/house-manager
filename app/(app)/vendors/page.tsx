@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Vendors' };
+export const metadata: Metadata = { title: 'vendors' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -26,7 +26,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Sear
     <ListPageShell
       header={
         <PageHeader
-          title={`Vendors (${total})`}
+          title={`vendors (${total})`}
           actions={
             <Button render={<Link href="/vendors/new" />}>
               <Plus className="h-4 w-4" />
@@ -38,8 +38,8 @@ export default async function VendorsPage({ searchParams }: { searchParams: Sear
       isEmpty={vendors.length === 0}
       empty={
         <EmptyState
-          title="No vendors yet."
-          action={<Button render={<Link href="/vendors/new" />}>Add your first vendor</Button>}
+          title="no vendors yet."
+          action={<Button render={<Link href="/vendors/new" />}>add your first vendor</Button>}
         />
       }
     >

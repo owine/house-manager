@@ -120,7 +120,7 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
   const serviceTab = (
     <>
       {vendor.serviceRecords.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No service records yet.</p>
+        <p className="text-sm text-muted-foreground">no service records yet.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -153,7 +153,7 @@ export default async function VendorDetailPage({ params }: { params: Params }) {
   const notesTab = vendor.notes ? (
     <Markdown>{vendor.notes}</Markdown>
   ) : (
-    <p className="text-sm text-muted-foreground">No notes recorded.</p>
+    <p className="text-sm text-muted-foreground">no notes recorded.</p>
   );
 
   return (

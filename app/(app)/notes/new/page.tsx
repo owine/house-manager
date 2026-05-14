@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 
-export const metadata: Metadata = { title: 'New note' };
+export const metadata: Metadata = { title: 'new note' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
@@ -17,7 +17,7 @@ export default async function NewNotePage({ searchParams }: { searchParams: Sear
   const items = await listAllItemsForAutocomplete();
 
   return (
-    <FormPageShell maxWidth="3xl" header={<PageHeader title="Add note" />}>
+    <FormPageShell maxWidth="3xl" header={<PageHeader title="add note" />}>
       <NoteForm
         items={items}
         defaultValues={{ itemId: prefillItemId }}

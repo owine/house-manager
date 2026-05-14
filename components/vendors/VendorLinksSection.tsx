@@ -129,7 +129,7 @@ export function VendorLinksSection({ items, systems }: Props) {
       <CardContent>
         {totalLinks === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="vendor-links-empty">
-            No items or systems linked yet.
+            no items or systems linked yet.
           </p>
         ) : (
           <div className="flex flex-col gap-5" data-testid="vendor-links">

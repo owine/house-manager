@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { listReminders } from '@/lib/reminders/queries';
 import { parseListParams } from '@/lib/url-params';
 
-export const metadata: Metadata = { title: 'Chores' };
+export const metadata: Metadata = { title: 'chores' };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -27,7 +27,7 @@ export default async function ChoresPage({ searchParams }: { searchParams: Searc
     <ListPageShell
       header={
         <PageHeader
-          title={`Chores (${total})`}
+          title={`chores (${total})`}
           actions={
             <Button render={<Link href="/chores/new" />}>
               <Plus className="h-4 w-4" />
@@ -39,9 +39,9 @@ export default async function ChoresPage({ searchParams }: { searchParams: Searc
       isEmpty={reminders.length === 0}
       empty={
         <EmptyState
-          title="No chores yet."
+          title="no chores yet."
           description="Chores are recurring tasks that don't send notifications — perfect for weekly trash, monthly furnace filter, quarterly gutter check."
-          action={<Button render={<Link href="/chores/new" />}>Add your first chore</Button>}
+          action={<Button render={<Link href="/chores/new" />}>add your first chore</Button>}
         />
       }
     >

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Dashboard' };
+export const metadata: Metadata = { title: 'dashboard' };
 
 import { auth } from '@/lib/auth';
 import { listChecklists } from '@/lib/checklists/queries';

@@ -108,7 +108,7 @@ describe('TargetsPicker', () => {
     // HVAC system filtered out
     expect(screen.queryByText('HVAC')).not.toBeInTheDocument();
     // No items match → empty state in items list
-    expect(screen.getByText('No items match.')).toBeInTheDocument();
+    expect(screen.getByText('no items match.')).toBeInTheDocument();
   });
 
   it('unchecking an item does not uncheck its system', async () => {
@@ -152,8 +152,8 @@ describe('TargetsPicker', () => {
     render(
       <TargetsPicker value={[]} onChange={onChange} availableItems={[]} availableSystems={[]} />,
     );
-    expect(screen.getByText('No systems match.')).toBeInTheDocument();
-    expect(screen.getByText('No items match.')).toBeInTheDocument();
+    expect(screen.getByText('no systems match.')).toBeInTheDocument();
+    expect(screen.getByText('no items match.')).toBeInTheDocument();
   });
 
   it('does not render archived items even if passed by parent', () => {

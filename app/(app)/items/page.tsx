@@ -2,7 +2,7 @@ import { Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-export const metadata: Metadata = { title: 'Items' };
+export const metadata: Metadata = { title: 'items' };
 
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
@@ -34,7 +34,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
     <ListPageShell
       header={
         <PageHeader
-          title={`Items (${total})`}
+          title={`items (${total})`}
           description="Appliances, tools, and other house items."
           actions={
             <Button render={<Link href="/items/new" />}>
@@ -59,12 +59,12 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
       empty={
         noItemsAtAll ? (
           <EmptyState
-            title="No items yet."
-            action={<Button render={<Link href="/items/new" />}>Add your first item</Button>}
+            title="no items yet."
+            action={<Button render={<Link href="/items/new" />}>add your first item</Button>}
           />
         ) : (
           <EmptyState
-            title="No items match your filters."
+            title="no items match your filters."
             action={
               <Button variant="ghost" render={<Link href="/items" />}>
                 Clear filters
