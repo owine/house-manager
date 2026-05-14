@@ -1,16 +1,21 @@
+import { cn } from '@/lib/utils';
+
 // The owine offset-dot wordmark: lowercase word + accent-blue dot, baseline-
 // aligned. The dot is the brand's single recurring motif — keep it on the
 // surface anywhere the wordmark appears.
 export function Wordmark({
   text = 'house manager',
-  className = '',
+  className,
 }: {
   text?: string;
   className?: string;
 }) {
   return (
     <span
-      className={`inline-flex items-end leading-none tracking-[-0.03em] font-medium text-[color:var(--ink)] ${className}`}
+      className={cn(
+        'inline-flex items-end leading-none tracking-[-0.03em] font-medium text-[color:var(--ink)]',
+        className,
+      )}
     >
       {text}
       <span

@@ -39,7 +39,7 @@ export default async function VendorsPage({ searchParams }: { searchParams: Sear
       empty={
         <EmptyState
           title="no vendors yet."
-          action={<Button render={<Link href="/vendors/new" />}>Add your first vendor</Button>}
+          action={<Button render={<Link href="/vendors/new" />}>add your first vendor</Button>}
         />
       }
     >

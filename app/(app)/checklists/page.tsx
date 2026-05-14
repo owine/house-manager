@@ -44,7 +44,7 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: S
       isEmpty={isEmpty}
       empty={
         <EmptyState
-          title={showArchived ? 'No archived checklists' : 'No checklists yet'}
+          title={showArchived ? 'no archived checklists' : 'no checklists yet'}
           description={
             showArchived
               ? 'Switch back to active to see your live checklists.'

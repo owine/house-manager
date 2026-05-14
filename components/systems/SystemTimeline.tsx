@@ -104,7 +104,7 @@ export function SystemTimeline({ events, systemId }: Props) {
       </CardHeader>
       <CardContent>
         {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No events to show.</p>
+          <p className="text-sm text-muted-foreground">no events to show.</p>
         ) : (
           <ul className="space-y-2">
             {filtered.map((e) => (

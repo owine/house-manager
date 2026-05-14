@@ -42,7 +42,7 @@ export function ItemMetaCard({ item }: Props) {
       </CardHeader>
       <CardContent className="pt-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No details recorded.</p>
+          <p className="text-sm text-muted-foreground">no details recorded.</p>
         ) : (
           <dl className="flex flex-col gap-3">
             {rows.map(({ label, value }) => (

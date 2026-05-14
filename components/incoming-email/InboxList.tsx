@@ -23,7 +23,7 @@ export function InboxList({ rows }: { rows: InboxRow[] }) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center text-muted-foreground">
         <InboxIcon className="h-8 w-8" />
-        <p className="text-sm">No emails to triage.</p>
+        <p className="text-sm">no emails to triage.</p>
       </div>
     );
   }

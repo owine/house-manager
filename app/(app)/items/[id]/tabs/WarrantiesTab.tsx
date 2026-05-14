@@ -23,7 +23,7 @@ export function WarrantiesTab({ item }: Props) {
       </CardHeader>
       <CardContent className="pt-4">
         {item.warranties.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No warranties yet.</p>
+          <p className="text-sm text-muted-foreground">no warranties yet.</p>
         ) : (
           <WarrantyTable warranties={item.warranties} />
         )}

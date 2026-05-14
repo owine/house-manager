@@ -3,7 +3,7 @@ import { AttachmentScrollHighlight } from './AttachmentScrollHighlight';
 
 export function AttachmentList({ attachments }: { attachments: AttachmentRow[] }) {
   if (attachments.length === 0) {
-    return <p className="text-sm text-muted-foreground">No files yet.</p>;
+    return <p className="text-sm text-muted-foreground">no files yet.</p>;
   }
   return (
     <>

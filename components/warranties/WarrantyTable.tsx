@@ -40,7 +40,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
   if (warranties.length === 0) {
-    return <p className="text-sm text-muted-foreground">No warranties recorded.</p>;
+    return <p className="text-sm text-muted-foreground">no warranties recorded.</p>;
   }
 
   return (

@@ -26,7 +26,7 @@ export function VendorMetaCard({ vendor }: Props) {
       </CardHeader>
       <CardContent className="pt-4">
         {!hasAny ? (
-          <p className="text-sm text-muted-foreground">No contact details recorded.</p>
+          <p className="text-sm text-muted-foreground">no contact details recorded.</p>
         ) : (
           <dl className="flex flex-col gap-3">
             {vendor.phone && <MetaRow label="Phone">{vendor.phone}</MetaRow>}

@@ -206,7 +206,7 @@ export function TargetsPicker({
               className="space-y-1 pl-6"
             >
               {filteredSystems.length === 0 ? (
-                <p className="py-1 text-xs text-muted-foreground">No systems match.</p>
+                <p className="py-1 text-xs text-muted-foreground">no systems match.</p>
               ) : (
                 filteredSystems.map((system) => {
                   const checked = hasSystem(value, system.id);
@@ -258,7 +258,7 @@ export function TargetsPicker({
               className="space-y-3 pl-6"
             >
               {itemsByCategory.length === 0 ? (
-                <p className="py-1 text-xs text-muted-foreground">No items match.</p>
+                <p className="py-1 text-xs text-muted-foreground">no items match.</p>
               ) : (
                 itemsByCategory.map(([category, items]) => (
                   <div key={category} className="space-y-1">

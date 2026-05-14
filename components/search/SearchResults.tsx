@@ -58,7 +58,7 @@ function renderHighlighted(formatted: string): React.ReactNode[] {
 
 export function SearchResults({ hits, variant = 'page', onItemClick }: Props) {
   if (hits.length === 0) {
-    return <p className="text-sm text-muted-foreground">No results.</p>;
+    return <p className="text-sm text-muted-foreground">no results.</p>;
   }
   return (
     <ul className="divide-y divide-border">

@@ -43,7 +43,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Se
       empty={
         <EmptyState
           title="no reminders yet."
-          action={<Button render={<Link href="/reminders/new" />}>Add your first reminder</Button>}
+          action={<Button render={<Link href="/reminders/new" />}>add your first reminder</Button>}
         />
       }
     >

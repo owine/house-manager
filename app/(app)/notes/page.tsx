@@ -55,7 +55,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
         noNotesAtAll ? (
           <EmptyState
             title="no notes yet."
-            action={<Button render={<Link href="/notes/new" />}>Add your first note</Button>}
+            action={<Button render={<Link href="/notes/new" />}>add your first note</Button>}
           />
         ) : (
           <EmptyState

@@ -41,7 +41,7 @@ export default async function ChoresPage({ searchParams }: { searchParams: Searc
         <EmptyState
           title="no chores yet."
           description="Chores are recurring tasks that don't send notifications — perfect for weekly trash, monthly furnace filter, quarterly gutter check."
-          action={<Button render={<Link href="/chores/new" />}>Add your first chore</Button>}
+          action={<Button render={<Link href="/chores/new" />}>add your first chore</Button>}
         />
       }
     >

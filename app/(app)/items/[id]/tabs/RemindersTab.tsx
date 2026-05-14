@@ -27,7 +27,7 @@ export function RemindersTab({ item }: Props) {
           <GenerateRemindersButton itemId={item.id} />
         </div>
         {item.reminders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No reminders yet.</p>
+          <p className="text-sm text-muted-foreground">no reminders yet.</p>
         ) : (
           <ul className="divide-y">
             {item.reminders.map((r) => (

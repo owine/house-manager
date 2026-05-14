@@ -60,7 +60,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
         noItemsAtAll ? (
           <EmptyState
             title="no items yet."
-            action={<Button render={<Link href="/items/new" />}>Add your first item</Button>}
+            action={<Button render={<Link href="/items/new" />}>add your first item</Button>}
           />
         ) : (
           <EmptyState
