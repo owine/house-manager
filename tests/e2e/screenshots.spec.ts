@@ -45,11 +45,19 @@ async function shoot(page: Page, name: string, viewport: string) {
   });
 }
 
+// Design-iteration helper, not a functional test. Skipped in CI (long runtime
+// and not a regression signal); run manually with:
+//   CAPTURE_SCREENSHOTS=true pnpm test:e2e:local tests/e2e/screenshots.spec.ts
+const CAPTURE = process.env.CAPTURE_SCREENSHOTS === 'true';
+
 test.beforeAll(async () => {
+  if (!CAPTURE) return;
   await mkdir(`${OUT_DIR}/desktop`, { recursive: true });
   await mkdir(`${OUT_DIR}/mobile`, { recursive: true });
   await resetAuth();
 });
+
+test.skip(!CAPTURE, 'set CAPTURE_SCREENSHOTS=true to run');
 
 test('captures UI screenshots across all routes and viewports', async ({ page, context }) => {
   test.setTimeout(600_000);
@@ -110,8 +118,11 @@ test('captures UI screenshots across all routes and viewports', async ({ page, c
   await page.waitForURL(/\/items\/c[a-z0-9]+$/);
   const itemUrl = page.url();
 
-  // Service record for that item
-  await page.goto('/service/new');
+  // Service record for that item. The /service/new form requires item context
+  // — passing ?itemId= pre-fills the picker the same way happy-path does it via
+  // the item-detail "+ Log service" button.
+  const itemId = itemUrl.match(/\/items\/(c[a-z0-9]+)/)?.[1];
+  await page.goto(`/service/new?itemId=${itemId}`);
   await page.getByLabel('Performed on').fill('2026-04-15');
   await page.getByLabel('Summary').fill('Annual tune-up');
   await page.getByRole('button', { name: 'Save record' }).click();
