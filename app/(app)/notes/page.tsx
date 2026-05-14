@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Notes' };
+export const metadata: Metadata = { title: 'notes' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -34,7 +34,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
     <ListPageShell
       header={
         <PageHeader
-          title={`Notes (${total})`}
+          title={`notes (${total})`}
           actions={
             <Button render={<Link href="/notes/new" />}>
               <Plus className="h-4 w-4" />
@@ -54,12 +54,12 @@ export default async function NotesPage({ searchParams }: { searchParams: Search
       empty={
         noNotesAtAll ? (
           <EmptyState
-            title="No notes yet."
+            title="no notes yet."
             action={<Button render={<Link href="/notes/new" />}>Add your first note</Button>}
           />
         ) : (
           <EmptyState
-            title="No notes match your filters."
+            title="no notes match your filters."
             action={
               <Button variant="ghost" render={<Link href="/notes" />}>
                 Clear filters

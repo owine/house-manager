@@ -4,11 +4,11 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { SystemForm } from '@/components/systems/SystemForm';
 import { createSystem } from '@/lib/systems/actions';
 
-export const metadata: Metadata = { title: 'New system' };
+export const metadata: Metadata = { title: 'new system' };
 
 export default function NewSystemPage() {
   return (
-    <FormPageShell header={<PageHeader title="New system" />}>
+    <FormPageShell header={<PageHeader title="new system" />}>
       <SystemForm action={createSystem} submitLabel="Create system" />
     </FormPageShell>
   );

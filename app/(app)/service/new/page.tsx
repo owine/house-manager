@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 
-export const metadata: Metadata = { title: 'New service record' };
+export const metadata: Metadata = { title: 'new service record' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
@@ -42,7 +42,7 @@ export default async function NewServiceRecordPage({
   }
 
   return (
-    <FormPageShell header={<PageHeader title="Log service" />}>
+    <FormPageShell header={<PageHeader title="log service" />}>
       <ServiceRecordForm
         availableItems={availableItems}
         availableSystems={availableSystems}

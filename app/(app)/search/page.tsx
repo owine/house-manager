@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Search' };
+export const metadata: Metadata = { title: 'search' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { SearchResults } from '@/components/search/SearchResults';
@@ -48,7 +48,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const activeKind = parsed.success ? parsed.data.kind : undefined;
 
   return (
-    <ListPageShell header={<PageHeader title="Search" />}>
+    <ListPageShell header={<PageHeader title="search" />}>
       <form method="GET" action="/search" className="mb-4">
         <Input
           type="search"

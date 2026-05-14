@@ -28,6 +28,13 @@ const EXTERNAL_TOKENS = new Set([
   // Tailwind v4 internals occasionally referenced via var() in shadcn
   // primitives. These are defined by Tailwind's own preflight / @theme.
   'spacing',
+  // next/font CSS variables. Defined by `next/font/google` via the
+  // `variable` option in app/layout.tsx, applied to <html> as a class.
+  // They never appear as a `--token: value` definition in source, so the
+  // linter can't see them — allow-list them here.
+  'font-geist-sans',
+  'font-geist-mono',
+  'font-instrument-serif',
 ]);
 
 const VAR_USE_RE = /var\(\s*(--[a-zA-Z0-9_-]+)/g;

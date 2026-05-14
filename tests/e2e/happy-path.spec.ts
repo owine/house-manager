@@ -35,7 +35,7 @@ test('signs in, adds an item, logs service, sees activity on dashboard', async (
   // accidentally hit the global sidebar's "Service" link.
   await page
     .getByRole('navigation', { name: 'Item tabs' })
-    .getByRole('link', { name: 'Service' })
+    .getByRole('link', { name: 'service' })
     .click();
   // Click the "+ Log service" button. Base UI's Button keeps role="button" even
   // when render={<Link>} produces an <a>; query by role=button, not role=link.

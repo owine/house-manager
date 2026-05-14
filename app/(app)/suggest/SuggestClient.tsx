@@ -42,7 +42,7 @@ export function SuggestClient() {
   }
 
   return (
-    <FormPageShell maxWidth="2xl" header={<PageHeader title="Generate suggestion" />}>
+    <FormPageShell maxWidth="2xl" header={<PageHeader title="generate suggestion" />}>
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
           Describe what you want a checklist for — pre-vacation, snowstorm prep, end-of-month

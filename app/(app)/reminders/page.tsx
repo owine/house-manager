@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Reminders' };
+export const metadata: Metadata = { title: 'reminders' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -24,7 +24,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Se
     <ListPageShell
       header={
         <PageHeader
-          title={`Reminders (${total})`}
+          title={`reminders (${total})`}
           actions={
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" render={<Link href="/reminders/calendar" />}>
@@ -42,7 +42,7 @@ export default async function RemindersPage({ searchParams }: { searchParams: Se
       isEmpty={reminders.length === 0}
       empty={
         <EmptyState
-          title="No reminders yet."
+          title="no reminders yet."
           action={<Button render={<Link href="/reminders/new" />}>Add your first reminder</Button>}
         />
       }

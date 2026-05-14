@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 
-export const metadata: Metadata = { title: 'Service' };
+export const metadata: Metadata = { title: 'service' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
@@ -37,7 +37,7 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
     <ListPageShell
       header={
         <PageHeader
-          title={`Service records (${total})`}
+          title={`service records (${total})`}
           actions={
             <Button render={<Link href="/service/new" />}>
               <Plus className="h-4 w-4" />
@@ -61,12 +61,12 @@ export default async function ServicePage({ searchParams }: { searchParams: Sear
       empty={
         isEmpty ? (
           <EmptyState
-            title="No service records yet."
+            title="no service records yet."
             action={<Button render={<Link href="/service/new" />}>Log first service</Button>}
           />
         ) : (
           <EmptyState
-            title="No records match your filters."
+            title="no records match your filters."
             action={
               <Button variant="ghost" render={<Link href="/service" />}>
                 Clear filters

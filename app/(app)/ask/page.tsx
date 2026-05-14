@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { AskForm } from '@/components/ask/AskForm';
 
-export const metadata: Metadata = { title: 'Ask' };
+export const metadata: Metadata = { title: 'ask' };
 
 // Read ASK_ENABLED via process.env directly (not getEnv()) so the page
 // can render even when the rest of the env isn't fully configured. The
@@ -13,7 +13,7 @@ export default function AskPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-8">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Ask</h1>
+        <h1 className="text-2xl font-medium tracking-tight">ask</h1>
         <p className="text-sm text-muted-foreground">
           Natural-language Q&amp;A across your items, notes, service records, warranties,
           checklists, and attachment text.

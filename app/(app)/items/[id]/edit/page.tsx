@@ -29,7 +29,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
     ? { id: item.system.id, name: item.system.name }
     : null;
   return (
-    <FormPageShell header={<PageHeader title={`Edit ${item.name}`} />}>
+    <FormPageShell header={<PageHeader title={`edit ${item.name}`} />}>
       <ItemForm
         categories={categories}
         systems={systems}

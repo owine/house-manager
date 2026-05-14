@@ -20,32 +20,50 @@
 }
 
 /*
- * Theme tokens defined once via the CSS light-dark() function. The active
- * value depends on the element's color-scheme: light, dark, or matching the
- * user's system preference (the default for `light dark`).
+ * owine design tokens — warm paper + cool ink + one cool blue accent.
  *
- * Manual override via [data-theme] sets color-scheme accordingly, so the
- * same var(--token) reference resolves correctly in all three states
- * (system, manual light, manual dark) without duplicating values.
+ * Values are picked via CSS light-dark() based on the resolved color-scheme:
+ * either the user's system preference, or a manual override via
+ * [data-theme="light"|"dark"] on :root (set synchronously by the theme script
+ * in app/layout.tsx). Same var(--token) reference resolves correctly in all
+ * three states without duplicating definitions.
+ *
+ * Token names follow the owine semantic palette directly — there is no
+ * separate shadcn-facing alias layer. shadcn primitives consume these via
+ * the @theme block below.
  */
 :root {
   color-scheme: light dark;
 
-  --bg: light-dark(#ffffff, #0e0e10);
-  --bg-elevated: light-dark(#f7f7f7, #1a1a1d);
-  --fg: light-dark(#111111, #f0f0f0);
-  --fg-muted: light-dark(#666666, #9a9a9a);
-  --border: light-dark(#dddddd, #2a2a2d);
-  --border-strong: light-dark(#999999, #444448);
-  --app-accent: light-dark(#0066cc, #4d9fff);
-  --app-accent-fg: light-dark(#ffffff, #0e0e10);
-  --danger: light-dark(#b00020, #ff6b6b);
-  --danger-bg: light-dark(#fde8e8, #3a1818);
-  --focus: light-dark(#0066cc, #4d9fff);
-  --badge-bg: light-dark(#eeeeee, #2a2a2d);
-  --badge-fg: light-dark(#333333, #d0d0d0);
-  --success: light-dark(#008800, #66cc66);
-  --warning: light-dark(#cc8800, #e5a050);
+  /* surfaces — warm paper in light, warm-tinted dark in dark */
+  --paper: light-dark(#f6f4ef, #14181f);
+  --paper-2: light-dark(#efece4, #1a1f27);
+  --paper-3: light-dark(#e6e2d8, #232934);
+  --card-surface: light-dark(#fbfaf6, #1b212a);
+  --line: light-dark(#dcd6cc, #2a323f);
+  --line-strong: light-dark(#c4bdb0, #3d4654);
+
+  /* text — cool near-black on warm; warm off-white on dark */
+  --ink: light-dark(#0e1620, #f1eee8);
+  --ink-2: light-dark(#2c3a4d, #c4c8d0);
+  --ink-3: light-dark(#5b6878, #8a929d);
+  --ink-4: light-dark(#8a95a3, #5b6878);
+
+  /* accent — one cool blue, brighter on dark for legibility */
+  --accent: light-dark(#2b5fd9, #5a82e8);
+  --accent-hover: light-dark(#234fb8, #7395ec);
+  --accent-press: light-dark(#1c4096, #4670d8);
+  --accent-soft: light-dark(#e4ecfb, #1d2c4d);
+  --accent-ink: light-dark(#14306e, #b8c9f4);
+  --accent-on: light-dark(#ffffff, #14181f); /* foreground on solid accent */
+
+  /* semantic — muted on purpose; they don't shout */
+  --success: light-dark(#2f7a5c, #5fb88f);
+  --success-soft: light-dark(#e1eee7, #18302a);
+  --warning: light-dark(#b07219, #d9a14e);
+  --warning-soft: light-dark(#f3e7cf, #382812);
+  --danger: light-dark(#b8392c, #e07262);
+  --danger-soft: light-dark(#f3dcd8, #3a1d18);
 }
 
 /* Manual override forces color-scheme; light-dark() picks the matching value. */
@@ -57,73 +75,84 @@
 }
 
 @theme {
-  /* Surfaces */
-  --color-background: var(--bg);
-  --color-foreground: var(--fg);
-  --color-card: var(--bg);
-  --color-card-foreground: var(--fg);
-  --color-popover: var(--bg-elevated);
-  --color-popover-foreground: var(--fg);
-  --color-muted: var(--bg-elevated);
-  --color-muted-foreground: var(--fg-muted);
+  /* surfaces */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--card-surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--card-surface);
+  --color-popover-foreground: var(--ink);
+  --color-muted: var(--paper-2);
+  --color-muted-foreground: var(--ink-3);
 
-  /* Interactive */
-  --color-primary: var(--app-accent);
-  --color-primary-foreground: var(--app-accent-fg);
-  --color-secondary: var(--bg-elevated);
-  --color-secondary-foreground: var(--fg);
-  --color-accent: var(--bg-elevated);
-  --color-accent-foreground: var(--fg);
+  /* interactive */
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-on);
+  --color-secondary: var(--paper-2);
+  --color-secondary-foreground: var(--ink);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--accent-ink);
 
-  /* Status */
+  /* status */
   --color-destructive: var(--danger);
   --color-destructive-foreground: #ffffff;
 
-  /* Borders + focus */
-  --color-border: var(--border);
-  --color-input: var(--border);
-  --color-ring: var(--focus);
+  /* borders + focus */
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
 
-  /* Sidebar — shadcn's sidebar primitive uses these via Tailwind classes
-     (`bg-sidebar`, `text-sidebar-foreground`, `bg-sidebar-accent`, etc.).
-     Without them, the classes resolve to empty `var()` and silently drop
-     their declarations. Mapped onto our existing tokens so the sidebar
-     reads as a slightly elevated panel. */
-  --color-sidebar: var(--bg-elevated);
-  --color-sidebar-foreground: var(--fg);
-  --color-sidebar-accent: var(--border);
-  --color-sidebar-accent-foreground: var(--fg);
-  --color-sidebar-border: var(--border);
-  --color-sidebar-ring: var(--focus);
+  /* sidebar — paper background, accent-soft active state */
+  --color-sidebar: var(--paper);
+  --color-sidebar-foreground: var(--ink-2);
+  --color-sidebar-accent: var(--accent-soft);
+  --color-sidebar-accent-foreground: var(--accent-ink);
+  --color-sidebar-border: var(--line);
+  --color-sidebar-ring: var(--accent);
 
-  /* Typography + radius. The radius *scale* (sm/md/lg/xl) is what shadcn's
-     `rounded-md`, `rounded-lg`, etc. compile against in Tailwind v4 — and
-     what `min(var(--radius-md), 10px)` in our Button variants needs. */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --radius: 0.5rem;
+  /* typography — Geist sans, Geist Mono, Instrument Serif italic accent.
+     The --font-* vars come from next/font in app/layout.tsx; we expose them
+     as the Tailwind theme names so font-sans/font-mono/font-serif resolve. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, serif;
+
+  /* radii — gentle, never pill-y. inputs/buttons 6–8px, cards 10px. */
+  --radius: 0.625rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 6px);
 }
 
 body {
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings — weight 500, tight tracking; contrast from size, not bold. */
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 
 /* Visible focus ring on both light and dark backgrounds */
 *:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Default link color — exclude shadcn primitives (they set data-slot) so
    utility-class colors (e.g. text-primary-foreground on Button) win. */
 a:not([data-slot]) {
-  color: var(--app-accent);
+  color: var(--accent);
 }
 
 /* Markdown block spacing — Tailwind preflight zeroes default <p>/<h*>/<ul>
@@ -140,15 +169,15 @@ a:not([data-slot]) {
 
 /* Markdown code/pre/blockquote adapt to theme */
 code {
-  background: var(--badge-bg);
-  color: var(--badge-fg);
+  background: var(--paper-2);
+  color: var(--ink-2);
   padding: 0.1rem 0.3rem;
   border-radius: 3px;
   font-size: 0.9em;
 }
 pre {
-  background: var(--badge-bg);
-  color: var(--badge-fg);
+  background: var(--paper-2);
+  color: var(--ink-2);
   padding: 0.75rem 1rem;
   border-radius: 4px;
   overflow-x: auto;
@@ -158,8 +187,18 @@ pre code {
   padding: 0;
 }
 blockquote {
-  border-left: 3px solid var(--border-strong);
+  border-left: 3px solid var(--line-strong);
   margin-left: 0;
   padding-left: 1rem;
-  color: var(--fg-muted);
+  color: var(--ink-3);
+}
+
+/* owine — mono micro-label, the only place uppercase is allowed in product
+   surfaces. used in sidebar section headers, sticker labels, captions. */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }

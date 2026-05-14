@@ -20,7 +20,7 @@ export default async function EditSystemPage({ params }: { params: Params }) {
   if (!system) notFound();
 
   return (
-    <FormPageShell header={<PageHeader title={`Edit ${system.name}`} />}>
+    <FormPageShell header={<PageHeader title={`edit ${system.name}`} />}>
       <SystemForm
         defaultValues={{
           id: system.id,

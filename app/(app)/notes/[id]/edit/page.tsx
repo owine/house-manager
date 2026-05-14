@@ -20,7 +20,7 @@ export default async function EditNotePage({ params }: { params: Params }) {
   if (!note) notFound();
 
   return (
-    <FormPageShell maxWidth="3xl" header={<PageHeader title="Edit note" />}>
+    <FormPageShell maxWidth="3xl" header={<PageHeader title="edit note" />}>
       <NoteForm
         items={items}
         defaultValues={{

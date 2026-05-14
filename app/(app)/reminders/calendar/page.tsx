@@ -7,7 +7,7 @@ import { MonthGrid } from '@/components/calendar/MonthGrid';
 import { Button } from '@/components/ui/button';
 import { listCalendarEventsInRange } from '@/lib/calendar/queries';
 
-export const metadata: Metadata = { title: 'Reminders calendar' };
+export const metadata: Metadata = { title: 'reminders calendar' };
 
 type SearchParams = Promise<{ month?: string }>;
 

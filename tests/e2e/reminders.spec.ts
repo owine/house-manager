@@ -27,7 +27,7 @@ test('creates a reminder, marks it complete, sees it in history', async ({ page,
   // Switch to Reminders tab (scoped to avoid matching the sidebar nav link)
   await page
     .getByRole('navigation', { name: 'Item tabs' })
-    .getByRole('link', { name: 'Reminders' })
+    .getByRole('link', { name: 'reminders' })
     .click();
   await expect(page.locator('text=No reminders yet')).toBeVisible();
 

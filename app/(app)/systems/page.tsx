@@ -11,7 +11,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { formatCalendarDate } from '@/lib/format/date';
 import { listSystems } from '@/lib/systems/queries';
 
-export const metadata: Metadata = { title: 'Systems' };
+export const metadata: Metadata = { title: 'systems' };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -28,7 +28,7 @@ export default async function SystemsPage({ searchParams }: { searchParams: Sear
     <ListPageShell
       header={
         <PageHeader
-          title={`Systems (${visible.length})`}
+          title={`systems (${visible.length})`}
           description="Group items into logical systems — HVAC, plumbing, electrical, etc."
           actions={
             <Button render={<Link href="/systems/new" />}>

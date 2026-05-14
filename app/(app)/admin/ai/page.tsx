@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 
-export const metadata: Metadata = { title: 'AI suggestions' };
+export const metadata: Metadata = { title: 'ai suggestions' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { RebuildEmbeddingsButton } from '@/components/admin/RebuildEmbeddingsButton';
@@ -75,7 +75,7 @@ export default async function AdminAIPage() {
   return (
     <FormPageShell
       maxWidth="3xl"
-      header={<PageHeader title="AI suggestions" description="Activity from the last 24 hours." />}
+      header={<PageHeader title="ai suggestions" description="Activity from the last 24 hours." />}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((s) => (

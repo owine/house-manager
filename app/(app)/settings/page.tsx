@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 
-export const metadata: Metadata = { title: 'Settings' };
+export const metadata: Metadata = { title: 'settings' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { HouseProfileForm } from '@/components/house-profile/HouseProfileForm';
@@ -30,7 +30,7 @@ export default async function SettingsPage() {
 
   if (!userSettings) {
     return (
-      <FormPageShell header={<PageHeader title="Settings" />} maxWidth="3xl">
+      <FormPageShell header={<PageHeader title="settings" />} maxWidth="3xl">
         <Card>
           <CardContent className="pt-6">
             <p className="text-muted-foreground">Unable to load settings. Please try again.</p>
@@ -41,7 +41,7 @@ export default async function SettingsPage() {
   }
 
   return (
-    <FormPageShell header={<PageHeader title="Settings" />} maxWidth="3xl">
+    <FormPageShell header={<PageHeader title="settings" />} maxWidth="3xl">
       <div className="space-y-6">
         <Card>
           <CardHeader>

@@ -1,10 +1,32 @@
 import type { Metadata, Viewport } from 'next';
+import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import './globals.css';
+
+// next/font/google downloads the font files at build time and self-hosts
+// them, so the runtime doesn't depend on fonts.googleapis.com. Each font
+// exposes a CSS variable consumed by the @theme block in globals.css.
+const geistSans = Geist({
+  subsets: ['latin'],
+  variable: '--font-geist-sans',
+  display: 'swap',
+});
+const geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+  display: 'swap',
+});
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  weight: '400',
+  style: ['normal', 'italic'],
+  variable: '--font-instrument-serif',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: {
-    template: '%s · House Manager',
-    default: 'House Manager',
+    template: '%s · house manager',
+    default: 'house manager',
   },
   description: 'Track home inventory, maintenance, warranties, and reminders.',
   // Private self-hosted app — never want to be indexed if accidentally exposed.
@@ -36,7 +58,10 @@ const themeScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+    >
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: themeScript is a
             static string literal defined in this file with no user-input interpolation.

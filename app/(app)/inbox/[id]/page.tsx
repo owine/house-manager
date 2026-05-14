@@ -15,7 +15,7 @@ import {
   selectExtraction,
 } from '@/lib/incoming-email/queries';
 
-export const metadata: Metadata = { title: 'Inbox — message' };
+export const metadata: Metadata = { title: 'inbox — message' };
 
 function formatBytes(n: number | null): string {
   if (n == null) return '';

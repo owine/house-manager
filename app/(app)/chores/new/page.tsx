@@ -8,7 +8,7 @@ import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
 import { expandSystemSelection } from '@/lib/targets/expand';
 import type { TargetInput } from '@/lib/targets/schema';
 
-export const metadata: Metadata = { title: 'New chore' };
+export const metadata: Metadata = { title: 'new chore' };
 
 type SearchParams = Promise<{ itemId?: string; systemId?: string }>;
 
@@ -28,7 +28,7 @@ export default async function NewChorePage({ searchParams }: { searchParams: Sea
   }
 
   return (
-    <FormPageShell header={<PageHeader title="New chore" />}>
+    <FormPageShell header={<PageHeader title="new chore" />}>
       <ReminderForm
         availableItems={availableItems}
         availableSystems={availableSystems}
