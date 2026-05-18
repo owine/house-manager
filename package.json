@@ -5,9 +5,9 @@
   "type": "module",
   "engines": {
     "node": "24.15.0",
-    "pnpm": "11.1.0"
+    "pnpm": "11.1.2"
   },
-  "packageManager": "pnpm@11.1.0",
+  "packageManager": "pnpm@11.1.2",
   "scripts": {
     "dev": "next dev",
     "build": "NODE_ENV=production next build",
