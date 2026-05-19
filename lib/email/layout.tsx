@@ -31,8 +31,8 @@ export type LayoutProps = {
 
 export function Layout({ preheader, appUrl, children }: LayoutProps): ReactNode {
   return (
-    // biome-ignore lint/style/noHeadElement: Email templates require full HTML structure
     <html lang="en">
+      {/* biome-ignore lint/style/noHeadElement: Email templates require full HTML structure */}
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
