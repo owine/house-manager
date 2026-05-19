@@ -63,6 +63,8 @@ lib/email/
 
 ```ts
 // lib/email/render.ts
+// HTML-only by design. Plain text is NOT threaded through here — each
+// template builds its own `text` from resolved data (see reminder.tsx).
 export function renderEmail(node: ReactElement): { html: string };
 
 // lib/email/templates/reminder.tsx
@@ -85,7 +87,7 @@ export function reminderEmail(data: ReminderEmailData): {
 };
 ```
 
-The template owns both `html` (via `renderEmail` over its React tree) and `text` (built directly from `data`).
+The template owns both `html` (via `renderEmail` over its React tree) and `text` (built directly from `data`). Each `targets[]` entry resolves to **exactly one** of `item` or `system` (a `ReminderTarget` carries exactly one of `itemId`/`systemId`, enforced by the schema's parent-XOR constraint) — the template branches on which is present, never both/neither.
 
 ## Data flow (`notify.ts` email branch)
 
