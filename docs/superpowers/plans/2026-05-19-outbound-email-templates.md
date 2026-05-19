@@ -724,51 +724,90 @@ The existing integration test exercises the worker against real Postgres but ass
 
 - [ ] **Step 1: Read current `notify-job.test.ts`**
 
-Read the file. Note how it mocks/stubs `sendEmail` today (look for `vi.mock`), how it seeds the user and reminder, and how the email branch is currently driven.
-
-- [ ] **Step 2: Add a payload-capture assertion to an existing email test (or a new one)**
-
-If `sendEmail` is currently mocked, modify the mock to capture the payload it was called with. Add a test that:
-1. Seeds a reminder with a `targets[]` containing one item.
-2. Seeds a user with `email` set and `emailEnabled: true` in `notificationPrefs`.
-3. Sets `APP_URL` in the test env (via the existing per-test env mock).
-4. Invokes `handleNotify({ channel: 'email', ... })`.
-5. Asserts the captured `sendEmail` call: `subject` matches `^Reminder: `, `html` contains the reminder title AND the item link `${APP_URL}/items/<id>` AND `View reminder`, and `text` is non-empty and contains the title.
-
-If `sendEmail` is **not** currently mocked, this requires adding a `vi.mock('@/lib/notifications/email', ...)` per the existing project mock pattern (see `tests/integration/notify-job.test.ts` for whether such a mock already exists — if not, follow the same dynamic-import-in-`beforeAll` pattern used in other integration tests for module-load DATABASE_URL safety).
+Read the file. **Confirmed existing mock shape (don't reinvent these):**
 
 ```ts
-// Skeleton (adapt to existing test-file structure):
+// at module scope, already in the file:
+const sentEmails: unknown[] = [];
+vi.mock('@/lib/notifications/email', () => ({
+  sendEmail: vi.fn(async (_to: string, payload: unknown) => {
+    sentEmails.push(payload);  // captures payload only, not `to`
+    return { ok: true };
+  }),
+}));
+vi.mock('@/lib/env', () => ({
+  getEnv: vi.fn(() => ({ APP_URL: 'http://localhost:3000' })),  // FIXED return value
+}));
+```
+
+The plan's content-assertion test below uses the existing `sentEmails` array (so no mock change needed for it). The `APP_URL`-unset test must override the `getEnv` mock for a single call — `process.env.APP_URL` is irrelevant because the production code reads via `getEnv()`, which is mocked to a fixed object.
+
+- [ ] **Step 2: Add a content-assertion test using the existing `sentEmails` capture**
+
+The existing `sentEmails: unknown[]` already captures the `payload` argument of every `sendEmail` call. Add a new `it(...)` case that exercises the email branch with a reminder + item target, then reads from `sentEmails[0]`:
+
+```ts
 it('composes a reminder email with title, target link, and CTA', async () => {
-  // ... arrange: seed user with email + emailEnabled, reminder with item target
-  process.env.APP_URL = 'https://test.hm';
-  // ... call handleNotify
-  expect(sendEmailMock).toHaveBeenCalledOnce();
-  const [to, payload] = sendEmailMock.mock.calls[0]!;
-  expect(to).toBe('user@example.com');
+  // Arrange: seed user with email + emailEnabled, reminder with one item target.
+  // Use the same seeding helpers / fixture style the existing email tests use.
+  // (Follow whatever pattern the closest existing "email" test in this file uses.)
+
+  // Act
+  await handleNotify({
+    reminderId,
+    userId,
+    channel: 'email',
+    cycle: '2026-06-01',
+  });
+
+  // Assert content reached the transport
+  expect(sentEmails).toHaveLength(1);
+  const payload = sentEmails[0] as { subject: string; html: string; text: string };
   expect(payload.subject).toMatch(/^Reminder: /);
-  expect(payload.html).toContain(/* reminder title */);
-  expect(payload.html).toMatch(/href="https:\/\/test\.hm\/items\/[^"]+"/);
+  expect(payload.html).toContain(/* the reminder title used in arrange */);
+  expect(payload.html).toMatch(/href="http:\/\/localhost:3000\/items\/[^"]+"/);
   expect(payload.html).toContain('View reminder');
   expect(payload.text.length).toBeGreaterThan(0);
 });
 ```
 
+Note: `APP_URL` is `http://localhost:3000` per the existing module-level `getEnv` mock; the regex above matches that. Do **not** mutate `process.env.APP_URL` in this test — it has no effect on the mocked `getEnv()`.
+
 - [ ] **Step 3: Add the `APP_URL`-unset skip-path test**
 
+To toggle `APP_URL` off for a single test, override the `getEnv` mock's return value for that call. Import the mocked `getEnv` and use `vi.mocked(...).mockReturnValueOnce(...)` (Vitest 4 pattern):
+
 ```ts
+// Add to the imports at top of file:
+import { getEnv } from '@/lib/env';
+// (Because @/lib/env is vi.mock'd at module scope, this import resolves to the mock.)
+
 it('marks the log skipped with reason "APP_URL not configured" when APP_URL is unset', async () => {
-  // ... arrange: seed user with email + emailEnabled, reminder with item target
-  delete process.env.APP_URL; // or set to '' depending on env-mock shape
-  // ... call handleNotify with channel: 'email'
-  expect(sendEmailMock).not.toHaveBeenCalled();
-  const log = await prisma.notificationLog.findFirst({
-    where: { reminderId: reminder.id, channel: 'email' },
+  // Arrange: seed user with email + emailEnabled, reminder with item target.
+
+  // Override only this call's getEnv() return — the module mock's vi.fn already supports it.
+  // Cast to the minimal env shape the code under test reads (only APP_URL is consumed here).
+  vi.mocked(getEnv).mockReturnValueOnce({ APP_URL: undefined } as unknown as ReturnType<typeof getEnv>);
+
+  // Act
+  await handleNotify({
+    reminderId,
+    userId,
+    channel: 'email',
+    cycle: '2026-06-02',
+  });
+
+  // Assert: no email sent, log marked skipped with the new reason.
+  expect(sentEmails).toHaveLength(0);
+  const log = await ctx.prisma.notificationLog.findFirst({
+    where: { reminderId, channel: 'email' },
   });
   expect(log?.status).toBe('skipped');
   expect(log?.errorReason).toBe('APP_URL not configured');
 });
 ```
+
+The `mockReturnValueOnce` (not `mockReturnValue`) is deliberate: it applies to exactly the next call so the override doesn't leak into subsequent tests.
 
 - [ ] **Step 4: Run integration tests**
 
