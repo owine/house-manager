@@ -4,7 +4,9 @@ FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a6
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=11.1.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
-RUN apk add --no-cache postgresql16-client
+# apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
+RUN apk add --no-cache \
+  postgresql16-client=16.14-r0
 WORKDIR /app
 
 # --- deps stage: install all deps (including dev) for build ---
@@ -63,7 +65,12 @@ RUN pnpm prune --prod
 FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=11.1.0
-RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate && apk add --no-cache curl vips vips-heif
+RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
+# apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
+RUN apk add --no-cache \
+  curl=8.19.0-r0 \
+  vips=8.17.3-r1 \
+  vips-heif=8.17.3-r1
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
