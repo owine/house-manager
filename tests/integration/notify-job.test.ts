@@ -159,7 +159,7 @@ describe('handleNotify', () => {
     // Assert: no email sent; log is skipped with the expected reason.
     expect(sentEmails).toHaveLength(0);
     const log = await ctx.prisma.notificationLog.findFirst({
-      where: { reminderId, channel: 'email' },
+      where: { reminderId, channel: 'email', cycle: '2026-06-02' },
     });
     expect(log?.status).toBe('skipped');
     expect(log?.errorReason).toBe('APP_URL not configured');
