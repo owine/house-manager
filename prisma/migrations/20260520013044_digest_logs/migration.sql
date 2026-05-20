@@ -1,5 +1,11 @@
--- DropIndex
-DROP INDEX "embeddings_embedding_cosine_idx";
+-- NOTE: Prisma's auto-diff wanted to DROP the embeddings_embedding_cosine_idx
+-- (an ivfflat pgvector index added manually in the plan_4c_ask migration —
+-- Prisma 7 doesn't model vector indexes natively, so it sees the index in the
+-- DB but not in schema.prisma and treats it as drift). The DROP has been
+-- removed by hand. Any future `pnpm db:migrate` run that re-emits this DROP
+-- in a fresh migration must do the same. (Same situation exists for the
+-- parent-XOR CHECK constraints appended at the bottom of the squashed
+-- migration; eyeball every generated migration for unintended DROPs.)
 
 -- CreateTable
 CREATE TABLE "digest_logs" (
