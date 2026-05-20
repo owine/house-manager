@@ -71,7 +71,9 @@ occurrence whose month is in `activeMonths`.
   `bymonth: activeMonths` to `rrule`, which filters natively.
 - Completion-anchored `interval`: after computing the next occurrence, if its
   month ∉ `activeMonths`, step forward by the interval again until it lands
-  in-season (safety cap, e.g. 1000 iterations, to fail loud rather than loop).
+  in-season (safety cap of e.g. 1000 iterations; on exceeding it, **throw**
+  rather than loop or silently return — schema guarantees ≥1 active month, so
+  the cap should never be hit in practice).
 - For `yearly` (single fixed month) seasonality is effectively a no-op and the
   picker won't offer it; validation allows it but it has no effect.
 
@@ -99,14 +101,18 @@ Today's `interval` is `{ days: N }`. Strategy: **rewrite + keep shim.**
 
 - `interval`, `unit === 'day'` — keep the exact `completedOn + every * DAY_MS`
   arithmetic (DST-free, no rrule). For `week`/`month`/`year` use `rrule`
-  (`freq` WEEKLY/MONTHLY/YEARLY, `interval: every`, `dtstart: completedOn`,
-  `count: 1`) and take the first occurrence strictly after `completedOn`.
+  (`freq` WEEKLY/MONTHLY/YEARLY, `interval: every`, `count: 1`). **Avoid the
+  off-by-one**: rrule treats `dtstart` itself as a candidate occurrence, so use
+  `dtstart: completedOn + DAY_MS` exactly as the existing `monthly`/`yearly`
+  cases do (they compute `after = completedOn + DAY_MS`), guaranteeing the
+  result is strictly after the completion day.
 - `weekly` — `rrule` `freq: WEEKLY`, `byweekday: weekdays.map(toRRuleWeekday)`,
-  `dtstart: completedOn + 1 day`, `count: 1`.
+  `dtstart: completedOn + DAY_MS`, `count: 1`.
 - `monthly` — `bymonthday: dayOfMonth === 'last' ? -1 : dayOfMonth` (rrule
   resolves `-1` to the actual last day of each month).
-- `monthlyWeekday` — `freq: MONTHLY`, `byweekday: weekday`, `bysetpos: week`
-  (rrule resolves `bysetpos: -1` to the last matching weekday).
+- `monthlyWeekday` — `freq: MONTHLY`, `byweekday: weekday`, `bysetpos: week`,
+  `dtstart: completedOn + DAY_MS`, `count: 1` (rrule resolves `bysetpos: -1` to
+  the last matching weekday).
 - `yearly`, `once` — unchanged.
 
 When `activeMonths` is set: calendar kinds add `bymonth: activeMonths` to the
@@ -134,11 +140,33 @@ kinds automatically.
 - Use shadcn primitives (`Select`, `Checkbox`/toggle group, `Input`) per repo
   convention; lucide icons where glyphs are needed.
 
-**`components/ai/SuggestionRow.tsx`**
-- Mirror the new kinds in the inline editor and extend `describeRecurrence`:
-  "Every 3 months", "Every Mon & Thu", "Last Friday of the month",
-  "Last day of the month". When `activeMonths` is set, append a season suffix,
-  e.g. "Every 2 weeks (Apr–Oct)".
+**AI suggest path — keep the LLM surface simple (decision)**
+
+There is a *second, independent* recurrence schema at `lib/ai/schemas.ts`
+(`recurrenceSchema` / `ProposedRecurrence` / `proposedReminderSchema`) — a
+strict subset (`interval {days}`, `monthly {dayOfMonth}`, `yearly`). We
+**leave it unchanged**: the LLM keeps proposing only those simple shapes
+(YAGNI — no value in teaching the model nth-weekday/seasonality; the user can
+refine in the full reminder form after accepting).
+
+The single required change is at the **save boundary**:
+`saveAcceptedReminders` (`lib/ai/suggest/reminders.ts`) currently passes
+`r.recurrence` straight into `computeNextDueOn` and persists it verbatim. Route
+it through `parseRecurrence()` first so the legacy `{days}` proposal is
+normalized to `{ every, unit: 'day' }` before `computeNextDueOn` (which will
+now expect the new shape) and before persistence. `SuggestionRow.tsx`
+(`formatRecurrence`, `defaultRecurrence`, the inline editor) stays as-is on the
+legacy shape — no edits needed there.
+
+**`components/reminders/RecurrencePicker.tsx` — recurrence label**
+- The full reminder/chore form is where the new kinds + seasonality are edited
+  (see above). For the human-readable label shown on detail views, extend the
+  relevant formatter to render: "Every 3 months", "Every Mon & Thu",
+  "Last Friday of the month", "Last day of the month", and a season suffix when
+  `activeMonths` is set, e.g. "Every 2 weeks (Apr–Oct)". (Note: today the only
+  recurrence-to-text helper is `formatRecurrence` in `SuggestionRow.tsx`, scoped
+  to the legacy subset; the plan should add a shared `describeRecurrence` in
+  `lib/reminders/` covering all kinds and reuse it wherever recurrence is shown.)
 
 ## Error handling
 
