@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
 import { ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
 import { extractPdfText } from '@/lib/pdf/text';
@@ -29,11 +30,12 @@ const MAX_TEXT_LENGTH = 256_000;
  * Ask index picks up the new content.
  *
  *   - PDF text-layer (unpdf): primary path for invoices, reports, manuals.
- *   - PDF OCR fallback (Tesseract.js on rendered pages): scanned docs.
- *     [TODO Phase D follow-up: actually render pages via unpdf canvas;
- *      v1 just notes the gap so we don't ship silently broken OCR.]
- *   - Image OCR (Tesseract.js): phone photos of receipts, JPG / PNG /
- *     HEIC after `sharp` normalization (HEIC support also TODO).
+ *   - PDF OCR fallback: scanned/image-only PDFs are rasterized page-by-page
+ *     via `renderPdfPagesToPng` (pdf-to-png-converter) then OCR'd (Tesseract.js).
+ *   - Image OCR: every image is first normalized via `normalizeImageForOcr`
+ *     (sharp decode incl. HEIC/HEIF where libvips has HEIF, EXIF rotation,
+ *     re-encode PNG), then OCR'd. Undecodable images → extractedError
+ *     'image_decode_failed'.
  *   - text/* and markdown: read directly.
  *   - Everything else: marked extracted with reason='unsupported_mime'.
  *
@@ -126,8 +128,13 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
         }
       }
     } else if (mime.startsWith('image/')) {
-      extractedText = await ocrImageBuffer(buf);
-      ocrUsed = extractedText.length > 0;
+      const normalized = await normalizeImageForOcr(buf);
+      if (!normalized) {
+        extractedError = 'image_decode_failed';
+      } else {
+        extractedText = await ocrImageBuffer(normalized);
+        ocrUsed = extractedText.length > 0;
+      }
     } else if (mime.startsWith('text/') || mime === 'application/json') {
       extractedText = buf.toString('utf8');
     } else {
