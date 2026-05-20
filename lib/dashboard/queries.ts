@@ -1,9 +1,6 @@
 import { prisma } from '@/lib/db';
 import { listUpcomingReminders } from '@/lib/reminders/queries';
 
-// NOTE: "item-restored" events are deferred until an event log table exists.
-// Plan 3 reminders/notifications work may introduce one; add the 5th event type then.
-
 type ActivityTarget = {
   id: string;
   itemId: string | null;
@@ -18,6 +15,7 @@ export type ActivityEvent = {
     | 'service-logged'
     | 'note-added'
     | 'item-archived'
+    | 'item-restored'
     | 'attachment-added'
     | 'reminder-completed';
   occurredAt: Date;
@@ -29,7 +27,7 @@ export type ActivityEvent = {
 };
 
 export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
-  const [items, services, notes, archived, attachments, completions] = await Promise.all([
+  const [items, services, notes, archived, restored, attachments, completions] = await Promise.all([
     prisma.item.findMany({
       where: { archivedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -64,6 +62,12 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
       orderBy: { archivedAt: 'desc' },
       take: limit,
       select: { id: true, name: true, archivedAt: true },
+    }),
+    prisma.item.findMany({
+      where: { restoredAt: { not: null } },
+      orderBy: { restoredAt: 'desc' },
+      take: limit,
+      select: { id: true, name: true, restoredAt: true },
     }),
     prisma.attachment.findMany({
       orderBy: { createdAt: 'desc' },
@@ -142,6 +146,19 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
               label: `Archived ${i.name}`,
               href: `/items/${i.id}`,
               icon: '📥',
+            },
+          ]
+        : [],
+    ),
+    ...restored.flatMap((i) =>
+      i.restoredAt
+        ? [
+            {
+              kind: 'item-restored' as const,
+              occurredAt: i.restoredAt,
+              label: `Restored ${i.name}`,
+              href: `/items/${i.id}`,
+              icon: '📤',
             },
           ]
         : [],

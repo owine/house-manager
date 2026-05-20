@@ -109,7 +109,7 @@ export async function archiveItem(id: string): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
-  await prisma.item.update({ where: { id }, data: { archivedAt: new Date() } });
+  await prisma.item.update({ where: { id }, data: { archivedAt: new Date(), restoredAt: null } });
   await enqueueSearchIndex('item', id, 'upsert');
   await enqueueEmbed('ITEM', id);
 
@@ -123,7 +123,7 @@ export async function restoreItem(id: string): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
-  await prisma.item.update({ where: { id }, data: { archivedAt: null } });
+  await prisma.item.update({ where: { id }, data: { archivedAt: null, restoredAt: new Date() } });
   await enqueueSearchIndex('item', id, 'upsert');
   await enqueueEmbed('ITEM', id);
 
