@@ -76,7 +76,10 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
       const step = (from: Date): Date => addInterval(from, rec.every, rec.unit);
       let next = step(completedOn);
       for (let i = 0; !inSeason(next, rec.activeMonths); i++) {
-        if (i >= SKIP_CAP) throw new Error('seasonality skip-loop exceeded cap');
+        if (i >= SKIP_CAP)
+          throw new Error(
+            `seasonality skip-loop exceeded cap (${SKIP_CAP}); recurrence=${JSON.stringify(rec)} completedOn=${completedOn.toISOString()}`,
+          );
         next = step(next);
       }
       return next;

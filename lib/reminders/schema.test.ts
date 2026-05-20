@@ -220,7 +220,7 @@ describe('parseRecurrence', () => {
   it('passes through monthly/yearly/once', () => {
     expect(parseRecurrence({ kind: 'once' })).toEqual({ kind: 'once' });
   });
-  it('throws on malformed json', () => {
+  it('throws on malformed JSON', () => {
     expect(() => parseRecurrence({ kind: 'interval' })).toThrow();
   });
 });

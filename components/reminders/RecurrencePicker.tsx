@@ -148,14 +148,13 @@ function ToggleRow({
 export function RecurrencePicker({ defaultValue, onChange }: Props) {
   const [state, setState] = useState<State>(() => initialState(defaultValue));
 
-  // Merge a partial update into state and emit the resulting recurrence from
-  // the merged value (not the stale closure) in a single functional update.
+  // Merge a partial update into state, then emit the resulting recurrence — both
+  // derived from the same `next` value, in the event handler (never inside the
+  // setState updater, which would update the parent Controller during render).
   function update(patch: Partial<State>) {
-    setState((prev) => {
-      const next = { ...prev, ...patch };
-      onChange(buildRecurrence(next));
-      return next;
-    });
+    const next = { ...state, ...patch };
+    setState(next);
+    onChange(buildRecurrence(next));
   }
 
   const onKindChange = (next: string | null) => {
@@ -164,29 +163,31 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
   };
 
   const toggleWeekday = (value: number) => {
-    setState((prev) => {
-      const has = prev.weekdays.includes(value);
-      // Never emit an empty weekdays array — keep the last one selected.
-      if (has && prev.weekdays.length === 1) return prev;
-      const weekdays = has
-        ? prev.weekdays.filter((d) => d !== value)
-        : [...prev.weekdays, value].sort((a, b) => a - b);
-      const next = { ...prev, weekdays };
-      onChange(buildRecurrence(next));
-      return next;
-    });
+    const has = state.weekdays.includes(value);
+    // Never emit an empty weekdays array — keep the last one selected.
+    if (has && state.weekdays.length === 1) return;
+    const weekdays = has
+      ? state.weekdays.filter((d) => d !== value)
+      : [...state.weekdays, value].sort((a, b) => a - b);
+    const next = { ...state, weekdays };
+    setState(next);
+    onChange(buildRecurrence(next));
   };
 
   const toggleMonth = (value: number) => {
-    setState((prev) => {
-      const has = prev.activeMonths.includes(value);
-      const activeMonths = has
-        ? prev.activeMonths.filter((m) => m !== value)
-        : [...prev.activeMonths, value].sort((a, b) => a - b);
-      const next = { ...prev, activeMonths };
-      onChange(buildRecurrence(next));
-      return next;
-    });
+    const has = state.activeMonths.includes(value);
+    const activeMonths = has
+      ? state.activeMonths.filter((m) => m !== value)
+      : [...state.activeMonths, value].sort((a, b) => a - b);
+    // Auto-disable the seasonal switch when the last active month is removed,
+    // so it can never sit "on" with zero months (a confusing silent no-op).
+    const next = {
+      ...state,
+      activeMonths,
+      seasonEnabled: activeMonths.length > 0 ? state.seasonEnabled : false,
+    };
+    setState(next);
+    onChange(buildRecurrence(next));
   };
 
   const showSeasonality = state.kind !== 'once' && state.kind !== 'yearly';
@@ -351,7 +352,9 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             <Switch
               id="recur-seasonal"
               checked={state.seasonEnabled}
-              onCheckedChange={(c) => update({ seasonEnabled: c })}
+              onCheckedChange={(c) =>
+                update({ seasonEnabled: c, ...(c ? {} : { activeMonths: [] }) })
+              }
             />
             <Label htmlFor="recur-seasonal" className="text-sm font-normal">
               Only certain months (seasonal)
