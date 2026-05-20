@@ -38,11 +38,14 @@ export const recurrenceSchema = z.discriminatedUnion('kind', [
     weekday: z.number().int().min(0).max(6),
     ...seasonal,
   }),
+  // yearly intentionally omits `activeMonths`: a once-a-year recurrence is
+  // already pinned to a single month, so seasonality is degenerate. Keeping it
+  // off the variant ensures schema, computeNextDueOn, and describeRecurrence
+  // agree (no season suffix can appear on a yearly recurrence).
   z.object({
     kind: z.literal('yearly'),
     month: z.number().int().min(1).max(12),
     day: z.number().int().min(1).max(28),
-    ...seasonal,
   }),
   // `once` fires exactly once on the target's `nextDueOn` and never again.
   // Used for one-shot reminders (e.g. a warranty expiry). After firing, the
