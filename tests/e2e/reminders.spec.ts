@@ -5,7 +5,10 @@ test.beforeEach(async () => {
   await resetAuth();
 });
 
-test('creates a reminder, marks it complete, sees it in history', async ({ page, context }) => {
+test('creates a reminder, marks it complete, sees it in history @critical', async ({
+  page,
+  context,
+}) => {
   await context.clearCookies();
   await signIn(page);
 

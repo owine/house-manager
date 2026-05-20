@@ -20,6 +20,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:local": "bash tests/e2e/run-local.sh",
+    "test:e2e:critical": "playwright test --grep @critical",
+    "test:local": "pnpm test:unit && pnpm test:integration && pnpm test:e2e:local",
     "typecheck": "tsc --noEmit",
     "lint": "biome check . && pnpm lint:tokens && pnpm lint:knip",
     "lint:fix": "biome check --write .",
