@@ -88,6 +88,9 @@ Today's `interval` is `{ days: N }`. Strategy: **rewrite + keep shim.**
    boundary that currently casts `recurrence as Recurrence` (recurrence is read
    back as `Json` and cast, not parsed, so a legacy row would otherwise produce
    `NaN` from `rec.every`).
+   Read sites to wrap (enumerate during planning): the iCal feed builder
+   (`lib/ical/build.ts` / `IcalReminderRow.recurrence`), detail-view occurrence
+   projection, the `reminders-tick` worker, and `saveAcceptedReminders`.
 2. **Data migration** — Prisma migration with raw SQL rewriting existing rows:
    `UPDATE reminders SET recurrence = recurrence - 'days' || jsonb_build_object('every', recurrence->'days', 'unit', '"day"'::jsonb) WHERE recurrence->>'kind' = 'interval' AND recurrence ? 'days';`
    (final SQL to be confirmed against the stored JSON; eyeball the generated
@@ -116,9 +119,12 @@ Today's `interval` is `{ days: N }`. Strategy: **rewrite + keep shim.**
 - `yearly`, `once` — unchanged.
 
 When `activeMonths` is set: calendar kinds add `bymonth: activeMonths` to the
-rrule; `interval` (and `interval` day-unit, which is plain arithmetic) wraps the
-result in a skip-loop that re-invokes the step until `getUTCMonth()+1 ∈
-activeMonths`, capped to fail loud.
+rrule; `interval` (all units, including day-unit plain arithmetic) wraps the
+result in a skip-loop that **re-applies the same interval step** (e.g. day-unit
+steps by `every` days, week-unit by `every` weeks) until `getUTCMonth()+1 ∈
+activeMonths`, capped to throw. Note: a small day-unit `every` across a multi-
+month off-season may take many iterations (e.g. every-3-days across a 5-month
+gap ≈ 50 steps) — well under the cap.
 
 `previewOccurrences` is unchanged (it just loops `computeNextDueOn`), so the
 iCal feed (`lib/ical/build.ts`) and detail-view projections pick up the new
@@ -163,10 +169,12 @@ legacy shape — no edits needed there.
   (see above). For the human-readable label shown on detail views, extend the
   relevant formatter to render: "Every 3 months", "Every Mon & Thu",
   "Last Friday of the month", "Last day of the month", and a season suffix when
-  `activeMonths` is set, e.g. "Every 2 weeks (Apr–Oct)". (Note: today the only
-  recurrence-to-text helper is `formatRecurrence` in `SuggestionRow.tsx`, scoped
-  to the legacy subset; the plan should add a shared `describeRecurrence` in
-  `lib/reminders/` covering all kinds and reuse it wherever recurrence is shown.)
+  `activeMonths` is set, e.g. "Every 2 weeks (Apr–Oct)". Add a new
+  `describeRecurrence(rec: Recurrence): string` in `lib/reminders/` covering all
+  kinds, used for **detail-view / persisted-recurrence display only**.
+  `SuggestionRow.tsx` keeps its own `formatRecurrence` on the legacy
+  `ProposedRecurrence` subset — do **not** unify them (the AI shape isn't
+  assignable to `Recurrence`, so a helper typed on `Recurrence` won't accept it).
 
 ## Error handling
 
