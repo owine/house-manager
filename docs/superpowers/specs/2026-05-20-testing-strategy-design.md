@@ -52,11 +52,20 @@ Additionally, **extend the `changes` path-filter to gate `unit` / `integration`
 
 ### Scripts (package.json)
 
-- `test:e2e:critical` → `playwright test --grep @critical` (the CI e2e job).
-- `test:e2e` → full Playwright suite (local; unchanged name, full set).
-- `test:local` → orchestrates unit → integration → full e2e (gated paths on,
-  against fakes) → coverage. The single pre-merge command.
+Four distinct scripts with non-overlapping purposes (avoid two near-identical
+names):
+
+- `test:e2e:critical` → `playwright test --grep @critical`. Run by the **CI**
+  e2e job (CI sets its own env block; does not use `run-local.sh`).
+- `test:e2e:local` → `bash tests/e2e/run-local.sh` (**kept**, fixed). The full
+  Playwright suite with the local env wrapper (mock-OIDC + gated paths on
+  against fakes). For running e2e by itself locally.
+- `test:local` → the **umbrella pre-merge command**: unit → integration →
+  `test:e2e:local` → coverage. The single command a dev runs before merging.
 - `test:smoke` → unchanged (real Anthropic).
+
+(`test:e2e` stays as `playwright test` for CI/ad-hoc use; `test:e2e:local`
+wraps it with the local env.)
 
 ## The `@critical` tag
 
@@ -65,8 +74,10 @@ Tag must-not-break specs in the Playwright test title (e.g.
 local runs everything. Initial `@critical` set (~3 flows):
 - **Auth** — sign-in via mock OIDC (`signin.spec.ts`).
 - **Item lifecycle** — create item → appears → edit.
-- **Reminder lifecycle** — create reminder (with a recurrence) → complete →
-  history.
+- **Reminder lifecycle** — create reminder → complete → history. Uses a
+  **pre-#154 recurrence kind** (e.g. `interval`/`once`) so this critical flow
+  does **not** depend on the recurrence PR; only the dedicated recurrence-picker
+  spec (below) exercises the new kinds and depends on #154.
 
 Everything else (`attachments`, `search`, `systems`, `suggest-after-create`,
 `screenshots`, and new feature specs) runs in the local full suite only.
@@ -114,13 +125,23 @@ states which layers it touches and adds tests there. **Every new user-facing
 flow adds a full e2e**, tagged `@critical` if it's a must-not-break path (or a
 written justification for why not).
 
-**Coverage threshold**: enforce `vitest --coverage` with a line/branch floor
+**Coverage threshold**: enforce `@vitest/coverage-v8` with a line/branch floor
 scoped to `lib/ worker/ components/` (exclude generated Prisma client, config,
 type-only files). **Floor = current measured number, ratcheted up over time —
 never decreased.** Measure the baseline as the first implementation step and
-record it in `docs/TESTING.md` + the vitest coverage config. Runs in the
-existing unit + integration CI jobs (coverage of e2e-only paths is not counted;
-the threshold drives unit/integration discipline).
+record it in `docs/TESTING.md` + the vitest coverage config.
+
+**Enforcing across the split CI jobs:** `unit` and `integration` run as separate
+parallel CI jobs, each covering only part of the same `lib/ worker/ components/`
+scope — so a per-job `--coverage` floor would undercount and false-fail (a
+`lib/` file covered only by an integration test looks "uncovered" to the unit
+job). Resolution: keep both jobs parallel; each runs with `--coverage` and
+uploads its V8 coverage JSON as an artifact (`--reporter=json`-style raw
+coverage, not a threshold check). A small downstream **`coverage` job**
+downloads both, merges them (Vitest 4 `--merge-reports`), and enforces the floor
+once against the combined report. The merge job needs no Postgres/Chromium, so
+it's cheap. `pnpm test:local` enforces the same floor locally in one run (unit +
+integration together), so the local tier and CI agree.
 
 **Critical-path rule**: a PR-template checkbox — "new user-facing flow →
 added/updated a `@critical` e2e, or justified." Enforced by review, not
