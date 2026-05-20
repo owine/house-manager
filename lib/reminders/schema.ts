@@ -1,19 +1,48 @@
 import { z } from 'zod';
 import { targetsArraySchema } from '@/lib/targets/schema';
 
+const weekdaysSchema = z
+  .array(z.number().int().min(0).max(6))
+  .min(1)
+  .refine((a) => new Set(a).size === a.length, { message: 'weekdays must be unique' });
+
+const activeMonthsSchema = z
+  .array(z.number().int().min(1).max(12))
+  .min(1)
+  .refine((a) => new Set(a).size === a.length, { message: 'activeMonths must be unique' });
+
+// `activeMonths` (optional) restricts a recurrence to a set of calendar months
+// (seasonality). Omitted = year-round. Applied uniformly across recurring kinds.
+const seasonal = { activeMonths: activeMonthsSchema.optional() };
+
 export const recurrenceSchema = z.discriminatedUnion('kind', [
+  // interval — anchored to LAST COMPLETION; unit-based, calendar-aware.
   z.object({
     kind: z.literal('interval'),
-    days: z.number().int().min(1).max(3650),
+    every: z.number().int().min(1).max(3650),
+    unit: z.enum(['day', 'week', 'month', 'year']),
+    ...seasonal,
   }),
+  // weekly — one or more weekdays (0=Sun..6=Sat), calendar-anchored.
+  z.object({ kind: z.literal('weekly'), weekdays: weekdaysSchema, ...seasonal }),
+  // monthly — fixed day-of-month, or 'last' for the final day of each month.
   z.object({
     kind: z.literal('monthly'),
-    dayOfMonth: z.number().int().min(1).max(28),
+    dayOfMonth: z.union([z.number().int().min(1).max(28), z.literal('last')]),
+    ...seasonal,
+  }),
+  // monthlyWeekday — nth weekday (week: 1..4 or -1 for last; weekday 0=Sun..6=Sat).
+  z.object({
+    kind: z.literal('monthlyWeekday'),
+    week: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]),
+    weekday: z.number().int().min(0).max(6),
+    ...seasonal,
   }),
   z.object({
     kind: z.literal('yearly'),
     month: z.number().int().min(1).max(12),
     day: z.number().int().min(1).max(28),
+    ...seasonal,
   }),
   // `once` fires exactly once on the target's `nextDueOn` and never again.
   // Used for one-shot reminders (e.g. a warranty expiry). After firing, the
@@ -22,6 +51,28 @@ export const recurrenceSchema = z.discriminatedUnion('kind', [
 ]);
 
 export type Recurrence = z.infer<typeof recurrenceSchema>;
+
+/**
+ * Normalize a stored recurrence JSON value into the current `Recurrence` shape,
+ * then validate. Recurrence is read from the DB as opaque Json and historically
+ * cast (not parsed); the legacy `interval {days:N}` shape predates unit-based
+ * intervals, so map it to `{every:N, unit:'day'}` before validating. Throws on
+ * anything that isn't a known shape.
+ */
+export function parseRecurrence(json: unknown): Recurrence {
+  let candidate = json;
+  if (
+    json !== null &&
+    typeof json === 'object' &&
+    (json as { kind?: unknown }).kind === 'interval' &&
+    typeof (json as { days?: unknown }).days === 'number' &&
+    (json as { every?: unknown }).every === undefined
+  ) {
+    const { days, ...rest } = json as { days: number; [k: string]: unknown };
+    candidate = { ...rest, every: days, unit: 'day' };
+  }
+  return recurrenceSchema.parse(candidate);
+}
 
 // One model, two views: REMINDER is calendar-tied with notifications;
 // CHORE is the ambient-cadence cousin (no notifications fire — the

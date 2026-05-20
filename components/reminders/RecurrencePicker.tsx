@@ -21,7 +21,7 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export function RecurrencePicker({ defaultValue, onChange }: Props) {
   const [kind, setKind] = useState<Recurrence['kind']>(defaultValue?.kind ?? 'interval');
-  const [days, setDays] = useState(defaultValue?.kind === 'interval' ? defaultValue.days : 60);
+  const [days, setDays] = useState(defaultValue?.kind === 'interval' ? defaultValue.every : 60);
   const [dayOfMonth, setDayOfMonth] = useState(
     defaultValue?.kind === 'monthly' ? defaultValue.dayOfMonth : 1,
   );
@@ -35,7 +35,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
   const onKindChange = (next: string | null) => {
     if (next !== 'interval' && next !== 'monthly' && next !== 'yearly' && next !== 'once') return;
     setKind(next);
-    if (next === 'interval') emit({ kind: 'interval', days });
+    if (next === 'interval') emit({ kind: 'interval', every: days, unit: 'day' });
     else if (next === 'monthly') emit({ kind: 'monthly', dayOfMonth });
     else if (next === 'yearly') emit({ kind: 'yearly', month, day });
     else emit({ kind: 'once' });
@@ -59,7 +59,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             onChange={(e) => {
               const n = Number(e.target.value);
               setDays(n);
-              if (kind === 'interval') emit({ kind: 'interval', days: n });
+              if (kind === 'interval') emit({ kind: 'interval', every: n, unit: 'day' });
             }}
             className="w-20"
           />

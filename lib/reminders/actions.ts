@@ -10,7 +10,7 @@ import { computeNextDueOn } from './recurrence';
 import {
   completeReminderSchema,
   createReminderSchema,
-  type Recurrence,
+  parseRecurrence,
   updateReminderSchema,
 } from './schema';
 
@@ -267,7 +267,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
   }
 
   const now = new Date();
-  const recurrence = reminder.recurrence as unknown as Recurrence;
+  const recurrence = parseRecurrence(reminder.recurrence);
   const nextDueOn = computeNextDueOn(recurrence, now);
 
   const completionToServiceRecord = new Map<string, string>();

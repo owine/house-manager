@@ -12,7 +12,7 @@ import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getReminder } from '@/lib/reminders/queries';
 import { previewOccurrences } from '@/lib/reminders/recurrence';
-import type { Recurrence } from '@/lib/reminders/schema';
+import { parseRecurrence } from '@/lib/reminders/schema';
 
 type Params = Promise<{ id: string }>;
 
@@ -27,7 +27,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   const r = await getReminder(id);
   if (!r) notFound();
 
-  const recurrence = r.recurrence as unknown as Recurrence;
+  const recurrence = parseRecurrence(r.recurrence);
   const occurrences = r.nextDueOn
     ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
     : [];

@@ -6,7 +6,7 @@ import { ReminderForm } from '@/components/reminders/ReminderForm';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { updateReminder } from '@/lib/reminders/actions';
 import { getReminder } from '@/lib/reminders/queries';
-import type { Recurrence } from '@/lib/reminders/schema';
+import { parseRecurrence } from '@/lib/reminders/schema';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
 import type { TargetInput } from '@/lib/targets/schema';
 
@@ -42,7 +42,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
           id: r.id,
           title: r.title,
           description: r.description ?? '',
-          recurrence: r.recurrence as unknown as Recurrence,
+          recurrence: parseRecurrence(r.recurrence),
           nextDueOn: r.nextDueOn ?? new Date(),
           leadTimeDays: r.leadTimeDays,
           autoCreateServiceRecord: r.autoCreateServiceRecord,

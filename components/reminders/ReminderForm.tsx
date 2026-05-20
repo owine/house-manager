@@ -82,7 +82,7 @@ export function ReminderForm({
     defaultValues: {
       autoCreateServiceRecord: false,
       leadTimeDays: 3,
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       ...defaultValues,
     },
   });

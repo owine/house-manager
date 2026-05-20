@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { buildIcal } from '@/lib/ical/build';
-import type { Recurrence } from '@/lib/reminders/schema';
+import { parseRecurrence } from '@/lib/reminders/schema';
 
 type Params = Promise<{ token: string }>;
 
@@ -39,7 +39,7 @@ export async function GET(_req: Request, { params }: { params: Params }) {
         id: r.id,
         title: r.title,
         description: r.description,
-        recurrence: r.recurrence as unknown as Recurrence,
+        recurrence: parseRecurrence(r.recurrence),
         nextDueOn: r.targets[0].nextDueOn,
         leadTimeDays: r.leadTimeDays,
       })),
