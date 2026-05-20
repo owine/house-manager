@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { reminderEmail } from '@/lib/email/templates/reminder';
 import { getEnv } from '@/lib/env';
 import { sendEmail } from '@/lib/notifications/email';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
@@ -20,7 +21,19 @@ export async function handleNotify(
 ): Promise<void> {
   const reminder = await prisma.reminder.findUnique({
     where: { id: payload.reminderId },
-    select: { id: true, title: true, description: true, active: true },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      active: true,
+      targets: {
+        select: {
+          nextDueOn: true,
+          item: { select: { id: true, name: true } },
+          system: { select: { id: true, name: true } },
+        },
+      },
+    },
   });
   if (!reminder?.active) return;
 
@@ -97,20 +110,32 @@ export async function handleNotify(
     });
     return;
   }
-  const subject = `Reminder: ${reminder.title}`;
-  const body = `${reminder.description ?? ''}\n\n${url}`;
-  const html = `<p>${escapeHtml(reminder.description ?? '')}</p><p><a href="${url}">Mark complete</a></p>`;
-  const r = await sendEmail(user.email, { subject, text: body, html });
+  if (!env.APP_URL) {
+    // Every meaningful link in this email is absolute and needs APP_URL.
+    // A reminder email with broken links is worse than a logged skip —
+    // self-hosters can see exactly what to configure.
+    console.warn(`notify: APP_URL not configured; skipping email for reminder ${reminder.id}`);
+    await prisma.notificationLog.update({
+      where: { id: logId },
+      data: { status: 'skipped', errorReason: 'APP_URL not configured' },
+    });
+    return;
+  }
+  const { subject, html, text } = reminderEmail({
+    reminderId: reminder.id,
+    title: reminder.title,
+    description: reminder.description,
+    appUrl: env.APP_URL,
+    timezone: prefs.timezone,
+    targets: reminder.targets.map((t) => ({
+      nextDueOn: t.nextDueOn,
+      item: t.item ?? undefined,
+      system: t.system ?? undefined,
+    })),
+  });
+  const r = await sendEmail(user.email, { subject, text, html });
   await prisma.notificationLog.update({
     where: { id: logId },
     data: r.ok ? { status: 'sent' } : { status: 'failed', errorReason: r.reason },
   });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(
-    /[&<>"']/g,
-    // biome-ignore lint/style/noNonNullAssertion: regex matches exactly these 5 chars
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
 }

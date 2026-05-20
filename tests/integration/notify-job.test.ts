@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getEnv } from '@/lib/env';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 const sentPushes: unknown[] = [];
@@ -100,6 +101,68 @@ describe('handleNotify', () => {
     const log = await ctx.prisma.notificationLog.findFirst({ where: { reminderId, cycle: 'C1' } });
     expect(log?.status).toBe('sent');
     expect(sentEmails).toHaveLength(1);
+  });
+
+  it('composes a reminder email with title, target link, and CTA', async () => {
+    // Arrange: seed a category + item + reminder target so the email contains item links.
+    const cat = await ctx.prisma.category.create({
+      data: { slug: 'appliances', name: 'Appliances' },
+    });
+    const item = await ctx.prisma.item.create({
+      data: { name: 'Furnace Filter', categoryId: cat.id },
+    });
+    await ctx.prisma.reminderTarget.create({
+      data: {
+        reminderId,
+        itemId: item.id,
+        nextDueOn: new Date('2026-06-01T12:00:00Z'),
+      },
+    });
+
+    // Act
+    await handleNotify({ reminderId, userId, channel: 'email', cycle: '2026-06-01' });
+
+    // Assert: payload was captured and contains expected content.
+    expect(sentEmails).toHaveLength(1);
+    const payload = sentEmails[0] as { subject: string; html: string; text: string };
+    expect(payload.subject).toMatch(/^Reminder: /);
+    expect(payload.html).toContain('X'); // reminder title seeded in beforeEach
+    expect(payload.html).toMatch(new RegExp(`href="http://localhost:3000/items/${item.id}"`));
+    expect(payload.html).toContain('View reminder');
+    expect(payload.text.length).toBeGreaterThan(0);
+  });
+
+  it('marks the log skipped with reason "APP_URL not configured" when APP_URL is unset', async () => {
+    // Arrange: seed a category + item + reminder target (same pattern as content test).
+    const cat = await ctx.prisma.category.create({
+      data: { slug: 'appliances-skip', name: 'Appliances Skip' },
+    });
+    const item = await ctx.prisma.item.create({
+      data: { name: 'Water Heater', categoryId: cat.id },
+    });
+    await ctx.prisma.reminderTarget.create({
+      data: {
+        reminderId,
+        itemId: item.id,
+        nextDueOn: new Date('2026-06-02T12:00:00Z'),
+      },
+    });
+
+    // Override getEnv for this one call only: APP_URL is undefined.
+    vi.mocked(getEnv).mockReturnValueOnce({
+      APP_URL: undefined,
+    } as unknown as ReturnType<typeof getEnv>);
+
+    // Act
+    await handleNotify({ reminderId, userId, channel: 'email', cycle: '2026-06-02' });
+
+    // Assert: no email sent; log is skipped with the expected reason.
+    expect(sentEmails).toHaveLength(0);
+    const log = await ctx.prisma.notificationLog.findFirst({
+      where: { reminderId, channel: 'email', cycle: '2026-06-02' },
+    });
+    expect(log?.status).toBe('skipped');
+    expect(log?.errorReason).toBe('APP_URL not configured');
   });
 
   it('does not insert a log when in quiet-hours and re-enqueues via deps.enqueueLater', async () => {
