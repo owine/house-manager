@@ -55,25 +55,9 @@ describe('isoWeek', () => {
     expect(isoWeek({ year: 2026, month: 1, day: 1 })).toBe('2026-W01');
   });
 
-  it('returns 2026-W52 for 2026-12-28 (Mon of last full ISO week of 2026)', () => {
-    // Dec 28 2026 is a Monday. dow=1. Shift to Thu: +3 days = Dec 31 (Thu).
-    // isoYear=2026. yearStart=Jan 1 2026 UTC (Thu).
-    // diff = (Dec 31 - Jan 1) / 86400000 = 364 days.
-    // weekNum = ceil((364+1)/7) = ceil(365/7) = ceil(52.14) = 53? Let's recheck.
-    // Jan 1 2026 UTC epoch: new Date(Date.UTC(2026,0,1)).getTime()
-    // Dec 31 2026 UTC epoch: new Date(Date.UTC(2026,11,31)).getTime()
-    // diff days = 364. weekNum = ceil((364+1)/7) = ceil(52.14...) = 53.
-    // But 2026 only has 52 ISO weeks (Jan 1 is Thu, so W01 starts Jan 1; Dec 28 Mon
-    // is in W53? No — let's verify: ISO week 53 only exists if Dec 28 is in it.
-    // Actually Dec 28 2026 = Mon, its Thursday = Dec 31 2026. yearStart for ISO =
-    // Jan 1 2026. (Dec31 - Jan1) = 364 days. weekNum = ceil((364+1)/7) = ceil(52.14) = 53.
-    // But 2026 should have 52 ISO weeks... Let me re-examine: 2026 starts on Thursday
-    // which means W01 spans Jan 1-4 (Thu-Sun) + Dec 28-30 2025 (Mon-Wed)? No.
-    // ISO week 1 is the week containing the first Thursday of the year.
-    // For 2026: Jan 1 IS a Thursday, so W01 = Dec 29 2025 (Mon) through Jan 4 2026 (Sun).
-    // Dec 28 2026: let's see what week it falls in. The last Thursday of 2026 ISO year:
-    // Dec 31 2026 is Thursday → it IS in ISO year 2026. weekNum = ceil(365/7) = 53.
-    // 2026 has 53 ISO weeks! So Dec 28 is in W53.
+  it('returns 2026-W53 for 2026-12-28 (2026 is a 53-week ISO year)', () => {
+    // 2026 starts on a Thursday, so it has 53 ISO weeks. Dec 28 2026 (Mon)
+    // shifts to its Thursday Dec 31 2026, still in ISO year 2026 → W53.
     expect(isoWeek({ year: 2026, month: 12, day: 28 })).toBe('2026-W53');
   });
 
