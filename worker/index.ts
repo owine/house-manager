@@ -11,6 +11,7 @@ import {
   type ClassifyIncomingEmailJob,
   handleClassifyIncomingEmail,
 } from './jobs/classify-incoming-email';
+import { handleDigestTick } from './jobs/digest-tick';
 import { handleEmbedBackfill } from './jobs/embed-backfill';
 import { type EmbedContentJob, handleEmbedContent } from './jobs/embed-content';
 import {
@@ -102,6 +103,12 @@ async function main() {
     await handleSearchReindex();
   });
 
+  // Digest-tick sweeper — runs every 30 min, sends overdue + weekly digests.
+  await boss.schedule(Queue.DigestTick, '*/30 * * * *');
+  await boss.work(Queue.DigestTick, { batchSize: 1 }, async () => {
+    await handleDigestTick();
+  });
+
   // Notification-log sweeper — runs every 5 min, deletes stale 'queued' rows.
   await boss.schedule(Queue.NotifyLogSweep, '*/5 * * * *');
   await boss.work(Queue.NotifyLogSweep, { batchSize: 1 }, async () => {
@@ -177,7 +184,7 @@ async function main() {
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, incoming-email.classify, incoming-email.extract, embed.content, embed.backfill, attachment.extract-text jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, incoming-email.classify, incoming-email.extract, embed.content, embed.backfill, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {
