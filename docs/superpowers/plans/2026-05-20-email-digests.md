@@ -46,7 +46,7 @@ This task is foundational — every later task depends on the schema and the new
 
 - [ ] **Step 1: Read the relevant existing files first**
 
-Read in head before editing:
+Read these before editing:
 - `lib/notifications/prefs.ts` (Zod schema you'll extend)
 - `lib/notifications/prefs.test.ts` (existing test idiom)
 - `lib/queue.ts` (the const-object pattern; add one line)

@@ -134,8 +134,16 @@ export async function handleDigestTick(): Promise<void> {
                 errorReason: 'APP_URL not configured',
               },
             });
-          } catch {
-            // already logged this cycle
+          } catch (err) {
+            // P2002 = already logged this (userId, kind, cycle) — expected.
+            // Surface anything else so a real DB problem isn't hidden in the
+            // audit table (matches the dedup catch in maybeSend).
+            if (!(err && typeof err === 'object' && 'code' in err && err.code === 'P2002')) {
+              console.error(
+                `digest-tick: failed to log APP_URL skip for ${u.id}/${kind}/${cycle}:`,
+                err,
+              );
+            }
           }
         }
         if (skips.length > 0) {
