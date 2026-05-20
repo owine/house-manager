@@ -27,6 +27,7 @@ function localParts(timezone: string): { hour: number; day: number; date: string
       .map((p) => [p.type, p.value]),
   );
   const date = `${parts.year}-${parts.month}-${parts.day}`;
+  // hour12:false yields 00-23, but some runtimes emit '24' for midnight — guard it.
   const hour = Number(parts.hour === '24' ? '00' : parts.hour);
   const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   const day = dayMap[parts.weekday as string] ?? 0;
@@ -38,10 +39,14 @@ function localParts(timezone: string): { hour: number; day: number; date: string
   ];
   const dUtc = new Date(Date.UTC(y, m - 1, d));
   const dow = dUtc.getUTCDay() || 7;
+  // Shift to the Thursday of this week, THEN read the year — ISO 8601 weeks
+  // belong to the year of their Thursday, so the year-start anchor and the
+  // label must both use the post-shift year (they already do).
   dUtc.setUTCDate(dUtc.getUTCDate() + 4 - dow);
-  const yearStart = Date.UTC(dUtc.getUTCFullYear(), 0, 1);
+  const isoYear = dUtc.getUTCFullYear();
+  const yearStart = Date.UTC(isoYear, 0, 1);
   const weekNum = Math.ceil(((dUtc.getTime() - yearStart) / 86_400_000 + 1) / 7);
-  const week = `${dUtc.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+  const week = `${isoYear}-W${String(weekNum).padStart(2, '0')}`;
   return { hour, day, date, week };
 }
 
@@ -63,8 +68,15 @@ async function maybeSend(
       select: { id: true },
     });
     logId = log.id;
-  } catch {
-    return; // already handled this cycle
+  } catch (err) {
+    // P2002 = unique-constraint violation = already handled this (userId, kind,
+    // cycle) — the normal dedup path. Anything else is an unexpected DB error:
+    // log it (don't silently drop the digest) and skip this one.
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
+      return;
+    }
+    console.error(`digest-tick: failed to create DigestLog for ${userId}/${kind}/${cycle}:`, err);
+    return;
   }
   const items =
     kind === 'overdue'
@@ -97,47 +109,51 @@ export async function handleDigestTick(): Promise<void> {
     if (!prefs.emailEnabled) continue;
     if (!prefs.overdueDigestEnabled && !prefs.weeklySummaryEnabled) continue;
 
-    const local = localParts(prefs.timezone);
-    const overdueDue = prefs.overdueDigestEnabled && local.hour === prefs.overdueDigestHour;
-    const weeklyDue =
-      prefs.weeklySummaryEnabled &&
-      local.day === prefs.weeklySummaryDay &&
-      local.hour === prefs.weeklySummaryHour;
+    try {
+      const local = localParts(prefs.timezone);
+      const overdueDue = prefs.overdueDigestEnabled && local.hour === prefs.overdueDigestHour;
+      const weeklyDue =
+        prefs.weeklySummaryEnabled &&
+        local.day === prefs.weeklySummaryDay &&
+        local.hour === prefs.weeklySummaryHour;
 
-    if (!env.APP_URL) {
-      // Log a skipped row only for the kinds that would have fired this hour,
-      // so the user sees exactly why no email arrived (no spurious rows).
-      const skips: Array<[DigestKind, string]> = [];
-      if (overdueDue) skips.push(['overdue', local.date]);
-      if (weeklyDue) skips.push(['weekly', local.week]);
-      for (const [kind, cycle] of skips) {
-        try {
-          await prisma.digestLog.create({
-            data: {
-              userId: u.id,
-              kind,
-              cycle,
-              status: 'skipped',
-              errorReason: 'APP_URL not configured',
-            },
-          });
-        } catch {
-          // already logged this cycle
+      if (!env.APP_URL) {
+        // Log a skipped row only for the kinds that would have fired this hour,
+        // so the user sees exactly why no email arrived (no spurious rows).
+        const skips: Array<[DigestKind, string]> = [];
+        if (overdueDue) skips.push(['overdue', local.date]);
+        if (weeklyDue) skips.push(['weekly', local.week]);
+        for (const [kind, cycle] of skips) {
+          try {
+            await prisma.digestLog.create({
+              data: {
+                userId: u.id,
+                kind,
+                cycle,
+                status: 'skipped',
+                errorReason: 'APP_URL not configured',
+              },
+            });
+          } catch {
+            // already logged this cycle
+          }
         }
+        if (skips.length > 0) {
+          console.warn(
+            `digest-tick: APP_URL not configured; skipped ${skips.length} digest(s) for user ${u.id}`,
+          );
+        }
+        continue;
       }
-      if (skips.length > 0) {
-        console.warn(
-          `digest-tick: APP_URL not configured; skipped ${skips.length} digest(s) for user ${u.id}`,
-        );
-      }
-      continue;
-    }
 
-    if (overdueDue) {
-      await maybeSend(u.id, u.email, 'overdue', local.date, env.APP_URL, prefs.timezone);
-    }
-    if (weeklyDue) {
-      await maybeSend(u.id, u.email, 'weekly', local.week, env.APP_URL, prefs.timezone);
+      if (overdueDue) {
+        await maybeSend(u.id, u.email, 'overdue', local.date, env.APP_URL, prefs.timezone);
+      }
+      if (weeklyDue) {
+        await maybeSend(u.id, u.email, 'weekly', local.week, env.APP_URL, prefs.timezone);
+      }
+    } catch (err) {
+      console.error(`digest-tick: failed processing user ${u.id}:`, err);
     }
   }
 }
