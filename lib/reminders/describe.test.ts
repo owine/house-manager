@@ -44,4 +44,8 @@ describe('describeRecurrence', () => {
     expect(
       describeRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [11, 12, 1, 2] }),
     ).toBe('Monthly on the 1st (Nov–Feb)'));
+  it('single-month season suffix', () =>
+    expect(describeRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [7] })).toBe(
+      'Monthly on the 1st (Jul)',
+    ));
 });
