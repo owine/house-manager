@@ -4,50 +4,21 @@ import { digestEmail } from '@/lib/email/templates/digest';
 import { getEnv } from '@/lib/env';
 import { sendEmail } from '@/lib/notifications/email';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
+import { isoWeek, tzParts } from '@/lib/time/tz';
 
 type DigestKind = 'overdue' | 'weekly';
 
 /**
- * Local-time parts for "now" in the given tz. Uses Intl.DateTimeFormat only
- * (no new dependency). `week` is the ISO week key (YYYY-Www).
+ * Local-time parts for "now" in the given tz. `week` is the ISO week key (YYYY-Www).
  */
 function localParts(timezone: string): { hour: number; day: number; date: string; week: string } {
   const now = new Date();
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      weekday: 'short',
-      hour12: false,
-    })
-      .formatToParts(now)
-      .map((p) => [p.type, p.value]),
-  );
-  const date = `${parts.year}-${parts.month}-${parts.day}`;
-  // hour12:false yields 00-23, but some runtimes emit '24' for midnight — guard it.
-  const hour = Number(parts.hour === '24' ? '00' : parts.hour);
-  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  const day = dayMap[parts.weekday as string] ?? 0;
-  // ISO week (Thursday-based).
-  const [y, m, d] = [Number(parts.year), Number(parts.month), Number(parts.day)] as [
-    number,
-    number,
-    number,
-  ];
-  const dUtc = new Date(Date.UTC(y, m - 1, d));
-  const dow = dUtc.getUTCDay() || 7;
-  // Shift to the Thursday of this week, THEN read the year — ISO 8601 weeks
-  // belong to the year of their Thursday, so the year-start anchor and the
-  // label must both use the post-shift year (they already do).
-  dUtc.setUTCDate(dUtc.getUTCDate() + 4 - dow);
-  const isoYear = dUtc.getUTCFullYear();
-  const yearStart = Date.UTC(isoYear, 0, 1);
-  const weekNum = Math.ceil(((dUtc.getTime() - yearStart) / 86_400_000 + 1) / 7);
-  const week = `${isoYear}-W${String(weekNum).padStart(2, '0')}`;
-  return { hour, day, date, week };
+  const p = tzParts(now, timezone);
+  const month = String(p.month).padStart(2, '0');
+  const day = String(p.day).padStart(2, '0');
+  const date = `${p.year}-${month}-${day}`;
+  const week = isoWeek(p);
+  return { hour: p.hour, day: p.weekday, date, week };
 }
 
 async function maybeSend(

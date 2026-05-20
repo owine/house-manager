@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { tzOffsetMinutes, tzParts } from '@/lib/time/tz';
 
 export type DigestItem = {
   reminderId: string;
@@ -14,26 +15,10 @@ export type DigestItem = {
  * at 2026-05-20T15:00Z returns 2026-05-20T04:00Z (00:00 EDT).
  */
 function startOfTodayInTz(timezone: string, now: Date): Date {
-  // Wall-clock Y/M/D in the target tz.
-  const ymd = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now); // 'YYYY-MM-DD'
-  // Offset of the target tz right now, in minutes.
-  const offsetName = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    timeZoneName: 'longOffset',
-  })
-    .formatToParts(now)
-    .find((p) => p.type === 'timeZoneName')?.value; // e.g. 'GMT-04:00' or 'GMT+05:30'
-  const m = offsetName?.match(/GMT([+-])(\d{2}):(\d{2})/);
-  const sign = m?.[1] === '-' ? -1 : 1;
-  const offsetMinutes = m ? sign * (Number(m[2]) * 60 + Number(m[3])) : 0;
-  const [y, mo, d] = ymd.split('-').map(Number) as [number, number, number];
+  const { year, month, day } = tzParts(now, timezone);
+  const offsetMinutes = tzOffsetMinutes(now, timezone);
   // Midnight wall-clock in tz, expressed as the equivalent UTC instant.
-  return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0) - offsetMinutes * 60_000);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60_000);
 }
 
 function daysBetween(later: Date, earlier: Date): number {
