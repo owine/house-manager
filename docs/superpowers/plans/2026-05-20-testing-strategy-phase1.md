@@ -113,7 +113,7 @@ This runs `vitest run --coverage` over all includes (unit + integration; Testcon
     },
 ```
 
-Replace the `<…>` with the floored baseline values from Step 1. Confirm `lib/generated` is the actual Prisma client output path (check `prisma/schema.prisma` `generator client { output }`); adjust the exclude glob if it differs.
+Replace the `<…>` with the floored baseline values from Step 1. Note: the Prisma generator has no `output` set, so the client lands in `node_modules/@prisma/client` (already outside the `include` globs) — the `lib/generated/**` exclude matches nothing. Drop that exclude line (or leave it; harmless).
 
 - [ ] **Step 2b: Add the check script** to `package.json`:
 
@@ -167,7 +167,19 @@ Add `tests: ${{ steps.filter.outputs.tests }}` to the job's `outputs:`.
     if: needs.changes.outputs.tests == 'true'
 ```
 
-Leave `lint` and `typecheck` unconditional (cheap, always relevant). Update `build-image`'s `needs:` list — it already lists unit/integration/e2e; with conditional jobs, a skipped job reports `skipped` not `success`, so change `build-image`'s gating to tolerate skipped deps (use `if: always() && !contains(needs.*.result, 'failure')` plus the existing image condition, or confirm the current `needs` semantics don't block on skipped). **Verify this interaction explicitly** — a skipped required job must not wedge `build-image` on docs-only PRs.
+Leave `lint` and `typecheck` unconditional (cheap, always relevant).
+
+**MANDATORY downstream fix — do not skip (release regression otherwise).** In GitHub Actions a **skipped** `needs` dependency causes the dependent job to be **skipped too** (unless the dependent uses `if: always()`). `build-image` runs on `main` for *every* commit (ci.yml ~256-261: "publish a manifest for every commit") via `if: github.ref == 'refs/heads/main' || needs.changes.outputs.image == 'true'`. Once unit/integration/e2e are conditional, a **docs-only push to `main`** skips them → `build-image` would cascade-skip → **no image/manifest published for that commit.** Fix `build-image`'s `if` to tolerate skipped (but not failed) deps:
+
+```yaml
+    if: >-
+      always()
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
+      && (github.ref == 'refs/heads/main' || needs.changes.outputs.image == 'true')
+```
+
+`always()` lets it run despite skipped test jobs; `!contains(... 'failure')` still blocks it when a test that *did* run failed. `publish-manifest` (`needs: build-image`, main-only) then runs normally because `build-image` succeeded. Do NOT use the "confirm semantics don't block" alternative — skipped deps DO block; this `always()` form is required.
 
 - [ ] **Step 3: Switch the e2e job to the critical subset.** In the `e2e` job (ci.yml ~246), change `- run: pnpm test:e2e` → `- run: pnpm test:e2e:critical`. The seed/deploy/install steps stay (the critical specs still need DB + Chromium + categories).
 
@@ -182,7 +194,7 @@ Leave `lint` and `typecheck` unconditional (cheap, always relevant). Update `bui
           retention-days: 1
 ```
 
-Mirror for `integration` (`coverage-integration` / `integration-blob.json`). **Confirm the exact Vitest 4 flag set** (blob reporter + per-run coverage) via context7; the names above may need adjustment (e.g. `--reporter=blob` output dir conventions). Do NOT set thresholds here — these jobs only collect; the merge job enforces.
+Mirror for `integration` (`coverage-integration` / `integration-blob.json`). **Confirm the exact Vitest 4 flag set** (blob reporter + per-run coverage) via context7; the canonical blob output dir is `.vitest/blob/` (not `.vitest-reports/`), so the artifact `path:` (upload) and the download `path:` in Step 5 must point at wherever the blob actually writes — verify the real path and make all three (`--outputFile`, upload `path`, download `path`) consistent. Do NOT set thresholds here — these jobs only collect; the merge job enforces.
 
 - [ ] **Step 5: Add a `coverage` job** that merges the blobs and enforces the floor:
 
@@ -210,7 +222,11 @@ The merged `--coverage` run applies the `thresholds` from `vitest.config.ts` to 
 - [ ] **Step 7: Verify YAML validity + logic.**
 
 Run: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/ci.yml')); print('YAML OK')"`
-Then re-read the diff and confirm: (a) docs-only change → unit/integration/e2e/coverage all skip, build-image still resolves; (b) code change → all run; (c) e2e runs only `@critical`; (d) coverage job depends on both test jobs' artifacts.
+Then re-read the diff and confirm each case:
+- (a) **docs-only PR** → unit/integration/e2e/coverage skip; `build-image` is `if:false` (not main, image=false) so skips cleanly — fine.
+- (b) **code PR** → all test jobs run; e2e runs only `@critical`; coverage merges both blobs.
+- (c) **docs-only push to `main`** → test jobs skip, but `build-image` still RUNS (via the `always()` form) and `publish-manifest` publishes — the "every commit gets a manifest" guarantee holds. **This is the regression case; verify the `always()` `if` explicitly.**
+- (d) coverage job `needs` both test jobs and downloads both artifacts.
 
 - [ ] **Step 8: Commit**
 
