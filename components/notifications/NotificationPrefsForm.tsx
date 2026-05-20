@@ -47,6 +47,11 @@ const TIMEZONE_OPTIONS = [
   'Australia/Sydney',
 ];
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({
+  value: String(h),
+  label: `${String(h).padStart(2, '0')}:00`,
+}));
+
 type Props = {
   prefs: NotificationPrefs;
   subscriptions: { id: string; userAgent: string | null; createdAt: Date }[];
@@ -228,9 +233,9 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <SelectItem key={String(h)} value={String(h)}>
-                        {String(h).padStart(2, '0')}:00
+                    {HOUR_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -308,9 +313,9 @@ export function NotificationPrefsForm({ prefs, subscriptions }: Props) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {Array.from({ length: 24 }, (_, h) => (
-                        <SelectItem key={String(h)} value={String(h)}>
-                          {String(h).padStart(2, '0')}:00
+                      {HOUR_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
