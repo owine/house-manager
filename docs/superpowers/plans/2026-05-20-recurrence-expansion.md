@@ -326,13 +326,32 @@ function inSeason(date: Date, activeMonths: number[] | undefined): boolean {
   return activeMonths.includes(date.getUTCMonth() + 1);
 }
 
-/** First occurrence strictly after `completedOn` for an rrule-based kind. */
+/**
+ * First occurrence strictly after `completedOn` for a CALENDAR-anchored kind
+ * (weekly/monthly/monthlyWeekday/yearly). These pin to a calendar slot via
+ * `byXXX` rules, so seeding `dtstart = completedOn + DAY_MS` and taking the
+ * first occurrence is correct.
+ */
 function firstAfter(opts: Partial<ConstructorParameters<typeof RRule>[0]>, completedOn: Date): Date {
   const after = new Date(completedOn.getTime() + DAY_MS);
   const rule = new RRule({ ...opts, dtstart: after, count: 1 });
   const [next] = rule.all();
   if (!next) throw new Error('rrule returned no occurrence');
   return next;
+}
+
+/**
+ * `completedOn` advanced by `every` whole units (week/month/year), calendar-
+ * aware. IMPORTANT: rrule's `interval` only spaces occurrences APART; it does
+ * NOT offset the first one — occurrence #0 is always `dtstart`. So anchor at
+ * `from` and take occurrence #1 (= from + interval). Verified: every-2-weeks
+ * from 2026-04-30 -> 2026-05-14; every-3-months from 2026-01-15 -> 2026-04-15.
+ */
+function addUnits(from: Date, every: number, freq: number): Date {
+  const rule = new RRule({ freq, interval: every, dtstart: from, count: 2 });
+  const occ = rule.all();
+  if (occ.length < 2) throw new Error('rrule returned no occurrence');
+  return occ[1];
 }
 
 export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
@@ -347,7 +366,7 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
         if (rec.unit === 'day') return new Date(from.getTime() + rec.every * DAY_MS);
         const freq =
           rec.unit === 'week' ? RRule.WEEKLY : rec.unit === 'month' ? RRule.MONTHLY : RRule.YEARLY;
-        return firstAfter({ freq, interval: rec.every }, from);
+        return addUnits(from, rec.every, freq);
       };
       let next = step(completedOn);
       for (let i = 0; !inSeason(next, rec.activeMonths); i++) {
@@ -410,7 +429,14 @@ export function previewOccurrences(rec: Recurrence, startAfter: Date, count: num
 - [ ] **Step 4: Run tests to verify pass**
 
 Run: `pnpm vitest run lib/reminders/recurrence.test.ts`
-Expected: PASS. If any date assertion is off by the chosen calendar dates, verify the weekday of the literal dates with `new Date('…').getUTCDay()` and adjust the EXPECTED value (not the implementation) — the dates above were chosen for 2026/2027 but re-verify.
+Expected: PASS. The expected dates were verified against the real `rrule` for
+2026/2027 (every-2-weeks 2026-04-30→2026-05-14; every-3-months 2026-01-15→
+2026-04-15; every-1-year 2026-02-10→2027-02-10; weekday literals confirmed).
+If a test fails, the implementation is wrong — fix `recurrence.ts`, NOT the
+expectations. (The common trap: using `firstAfter`/`interval` for the unit
+intervals returns the day after completion because rrule's `interval` doesn't
+offset occurrence #0 — that's exactly why `addUnits` uses `count: 2` and takes
+`[1]`.)
 
 - [ ] **Step 5: Commit**
 
@@ -530,6 +556,7 @@ describe('describeRecurrence', () => {
   it('once', () => expect(describeRecurrence({ kind: 'once' })).toBe('Once (does not repeat)'));
   it('season suffix', () => expect(describeRecurrence({ kind: 'interval', every: 2, unit: 'week', activeMonths: [4, 5, 6, 7, 8, 9, 10] })).toBe('Every 2 weeks (Apr–Oct)'));
   it('non-contiguous season suffix', () => expect(describeRecurrence({ kind: 'weekly', weekdays: [1], activeMonths: [3, 6, 9, 12] })).toBe('Every Mon (Mar, Jun, Sep, Dec)'));
+  it('wrap-around season suffix (Nov–Feb)', () => expect(describeRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [11, 12, 1, 2] })).toBe('Monthly on the 1st (Nov–Feb)'));
 });
 ```
 
@@ -555,38 +582,35 @@ function ordinal(n: number): string {
   return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }
 
-/** Is the list a single contiguous run of months (handles year wrap)? */
-function contiguous(sorted: number[]): boolean {
-  // sorted ascending; allow a single wrap (e.g. [11,12,1,2]).
-  for (let i = 1; i < sorted.length; i++) if (sorted[i] - sorted[i - 1] !== 1) {
-    // check wrap: tail at 12 and head at 1 with one gap
-    return false;
+// True if each step from one month to the next is +1 modulo 12, i.e. the
+// sequence is a single unbroken run (e.g. [11,12,1,2] after rotation).
+function consecutiveMod12(seq: number[]): boolean {
+  for (let i = 1; i < seq.length; i++) {
+    if (((seq[i] - seq[i - 1] + 12) % 12) !== 1) return false;
   }
   return true;
 }
 
-function seasonSuffix(months: number[] | undefined): string {
-  if (!months) return '';
-  const sorted = [...months].sort((a, b) => a - b);
-  // Detect a contiguous run, including a single wrap-around (e.g. Nov–Feb).
-  const isRun = contiguous(sorted);
-  const wrap =
-    !isRun && sorted[0] === 1 && sorted[sorted.length - 1] === 12 &&
-    contiguous(rotateToWrap(sorted));
-  if (isRun) return ` (${MON_SHORT[sorted[0]]}–${MON_SHORT[sorted[sorted.length - 1]]})`;
-  if (wrap) {
-    const ordered = rotateToWrap(sorted);
-    return ` (${MON_SHORT[ordered[0]]}–${MON_SHORT[ordered[ordered.length - 1]]})`;
-  }
-  return ` (${sorted.map((m) => MON_SHORT[m]).join(', ')})`;
-}
-
-// Rotate a wrap-around set like [1,2,11,12] into chronological [11,12,1,2].
+// Rotate a sorted set at its first gap so a wrap-around run becomes contiguous:
+// [1,2,11,12] -> [11,12,1,2]. No gap (already a plain run) -> returned as-is.
 function rotateToWrap(sorted: number[]): number[] {
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] - sorted[i - 1] > 1) return [...sorted.slice(i), ...sorted.slice(0, i)];
   }
   return sorted;
+}
+
+function seasonSuffix(months: number[] | undefined): string {
+  if (!months) return '';
+  const sorted = [...months].sort((a, b) => a - b);
+  if (consecutiveMod12(sorted)) {
+    return ` (${MON_SHORT[sorted[0]]}–${MON_SHORT[sorted[sorted.length - 1]]})`;
+  }
+  const rot = rotateToWrap(sorted);
+  if (consecutiveMod12(rot)) {
+    return ` (${MON_SHORT[rot[0]]}–${MON_SHORT[rot[rot.length - 1]]})`;
+  }
+  return ` (${sorted.map((m) => MON_SHORT[m]).join(', ')})`;
 }
 
 export function describeRecurrence(rec: Recurrence): string {
