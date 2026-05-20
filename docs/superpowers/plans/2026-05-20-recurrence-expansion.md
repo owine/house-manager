@@ -603,6 +603,7 @@ function rotateToWrap(sorted: number[]): number[] {
 function seasonSuffix(months: number[] | undefined): string {
   if (!months) return '';
   const sorted = [...months].sort((a, b) => a - b);
+  if (sorted.length === 1) return ` (${MON_SHORT[sorted[0]]})`;
   if (consecutiveMod12(sorted)) {
     return ` (${MON_SHORT[sorted[0]]}–${MON_SHORT[sorted[sorted.length - 1]]})`;
   }
