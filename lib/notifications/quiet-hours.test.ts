@@ -57,3 +57,35 @@ describe('nextNonQuietTime', () => {
     expect(next.toISOString()).toBe('2026-04-30T07:00:00.000Z');
   });
 });
+
+describe('isInQuietWindow — timezone aware', () => {
+  it('uses the user tz wall-clock, not UTC', () => {
+    // America/New_York is UTC-4 in summer (EDT). Quiet 22:00-07:00 local.
+    const prefs = {
+      ...baseline,
+      timezone: 'America/New_York',
+      quietStart: '22:00',
+      quietEnd: '07:00',
+    };
+    // 2026-07-01T10:00:00Z = 06:00 EDT → INSIDE quiet window (UTC hour=10 would be outside).
+    expect(isInQuietWindow(utc('2026-07-01T10:00:00Z'), prefs)).toBe(true);
+    // 2026-07-01T18:00:00Z = 14:00 EDT → OUTSIDE quiet window.
+    expect(isInQuietWindow(utc('2026-07-01T18:00:00Z'), prefs)).toBe(false);
+  });
+});
+
+describe('nextNonQuietTime — timezone aware', () => {
+  it('returns the next quietEnd wall-clock time in the user tz as a UTC instant', () => {
+    const prefs = {
+      ...baseline,
+      timezone: 'America/New_York',
+      quietStart: '22:00',
+      quietEnd: '07:00',
+    };
+    // At 2026-07-01T02:00:00Z (22:00 EDT on Jun-30, inside window),
+    // next 07:00 EDT = 2026-07-01T07:00 EDT = 2026-07-01T11:00:00Z.
+    expect(nextNonQuietTime(utc('2026-07-01T02:00:00Z'), prefs).toISOString()).toBe(
+      '2026-07-01T11:00:00.000Z',
+    );
+  });
+});

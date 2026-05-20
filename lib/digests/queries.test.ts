@@ -10,8 +10,8 @@ let ctx: IntegrationContext;
 let userId: string;
 let categoryId: string;
 let itemId: string;
-let getOverdueForUser: (userId: string, tz: string) => Promise<DigestItem[]>;
-let getWeeklyForUser: (userId: string, tz: string) => Promise<DigestItem[]>;
+let getOverdueForUser: (userId: string, tz: string, now?: Date) => Promise<DigestItem[]>;
+let getWeeklyForUser: (userId: string, tz: string, now?: Date) => Promise<DigestItem[]>;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
@@ -119,6 +119,37 @@ describe('getOverdueForUser', () => {
 
   it('returns empty array when nothing is overdue', async () => {
     expect(await getOverdueForUser(userId, 'America/New_York')).toEqual([]);
+  });
+
+  it('respects the tz midnight boundary (a reminder due just before local midnight is overdue; one due at/after local midnight is not)', async () => {
+    // Fix "now" at 2026-07-01T16:00:00Z. In America/New_York (EDT, UTC-4) that is
+    // 12:00 on 2026-07-01, so local start-of-today = 2026-07-01T04:00:00Z (00:00 EDT Jul-1).
+    const now = new Date('2026-07-01T16:00:00Z');
+    const tz = 'America/New_York';
+
+    // 2026-07-01T03:00:00Z = 23:00 EDT Jun-30 → before start-of-today (04:00Z) → OVERDUE.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Before local midnight',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-07-01T03:00:00Z') }] },
+      },
+    });
+    // 2026-07-01T04:00:00Z = 00:00 EDT Jul-1 → equals start-of-today → NOT overdue (filter is `lt`, strict <).
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'At local midnight',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-07-01T04:00:00Z') }] },
+      },
+    });
+
+    const rows = await getOverdueForUser(userId, tz, now);
+    expect(rows.map((r) => r.title)).toEqual(['Before local midnight']);
   });
 });
 
