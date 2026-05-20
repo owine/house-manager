@@ -42,6 +42,32 @@ describe('normalizeImageForOcr', () => {
     expect(meta.height).toBe(20);
   });
 
+  it('downscales an oversized image to the max OCR dimension', async () => {
+    // 5000x100 → longest edge capped at 4000 (fit: inside, preserves aspect).
+    const big = await sharp({
+      create: { width: 5000, height: 100, channels: 3, background: '#fff' },
+    })
+      .png()
+      .toBuffer();
+    const out = await normalizeImageForOcr(big);
+    expect(out).not.toBeNull();
+    const meta = await sharp(out as Buffer).metadata();
+    expect(meta.width).toBe(4000);
+    expect(meta.height).toBe(80); // 100 * (4000/5000)
+  });
+
+  it('does not enlarge a small image', async () => {
+    const small = await sharp({
+      create: { width: 30, height: 20, channels: 3, background: '#fff' },
+    })
+      .png()
+      .toBuffer();
+    const out = await normalizeImageForOcr(small);
+    const meta = await sharp(out as Buffer).metadata();
+    expect(meta.width).toBe(30);
+    expect(meta.height).toBe(20);
+  });
+
   it('returns null for non-image bytes (no throw)', async () => {
     const out = await normalizeImageForOcr(Buffer.from('this is not an image'));
     expect(out).toBeNull();
