@@ -13,8 +13,7 @@ export type DigestItem = {
  * Date suitable for Prisma comparison. Example: timezone='America/New_York'
  * at 2026-05-20T15:00Z returns 2026-05-20T04:00Z (00:00 EDT).
  */
-function startOfTodayInTz(timezone: string): Date {
-  const now = new Date();
+function startOfTodayInTz(timezone: string, now: Date): Date {
   // Wall-clock Y/M/D in the target tz.
   const ymd = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
@@ -76,13 +75,20 @@ async function findAndProject(
   });
 }
 
-export async function getOverdueForUser(userId: string, timezone: string): Promise<DigestItem[]> {
-  const start = startOfTodayInTz(timezone);
-  return findAndProject(userId, { lt: start }, 'asc', new Date());
+export async function getOverdueForUser(
+  userId: string,
+  timezone: string,
+  now: Date = new Date(),
+): Promise<DigestItem[]> {
+  const start = startOfTodayInTz(timezone, now);
+  return findAndProject(userId, { lt: start }, 'asc', now);
 }
 
-export async function getWeeklyForUser(userId: string, _timezone: string): Promise<DigestItem[]> {
-  const now = new Date();
+export async function getWeeklyForUser(
+  userId: string,
+  _timezone: string,
+  now: Date = new Date(),
+): Promise<DigestItem[]> {
   const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   return findAndProject(userId, { gte: now, lte: end }, 'asc', now);
 }
