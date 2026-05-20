@@ -1043,10 +1043,12 @@ async function maybeSend(
   timezone: string,
 ): Promise<void> {
   // Write-log-first-then-catch: the unique constraint is the dedup primitive.
+  // Initial status is 'queued' (mirrors notify.ts:58) so a process crash between
+  // create and the status update doesn't leave a misleading 'sent' row.
   let logId: string;
   try {
     const log = await prisma.digestLog.create({
-      data: { userId, kind, cycle, status: 'sent' /* tentative; updated below */ },
+      data: { userId, kind, cycle, status: 'queued' },
       select: { id: true },
     });
     logId = log.id;
@@ -1075,12 +1077,12 @@ async function maybeSend(
 
 export async function handleDigestTick(): Promise<void> {
   const env = getEnv();
+  // User.email is non-nullable in the schema, so no email-presence filter is
+  // needed. We still skip users whose JSON prefs don't enable email delivery.
   const users = await prisma.user.findMany({
-    where: { email: { not: null } },
     select: { id: true, email: true, notificationPrefs: true },
   });
   for (const u of users) {
-    if (!u.email) continue;
     const prefs = readNotificationPrefs(u.notificationPrefs);
     if (!prefs.emailEnabled) continue;
     if (!prefs.overdueDigestEnabled && !prefs.weeklySummaryEnabled) continue;
@@ -1187,7 +1189,7 @@ The existing form is a React Hook Form + Zod component already wired to `saveNot
 - [ ] **Step 1: Read the existing form**
 
 Read `/Users/owine/Git/house-manager/components/notifications/NotificationPrefsForm.tsx` start to finish. Note:
-- It already imports `Checkbox` from `@/components/ui/checkbox` (use that — match existing style, NOT `Switch`).
+- It already imports `Checkbox` from `@/components/ui/checkbox` (use that — match existing style, NOT `Switch`). **Spec deviation, intentional:** the spec mentioned `<Switch>` as the shadcn primitive for toggles, but the existing form uses `<Checkbox>` consistently. Matching the existing form is the right call (one form, one idiom); the spec is reconciled to acknowledge this.
 - It already imports `Select`, `SelectContent`, `SelectItem`, `SelectTrigger`, `SelectValue` from `@/components/ui/select`.
 - It uses `FormField` / `FormItem` / `FormLabel` / `FormControl` / `FormMessage` from `@/components/ui/form`.
 - Match the existing layout idioms (spacing, label wording, grouping).

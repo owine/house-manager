@@ -74,7 +74,7 @@ The transport (`lib/notifications/email.ts`) stays unchanged. The settings UI (`
 
 Stateless and idempotent. Every invocation:
 
-1. Reads `env.APP_URL` once. If unset, log a warn, write one `DigestLog` per user with `status: 'skipped', errorReason: 'APP_URL not configured'`, return. (Same skip-with-reason discipline as `notify.ts`.)
+1. Reads `env.APP_URL` once. If unset, for each user, for each digest kind whose hour-match-window applies *right now* (i.e. would have been sent this tick), write a `DigestLog { status: 'skipped', errorReason: 'APP_URL not configured' }` and `console.warn`. Don't log skipped rows for users/kinds that wouldn't have fired this hour anyway — that would create spurious rows the user has to mentally filter. Same skip-with-reason discipline as `notify.ts`.
 2. Loads all users where `notificationPrefs.emailEnabled === true` AND (`overdueDigestEnabled` OR `weeklySummaryEnabled`) AND `email` is set.
 3. For each user, computes `now` in `notificationPrefs.timezone` (hour, day-of-week, ISO week, today's date string).
 4. **Overdue path:** if `overdueDigestEnabled && localHour === overdueDigestHour` and no `DigestLog` row exists for `(userId, 'overdue', cycle: 'YYYY-MM-DD')`:
@@ -83,7 +83,7 @@ Stateless and idempotent. Every invocation:
    - If non-empty: `digestEmail({mode: 'overdue', items, appUrl, timezone})` → `sendEmail` → write `DigestLog { status: 'sent' | 'failed', errorReason? }`.
 5. **Weekly path:** if `weeklySummaryEnabled && localDayOfWeek === weeklySummaryDay && localHour === weeklySummaryHour` and no `DigestLog` for `(userId, 'weekly', cycle: 'YYYY-Www')` (ISO week): same shape, `getWeeklyForUser(...)`, `mode: 'weekly'`.
 
-The `DigestLog` row is written **after** `sendEmail` resolves so a transport failure shows as `status: 'failed'` rather than `status: 'sent'` with no email actually delivered. The dedup property (don't re-send within the same cycle) comes from the `@@unique` — a second tick in the same hour either finds the prior row and skips, or races into a unique-constraint violation that the handler catches (matching the existing `notificationLog.create`-then-catch pattern in `notify.ts`).
+The dedup property (don't re-send within the same cycle) comes from the `@@unique` — a second tick in the same hour either finds the prior row and skips, or races into a unique-constraint violation that the handler catches (matching the existing `notificationLog.create`-then-catch pattern in `notify.ts`). The row is `create`d with `status: 'queued'` first (the dedup write must precede the send), then updated to `'sent' | 'failed' | 'skipped'` once the send resolves. Mirrors `notify.ts:58`; a process crash between create and update leaves the row in `'queued'`, which is honest about its state.
 
 ### Pref schema (extends `notificationPrefsSchema` Zod)
 
@@ -178,7 +178,7 @@ New section in `app/(app)/settings/page.tsx`, rendered alongside the existing no
 - Day picker is `Sunday`…`Saturday` → store 0…6.
 - Time pickers are disabled when their toggle is off.
 - Server action persists via the same path the existing prefs use (updates `User.notificationPrefs` Json column; validated by the extended Zod schema on the way in).
-- Follow the [[feedback-ui-shadcn]] discipline: shadcn `<Switch>` / `<Select>` primitives, not native HTML.
+- Follow the [[feedback-ui-shadcn]] discipline: shadcn primitives, not native HTML. **Match the existing `NotificationPrefsForm` idiom**: that form already uses `<Checkbox>` (not `<Switch>`) for toggles and `<Select>` for enumerated choices. One form, one idiom — extend with the same primitives.
 
 ## Testing
 
