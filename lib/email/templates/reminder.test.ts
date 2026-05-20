@@ -148,6 +148,28 @@ describe('reminderEmail', () => {
     expect(html).not.toMatch(/\bclassName\s*=/i);
   });
 
+  it('normalizes trailing slash(es) in appUrl so links are not doubled', () => {
+    // Self-hosters may set APP_URL with a trailing slash (validated by
+    // z.string().url()). The template must produce single-slash hrefs.
+    const { html, text } = reminderEmail(
+      baseData({
+        appUrl: 'https://hm.example//',
+        targets: [
+          {
+            nextDueOn: new Date('2026-06-01T00:00:00Z'),
+            item: { id: 'itm_1', name: 'Furnace' },
+          },
+        ],
+      }),
+    );
+    // Item, CTA, and footer links must all use the normalized base.
+    expect(html).toContain('href="https://hm.example/items/itm_1"');
+    expect(html).toContain('href="https://hm.example/reminders/rem_1"');
+    expect(html).toContain('href="https://hm.example/settings"');
+    expect(html).not.toContain('hm.example//');
+    expect(text).not.toContain('hm.example//');
+  });
+
   it('escapes html in title/description to prevent injection', () => {
     const { html } = reminderEmail(
       baseData({

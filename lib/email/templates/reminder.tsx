@@ -145,12 +145,21 @@ function buildText(data: ReminderEmailData): string {
 }
 
 export function reminderEmail(data: ReminderEmailData): ReminderEmailResult {
-  const subject = `Reminder: ${data.title}`;
+  // Normalize trailing slashes once at the entry point so every downstream
+  // href (item/system targets, CTA, footer settings link) and every text URL
+  // is built from the same base. APP_URL is z.string().url().optional(), so
+  // `https://hm.example/` is a valid input that would otherwise produce
+  // `https://hm.example//items/...` when concatenated.
+  const normalized: ReminderEmailData = {
+    ...data,
+    appUrl: data.appUrl.replace(/\/+$/, ''),
+  };
+  const subject = `Reminder: ${normalized.title}`;
   const { html } = renderEmail(
-    <Layout preheader={`Reminder: ${data.title}`} appUrl={data.appUrl}>
-      <Body data={data} />
+    <Layout preheader={`Reminder: ${normalized.title}`} appUrl={normalized.appUrl}>
+      <Body data={normalized} />
     </Layout>,
   );
-  const text = buildText(data);
+  const text = buildText(normalized);
   return { subject, html, text };
 }
