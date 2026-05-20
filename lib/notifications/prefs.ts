@@ -8,6 +8,11 @@ export const notificationPrefsSchema = z.object({
   quietStart: z.string().regex(TIME).nullable().default(null),
   quietEnd: z.string().regex(TIME).nullable().default(null),
   timezone: z.string().default('UTC'),
+  overdueDigestEnabled: z.boolean().default(false),
+  overdueDigestHour: z.number().int().min(0).max(23).default(8),
+  weeklySummaryEnabled: z.boolean().default(false),
+  weeklySummaryDay: z.number().int().min(0).max(6).default(1),
+  weeklySummaryHour: z.number().int().min(0).max(23).default(8),
 });
 
 export type NotificationPrefs = z.infer<typeof notificationPrefsSchema>;
@@ -18,6 +23,11 @@ export const defaultNotificationPrefs: NotificationPrefs = {
   quietStart: null,
   quietEnd: null,
   timezone: 'UTC',
+  overdueDigestEnabled: false,
+  overdueDigestHour: 8,
+  weeklySummaryEnabled: false,
+  weeklySummaryDay: 1,
+  weeklySummaryHour: 8,
 };
 
 /** Normalize whatever's stored in User.notificationPrefs (Json | null) to a typed object. */

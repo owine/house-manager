@@ -19,6 +19,7 @@ export const Queue = {
   SearchReindex: 'search.reindex',
   PgDump: 'pg-dump', // NEW
   NotifyLogSweep: 'notify-log.sweep', // NEW
+  DigestTick: 'digest.tick',
   ClassifyIncomingEmail: 'incoming-email.classify',
   ExtractIncomingEmail: 'incoming-email.extract',
   EmbedContent: 'embed.content',

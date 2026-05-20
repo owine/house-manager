@@ -45,6 +45,7 @@ model User {
   pushSubscriptions PushSubscription[]
   reminderCompletions ReminderCompletion[]
   notificationLogs NotificationLog[]
+  digestLogs DigestLog[]
   aiSuggestionLogs AISuggestionLog[]
 
   @@map("users")
@@ -539,6 +540,20 @@ model NotificationLog {
   @@unique([reminderId, userId, channel, cycle])
   @@index([reminderId])
   @@map("notification_logs")
+}
+
+model DigestLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String   // 'overdue' | 'weekly'
+  cycle       String   // 'YYYY-MM-DD' for overdue, 'YYYY-Www' (ISO week) for weekly
+  sentAt      DateTime @default(now())
+  status      String   // 'queued' | 'sent' | 'skipped' | 'failed'
+  errorReason String?
+
+  @@unique([userId, kind, cycle])
+  @@map("digest_logs")
 }
 
 model PushSubscription {
