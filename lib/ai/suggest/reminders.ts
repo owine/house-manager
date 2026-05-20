@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getLogger } from '@/lib/logger';
 import { computeNextDueOn } from '@/lib/reminders/recurrence';
+import { parseRecurrence } from '@/lib/reminders/schema';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
@@ -176,12 +177,13 @@ export async function saveAcceptedReminders(input: {
   const savedIds = await prisma.$transaction(async (tx) => {
     const ids: string[] = [];
     for (const r of validated) {
-      const nextDueOn = computeNextDueOn(r.recurrence, today);
+      const recurrence = parseRecurrence(r.recurrence);
+      const nextDueOn = computeNextDueOn(recurrence, today);
       const created = await tx.reminder.create({
         data: {
           title: r.title,
           description: r.description ?? null,
-          recurrence: r.recurrence,
+          recurrence,
           leadTimeDays: r.leadTimeDays,
           notifyUserIds: [userId],
           autoCreateServiceRecord: false,

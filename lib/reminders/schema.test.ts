@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createReminderSchema, recurrenceSchema, updateReminderSchema } from './schema';
+import {
+  createReminderSchema,
+  parseRecurrence,
+  recurrenceSchema,
+  updateReminderSchema,
+} from './schema';
 
 describe('recurrenceSchema', () => {
   it.each([
-    [{ kind: 'interval', days: 60 }, true],
-    [{ kind: 'interval', days: 0 }, false],
-    [{ kind: 'interval', days: 3651 }, false],
+    [{ kind: 'interval', every: 60, unit: 'day' }, true],
+    [{ kind: 'interval', every: 0, unit: 'day' }, false],
+    [{ kind: 'interval', every: 3651, unit: 'day' }, false],
+    [{ kind: 'interval', every: 60 }, false],
     [{ kind: 'monthly', dayOfMonth: 15 }, true],
     [{ kind: 'monthly', dayOfMonth: 0 }, false],
     [{ kind: 'monthly', dayOfMonth: 29 }, false],
@@ -25,7 +31,7 @@ describe('createReminderSchema', () => {
       title: 'Replace HVAC filter',
       description: 'use MERV 13',
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
       leadTimeDays: 3,
       autoCreateServiceRecord: false,
@@ -37,7 +43,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'HVAC service',
       targets: [{ itemId: 'cuid-1' }, { systemId: 'cuid-sys-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(true);
@@ -46,7 +52,7 @@ describe('createReminderSchema', () => {
   it('rejects missing title', () => {
     const r = createReminderSchema.safeParse({
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(false);
@@ -56,7 +62,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(false);
@@ -66,7 +72,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{ itemId: 'i', systemId: 's' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(false);
@@ -76,7 +82,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{}],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(false);
@@ -86,7 +92,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
       leadTimeDays: -1,
     });
@@ -97,7 +103,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
     expect(r.success).toBe(true);
@@ -108,7 +114,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'Take out trash',
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 7 },
+      recurrence: { kind: 'interval', every: 7, unit: 'day' },
       nextDueOn: new Date(),
       kind: 'CHORE',
     });
@@ -120,7 +126,7 @@ describe('createReminderSchema', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{ itemId: 'cuid-1' }],
-      recurrence: { kind: 'interval', days: 60 },
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
       kind: 'TASK',
     });
@@ -139,5 +145,82 @@ describe('updateReminderSchema', () => {
     const r = updateReminderSchema.safeParse({ id: 'cuid-1', kind: 'CHORE' });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.kind).toBe('CHORE');
+  });
+});
+
+describe('recurrenceSchema — new kinds', () => {
+  it('accepts interval with unit', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'interval', every: 3, unit: 'month' }).success).toBe(
+      true,
+    );
+  });
+  it('accepts weekly with weekdays', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 4] }).success).toBe(true);
+  });
+  it('rejects weekly with empty weekdays', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [] }).success).toBe(false);
+  });
+  it('rejects weekly with duplicate weekdays', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 1] }).success).toBe(false);
+  });
+  it('rejects weekly with out-of-range weekday', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [7] }).success).toBe(false);
+  });
+  it('accepts monthlyWeekday', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'monthlyWeekday', week: -1, weekday: 5 }).success,
+    ).toBe(true);
+  });
+  it('rejects monthlyWeekday with bad week', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'monthlyWeekday', week: 0, weekday: 5 }).success,
+    ).toBe(false);
+  });
+  it("accepts monthly 'last'", () => {
+    expect(recurrenceSchema.safeParse({ kind: 'monthly', dayOfMonth: 'last' }).success).toBe(true);
+  });
+  it('accepts activeMonths on weekly', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [4, 5, 6] })
+        .success,
+    ).toBe(true);
+  });
+  it('rejects empty activeMonths', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [] }).success,
+    ).toBe(false);
+  });
+  it('rejects duplicate activeMonths', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [4, 4] }).success,
+    ).toBe(false);
+  });
+  it('rejects out-of-range activeMonths', () => {
+    expect(
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [13] }).success,
+    ).toBe(false);
+  });
+});
+
+describe('parseRecurrence', () => {
+  it('normalizes legacy interval {days} to {every, unit:day}', () => {
+    expect(parseRecurrence({ kind: 'interval', days: 60 })).toEqual({
+      kind: 'interval',
+      every: 60,
+      unit: 'day',
+    });
+  });
+  it('passes through new interval shape unchanged', () => {
+    expect(parseRecurrence({ kind: 'interval', every: 2, unit: 'week' })).toEqual({
+      kind: 'interval',
+      every: 2,
+      unit: 'week',
+    });
+  });
+  it('passes through monthly/yearly/once', () => {
+    expect(parseRecurrence({ kind: 'once' })).toEqual({ kind: 'once' });
+  });
+  it('throws on malformed JSON', () => {
+    expect(() => parseRecurrence({ kind: 'interval' })).toThrow();
   });
 });

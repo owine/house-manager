@@ -10,9 +10,10 @@ import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
+import { describeRecurrence } from '@/lib/reminders/describe';
 import { getReminder } from '@/lib/reminders/queries';
 import { previewOccurrences } from '@/lib/reminders/recurrence';
-import type { Recurrence } from '@/lib/reminders/schema';
+import { parseRecurrence } from '@/lib/reminders/schema';
 
 type Params = Promise<{ id: string }>;
 
@@ -27,7 +28,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   const r = await getReminder(id);
   if (!r) notFound();
 
-  const recurrence = r.recurrence as unknown as Recurrence;
+  const recurrence = parseRecurrence(r.recurrence);
   const occurrences = r.nextDueOn
     ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
     : [];
@@ -38,6 +39,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
+        <span className="text-muted-foreground">{describeRecurrence(recurrence)}</span>
         {r.targets.length > 0 && (
           <span className="flex items-center gap-2 text-muted-foreground">
             for <TargetsChips targets={r.targets} />

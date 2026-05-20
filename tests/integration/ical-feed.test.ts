@@ -30,7 +30,7 @@ describe('buildIcal', () => {
           id: 'r1',
           title: 'Replace HVAC filter',
           description: 'use MERV 13',
-          recurrence: { kind: 'interval', days: 30 },
+          recurrence: { kind: 'interval', every: 30, unit: 'day' },
           nextDueOn: new Date('2026-06-30T00:00:00Z'),
           leadTimeDays: 3,
         },
