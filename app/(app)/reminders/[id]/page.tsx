@@ -10,6 +10,7 @@ import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
+import { describeRecurrence } from '@/lib/reminders/describe';
 import { getReminder } from '@/lib/reminders/queries';
 import { previewOccurrences } from '@/lib/reminders/recurrence';
 import { parseRecurrence } from '@/lib/reminders/schema';
@@ -38,6 +39,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
+        <span className="text-muted-foreground">{describeRecurrence(recurrence)}</span>
         {r.targets.length > 0 && (
           <span className="flex items-center gap-2 text-muted-foreground">
             for <TargetsChips targets={r.targets} />
