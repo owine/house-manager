@@ -53,33 +53,44 @@ const NTH_WEEKS: { label: string; value: NthWeek }[] = [
   { label: 'Last', value: -1 },
 ];
 
-function buildRecurrence(s: State): Recurrence {
-  let rec: Recurrence;
-  switch (s.kind) {
-    case 'interval':
-      rec = { kind: 'interval', every: s.every, unit: s.unit };
-      break;
-    case 'weekly':
-      rec = { kind: 'weekly', weekdays: s.weekdays };
-      break;
-    case 'monthly':
-      rec = { kind: 'monthly', dayOfMonth: s.monthlyLast ? 'last' : s.dayOfMonth };
-      break;
-    case 'monthlyWeekday':
-      rec = { kind: 'monthlyWeekday', week: s.nthWeek, weekday: s.nthWeekday };
-      break;
-    case 'yearly':
-      rec = { kind: 'yearly', month: s.yearMonth, day: s.yearDay };
-      break;
-    default:
-      rec = { kind: 'once' };
-      break;
-  }
-  // Seasonality is hidden (and never folded in) for `once` and `yearly`.
-  if (s.kind !== 'once' && s.kind !== 'yearly' && s.seasonEnabled && s.activeMonths.length > 0) {
-    return { ...rec, activeMonths: s.activeMonths } as Recurrence;
+/** Clamp a raw input string to an integer within [min, max]; never NaN. */
+function clampInt(raw: string, min: number, max: number, fallback: number): number {
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+// Recurrence members for which the UI exposes seasonality. `once` (no
+// activeMonths field) and `yearly` (hidden by spec) are deliberately excluded,
+// so the spread below is provably type-safe with no cast.
+type SeasonalRecurrence = Extract<
+  Recurrence,
+  { kind: 'interval' | 'weekly' | 'monthly' | 'monthlyWeekday' }
+>;
+
+function withSeason<R extends SeasonalRecurrence>(rec: R, s: State): R {
+  if (s.seasonEnabled && s.activeMonths.length > 0) {
+    return { ...rec, activeMonths: s.activeMonths };
   }
   return rec;
+}
+
+function buildRecurrence(s: State): Recurrence {
+  switch (s.kind) {
+    case 'interval':
+      return withSeason({ kind: 'interval', every: s.every, unit: s.unit }, s);
+    case 'weekly':
+      return withSeason({ kind: 'weekly', weekdays: s.weekdays }, s);
+    case 'monthly':
+      return withSeason({ kind: 'monthly', dayOfMonth: s.monthlyLast ? 'last' : s.dayOfMonth }, s);
+    case 'monthlyWeekday':
+      return withSeason({ kind: 'monthlyWeekday', week: s.nthWeek, weekday: s.nthWeekday }, s);
+    case 'yearly':
+      // Seasonality is hidden for `yearly` per spec; never folded in.
+      return { kind: 'yearly', month: s.yearMonth, day: s.yearDay };
+    default:
+      return { kind: 'once' };
+  }
 }
 
 function initialState(dv?: Recurrence): State {
@@ -105,13 +116,16 @@ function ToggleRow({
   options,
   selected,
   onToggle,
+  ariaLabel,
 }: {
   options: { label: string; value: number }[];
   selected: number[];
   onToggle: (value: number) => void;
+  ariaLabel: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    // biome-ignore lint/a11y/useSemanticElements: a non-fieldset toggle group inside an existing fieldset; role="group" is the correct ARIA pattern
+    <div className="flex flex-wrap gap-1" role="group" aria-label={ariaLabel}>
       {options.map((opt) => {
         const on = selected.includes(opt.value);
         return (
@@ -120,6 +134,7 @@ function ToggleRow({
             type="button"
             size="sm"
             variant={on ? 'default' : 'outline'}
+            aria-pressed={on}
             onClick={() => onToggle(opt.value)}
           >
             {opt.label}
@@ -192,7 +207,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             min={1}
             max={3650}
             value={state.every}
-            onChange={(e) => update({ every: Number(e.target.value) })}
+            onChange={(e) => update({ every: clampInt(e.target.value, 1, 3650, 1) })}
             className="w-20"
           />
           <Select value={state.unit} onValueChange={(v) => update({ unit: v as State['unit'] })}>
@@ -219,6 +234,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             options={WEEKDAYS.map((d) => ({ label: WEEKDAY_LABELS[d], value: d }))}
             selected={state.weekdays}
             onToggle={toggleWeekday}
+            ariaLabel="Weekdays"
           />
         </div>
 
@@ -234,7 +250,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             max={28}
             value={state.dayOfMonth}
             disabled={state.monthlyLast}
-            onChange={(e) => update({ dayOfMonth: Number(e.target.value) })}
+            onChange={(e) => update({ dayOfMonth: clampInt(e.target.value, 1, 28, 1) })}
             className="w-16"
           />
           <span className="text-xs text-muted-foreground">(1–28)</span>
@@ -315,7 +331,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             min={1}
             max={28}
             value={state.yearDay}
-            onChange={(e) => update({ yearDay: Number(e.target.value) })}
+            onChange={(e) => update({ yearDay: clampInt(e.target.value, 1, 28, 1) })}
             className="w-16"
           />
         </div>
@@ -346,6 +362,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
               options={MONTHS.map((m) => ({ label: MONTH_LABELS[m - 1], value: m }))}
               selected={state.activeMonths}
               onToggle={toggleMonth}
+              ariaLabel="Active months"
             />
           )}
         </div>
