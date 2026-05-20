@@ -4,8 +4,9 @@
 -- DB but not in schema.prisma and treats it as drift). The DROP has been
 -- removed by hand. Any future `pnpm db:migrate` run that re-emits this DROP
 -- in a fresh migration must do the same. (Same situation exists for the
--- parent-XOR CHECK constraints appended at the bottom of the squashed
--- migration; eyeball every generated migration for unintended DROPs.)
+-- parent-XOR CHECK constraints on service_record_targets, warranty_targets,
+-- reminder_targets, and incoming_email_targets appended at the bottom of the
+-- squashed migration; eyeball every generated migration for unintended DROPs.)
 
 -- CreateTable
 CREATE TABLE "digest_logs" (

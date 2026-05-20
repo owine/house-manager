@@ -549,7 +549,7 @@ model DigestLog {
   kind        String   // 'overdue' | 'weekly'
   cycle       String   // 'YYYY-MM-DD' for overdue, 'YYYY-Www' (ISO week) for weekly
   sentAt      DateTime @default(now())
-  status      String   // 'queued' | 'sent' | 'skipped' | 'failed'
+  status      String   // 'queued' (transient, during send) | 'sent' | 'skipped' | 'failed'
   errorReason String?
 
   @@unique([userId, kind, cycle])
