@@ -4,7 +4,7 @@ import { renderEmail } from '../render';
 
 const T = EMAIL_TOKENS;
 
-export type ReminderEmailTarget = {
+type ReminderEmailTarget = {
   nextDueOn: Date;
   item?: { id: string; name: string };
   system?: { id: string; name: string };
