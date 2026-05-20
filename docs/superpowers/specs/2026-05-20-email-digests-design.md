@@ -68,7 +68,7 @@ The transport (`lib/notifications/email.ts`) stays unchanged. The settings UI (`
 
 ### Cron
 
-`boss.schedule(Queue.DigestTick, '*/30 * * * *')` registered in `worker/index.ts` alongside the existing `RemindersTick` and `NotifyLogSweep` schedules. The 30-minute cadence is a deliberate safety margin — if one tick misses (worker restart, brief DB outage), the next attempts again within the same hour. Idempotency via `DigestLog @@unique` makes the second attempt a no-op when the first already wrote a row.
+`boss.schedule(Queue.DigestTick, '*/30 * * * *')` registered in `worker/index.ts` alongside the existing `RemindersTick` and `NotifyLogSweep` schedules. The 30-minute cadence is **outage-recovery insurance, not a duplication risk**: because prefs are hour-granular, each user's `(kind, cycle)` combination has at most one eligible send window per cycle. The `@@unique` constraint on `DigestLog` guarantees that even if two ticks fall inside that window, the second is a no-op. If one tick misses entirely (worker restart, brief DB outage), the next attempts again within the same hour.
 
 ### Handler shape (`digest-tick.ts`)
 
@@ -224,7 +224,7 @@ Whether to add an E2E for the new settings section depends on whether one exists
 
 ## Risks & mitigations
 
-- **Tick clock skew:** worker host clock vs `notificationPrefs.timezone` math. Mitigation: handler computes "now in user tz" exclusively via `Intl.DateTimeFormat` / a tz-aware library already in the project; tests cover tz boundary cases.
+- **Tick clock skew:** worker host clock vs `notificationPrefs.timezone` math. Mitigation: handler computes "now in user tz" exclusively via `Intl.DateTimeFormat` (the same primitive `lib/email/templates/reminder.tsx` already uses for `formatDue`) — no new dependency. Tests cover tz boundary cases.
 - **Long-running query at scale:** N+1 risk if `getOverdueForUser` does naive nested fetches. Mitigation: queries use a single `findMany` with `include` (one round trip per query). Documented in code.
 - **DigestLog growth:** unbounded over time. Mitigation: defer — same shape as `NotificationLog` (which is also unbounded today; the existing `NotifyLogSweep` job is the precedent for any future cleanup).
 - **User changes their tz between schedule write and tick:** existing handler reads tz at tick time, not at write time, so the next tick picks up the new tz automatically. No special handling needed.
