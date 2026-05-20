@@ -9,6 +9,11 @@ const baseline: NotificationPrefs = {
   quietStart: '22:00',
   quietEnd: '07:00',
   timezone: 'UTC',
+  overdueDigestEnabled: false,
+  overdueDigestHour: 8,
+  weeklySummaryEnabled: false,
+  weeklySummaryDay: 1,
+  weeklySummaryHour: 8,
 };
 
 describe('isInQuietWindow', () => {
