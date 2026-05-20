@@ -151,6 +151,7 @@ model Item {
   metadata        Json       @default("{}")
   notes           String?    @db.Text
   archivedAt      DateTime?
+  restoredAt      DateTime?
   includeInSuggestions Boolean @default(true)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -167,6 +168,7 @@ model Item {
   @@index([categoryId])
   @@index([systemId])
   @@index([archivedAt])
+  @@index([restoredAt])
   @@map("items")
 }
 
