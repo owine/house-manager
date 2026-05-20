@@ -94,6 +94,35 @@ describe('computeNextDueOn — units', () => {
     );
     expect(next.toISOString().slice(0, 10)).toBe('2027-02-10');
   });
+
+  it('interval month: clamps Jan 31 + 1 month to Feb 28 (non-leap)', () => {
+    const next = computeNextDueOn(
+      { kind: 'interval', every: 1, unit: 'month' },
+      new Date('2026-01-31T00:00:00Z'),
+    );
+    expect(next.toISOString().slice(0, 10)).toBe('2026-02-28');
+  });
+  it('interval month: Jan 31 + 1 month in a leap year -> Feb 29', () => {
+    const next = computeNextDueOn(
+      { kind: 'interval', every: 1, unit: 'month' },
+      new Date('2028-01-31T00:00:00Z'),
+    );
+    expect(next.toISOString().slice(0, 10)).toBe('2028-02-29');
+  });
+  it('interval month: Mar 31 + 1 month -> Apr 30', () => {
+    const next = computeNextDueOn(
+      { kind: 'interval', every: 1, unit: 'month' },
+      new Date('2026-03-31T00:00:00Z'),
+    );
+    expect(next.toISOString().slice(0, 10)).toBe('2026-04-30');
+  });
+  it('interval year: Feb 29 + 1 year clamps to Feb 28', () => {
+    const next = computeNextDueOn(
+      { kind: 'interval', every: 1, unit: 'year' },
+      new Date('2028-02-29T00:00:00Z'),
+    );
+    expect(next.toISOString().slice(0, 10)).toBe('2029-02-28');
+  });
 });
 
 describe('computeNextDueOn — weekly', () => {
