@@ -39,6 +39,29 @@ describe('computeNextDueOn', () => {
   });
 });
 
+describe('computeNextDueOn — normalizes to UTC midnight', () => {
+  const noon = new Date('2026-05-12T13:37:42.123Z'); // a Tuesday, afternoon
+  it('interval day strips time-of-day', () => {
+    const d = computeNextDueOn({ kind: 'interval', every: 10, unit: 'day' }, noon);
+    expect(d.toISOString()).toBe('2026-05-22T00:00:00.000Z');
+  });
+  it('weekly strips time-of-day', () => {
+    const d = computeNextDueOn({ kind: 'weekly', weekdays: [1] }, noon); // next Mon
+    expect(d.toISOString()).toBe('2026-05-18T00:00:00.000Z');
+  });
+  it('monthly strips time-of-day', () => {
+    const d = computeNextDueOn({ kind: 'monthly', dayOfMonth: 15 }, noon);
+    expect(d.toISOString()).toBe('2026-05-15T00:00:00.000Z');
+  });
+  it('interval month-end keeps the clamped date at midnight', () => {
+    const d = computeNextDueOn(
+      { kind: 'interval', every: 1, unit: 'month' },
+      new Date('2026-01-31T18:00:00Z'),
+    );
+    expect(d.toISOString()).toBe('2026-02-28T00:00:00.000Z');
+  });
+});
+
 describe('previewOccurrences', () => {
   it('returns N future occurrences for interval', () => {
     const occ = previewOccurrences(

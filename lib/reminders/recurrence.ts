@@ -68,13 +68,20 @@ function firstAfter(
   return next;
 }
 
+/** Zero the time-of-day (UTC) so a due value is a pure calendar date. */
+function toUtcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
+  let next: Date;
   switch (rec.kind) {
     case 'once':
-      return FAR_FUTURE;
+      next = FAR_FUTURE;
+      break;
     case 'interval': {
       const step = (from: Date): Date => addInterval(from, rec.every, rec.unit);
-      let next = step(completedOn);
+      next = step(completedOn);
       for (let i = 0; !inSeason(next, rec.activeMonths); i++) {
         if (i >= SKIP_CAP)
           throw new Error(
@@ -82,10 +89,10 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
           );
         next = step(next);
       }
-      return next;
+      break;
     }
     case 'weekly':
-      return firstAfter(
+      next = firstAfter(
         {
           freq: RRule.WEEKLY,
           byweekday: rec.weekdays.map((d) => RRULE_WEEKDAY[d]),
@@ -93,8 +100,9 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
         },
         completedOn,
       );
+      break;
     case 'monthly':
-      return firstAfter(
+      next = firstAfter(
         {
           freq: RRule.MONTHLY,
           bymonthday: rec.dayOfMonth === 'last' ? [-1] : [rec.dayOfMonth],
@@ -102,8 +110,9 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
         },
         completedOn,
       );
+      break;
     case 'monthlyWeekday':
-      return firstAfter(
+      next = firstAfter(
         {
           freq: RRule.MONTHLY,
           byweekday: [RRULE_WEEKDAY[rec.weekday]],
@@ -112,12 +121,15 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
         },
         completedOn,
       );
+      break;
     case 'yearly':
-      return firstAfter(
+      next = firstAfter(
         { freq: RRule.YEARLY, bymonth: [rec.month], bymonthday: [rec.day] },
         completedOn,
       );
+      break;
   }
+  return toUtcMidnight(next);
 }
 
 /** Project up to N future occurrences after a starting date (detail view + iCal). */
