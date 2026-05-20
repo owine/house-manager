@@ -134,6 +134,20 @@ describe('reminderEmail', () => {
     expect(text).not.toMatch(/<[a-z]/i);
   });
 
+  // Email-client safety contract — asserted at the template level (not just on
+  // `Layout` via render.test.tsx) so any future regression in the template's own
+  // markup (a stray `className`, a `<style>` block) is caught here.
+  it('produces no <style> tags in the rendered template', () => {
+    const { html } = reminderEmail(baseData());
+    expect(html).not.toMatch(/<style[\s>]/i);
+  });
+
+  it('produces no class/className attributes in the rendered template', () => {
+    const { html } = reminderEmail(baseData());
+    expect(html).not.toMatch(/\bclass\s*=/i);
+    expect(html).not.toMatch(/\bclassName\s*=/i);
+  });
+
   it('escapes html in title/description to prevent injection', () => {
     const { html } = reminderEmail(
       baseData({
