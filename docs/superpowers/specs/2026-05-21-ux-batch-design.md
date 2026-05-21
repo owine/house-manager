@@ -61,7 +61,7 @@ The component exposes both actions so callers can render them as menu items (lis
 1. **Generate from prompt** (opens the freeform dialog)
 2. **Generate seasonal** (runs the seasonal generation)
 
-The preview renders inline on the page below the header after generation. Because these are interactive, the header actions become (or embed) a client component.
+The preview renders inline on the page below the header after generation. Because these are interactive, extract a small **client island** for the header actions + inline preview rather than converting the whole (server-component) list page to `'use client'`.
 
 ### New-checklist page
 
@@ -73,9 +73,11 @@ Refactor `app/(app)/dashboard/SeasonalChecklistCard.tsx` to reuse `ChecklistSugg
 
 ### Retire `/suggest`
 
-Delete the now-redundant unlinked route: `app/(app)/suggest/page.tsx` and `app/(app)/suggest/SuggestClient.tsx`. The orphan is reachable only by direct URL (no nav/link references — verified by grep). `proposeChecklist`'s freeform mode remains (the new dialog is its consumer).
+Delete the now-redundant unlinked route: `app/(app)/suggest/page.tsx` and `app/(app)/suggest/SuggestClient.tsx`. The orphan is reachable only by direct URL (no nav/link references). `proposeChecklist`'s freeform mode remains (the new dialog is its consumer).
 
-**Risk to verify during implementation:** `tests/smoke/ai-suggest.smoke.test.ts` and `tests/fixtures/suggest/*` exist. These almost certainly exercise the `proposeChecklist` / `proposeReminders` **lib** with fixtures, not the `/suggest` page component — so they should survive the route deletion. The plan must confirm the smoke test imports the lib (not `SuggestClient`/the page) before deleting, and keep the fixtures. Run `grep` + `knip` after removal to confirm no dangling references.
+**Also remove the dead screenshot target:** `tests/e2e/screenshots.spec.ts` has an entry `{ name: 'suggest-empty', path: '/suggest' }` (~line 29). Delete that array entry alongside the route, or it will 404 on the next manual screenshot run. (This is a `CAPTURE_SCREENSHOTS`-gated, non-CI spec, so it won't fail the gate — but `knip` won't catch a string path inside an array, so it must be removed by hand.)
+
+**Smoke-test / fixtures survival (confirmed safe):** `tests/smoke/ai-suggest.smoke.test.ts` imports only `@/lib/ai/schemas` and drives the Anthropic SDK directly; the integration tests (`tests/integration/ai/propose-checklist.test.ts`, `propose-reminders.test.ts`) and `tests/fixtures/suggest/*` exercise the **lib** + fixtures, not the `/suggest` page. None import `SuggestClient` or the route, so they survive deletion — keep the fixtures. Still run `grep` + `knip` after removal to confirm no other dangling references.
 
 ## Testing
 
