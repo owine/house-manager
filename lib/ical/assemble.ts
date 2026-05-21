@@ -1,7 +1,7 @@
 import { isSentinelDate, previewOccurrences } from '@/lib/reminders/recurrence';
 import type { Recurrence } from '@/lib/reminders/schema';
 
-export type CalendarEventKind = 'completed' | 'due' | 'projected';
+type CalendarEventKind = 'completed' | 'due' | 'projected';
 
 export type CalendarEvent = {
   uid: string;
