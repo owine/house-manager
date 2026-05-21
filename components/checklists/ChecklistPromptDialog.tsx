@@ -30,7 +30,13 @@ export function ChecklistPromptDialog({ open, onOpenChange, onSubmit, pending }:
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) setPrompt('');
+        onOpenChange(o);
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Generate from prompt</DialogTitle>
