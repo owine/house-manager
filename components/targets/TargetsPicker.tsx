@@ -66,8 +66,8 @@ export function TargetsPicker({
   id,
 }: TargetsPickerProps) {
   const [query, setQuery] = useState('');
-  const [systemsOpen, setSystemsOpen] = useState(true);
-  const [itemsOpen, setItemsOpen] = useState(true);
+  const [systemsOpen, setSystemsOpen] = useState(false);
+  const [itemsOpen, setItemsOpen] = useState(false);
 
   const activeItems = useMemo(
     () => availableItems.filter((i) => i.archivedAt === null),
@@ -197,6 +197,11 @@ export function TargetsPicker({
           >
             {systemsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             Systems
+            {selectedSystems.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {selectedSystems.length} selected
+              </Badge>
+            )}
             <span className="ml-auto text-xs text-muted-foreground">{filteredSystems.length}</span>
           </Button>
           {systemsOpen && (
@@ -249,6 +254,11 @@ export function TargetsPicker({
           >
             {itemsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             Items
+            {selectedItems.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {selectedItems.length} selected
+              </Badge>
+            )}
             <span className="ml-auto text-xs text-muted-foreground">{filteredItems.length}</span>
           </Button>
           {itemsOpen && (

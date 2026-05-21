@@ -9,6 +9,11 @@ afterEach(() => {
   cleanup();
 });
 
+async function expandSections(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /^Systems/ }));
+  await user.click(screen.getByRole('button', { name: /^Items/ }));
+}
+
 const item = (
   id: string,
   name: string,
@@ -52,8 +57,10 @@ function setup(initialValue: TargetInput[] = []) {
 }
 
 describe('TargetsPicker', () => {
-  it('renders both Systems and Items sections with provided rows', () => {
+  it('renders both Systems and Items sections with provided rows', async () => {
+    const user = userEvent.setup();
     setup();
+    await expandSections(user);
     expect(screen.getByText('Systems')).toBeInTheDocument();
     expect(screen.getByText('Items')).toBeInTheDocument();
     expect(screen.getByText('HVAC')).toBeInTheDocument();
@@ -69,6 +76,7 @@ describe('TargetsPicker', () => {
   it('checking an item adds it to onChange payload', async () => {
     const user = userEvent.setup();
     const { onChange } = setup();
+    await expandSections(user);
     const itemsList = screen.getByTestId('targets-picker-items-list');
     await user.click(within(itemsList).getByRole('checkbox', { name: 'Dishwasher' }));
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -78,6 +86,7 @@ describe('TargetsPicker', () => {
   it('checking a system auto-expands to include its active component items', async () => {
     const user = userEvent.setup();
     const { onChange } = setup();
+    await expandSections(user);
     const systemsList = screen.getByTestId('targets-picker-systems-list');
     await user.click(within(systemsList).getByRole('checkbox', { name: /^HVAC/ }));
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -91,8 +100,10 @@ describe('TargetsPicker', () => {
     expect(next.some((t) => t.itemId === 'iArchived')).toBe(false);
   });
 
-  it('shows pre-selected items as checked', () => {
+  it('shows pre-selected items as checked', async () => {
+    const user = userEvent.setup();
     setup([{ itemId: 'i1' }]);
+    await expandSections(user);
     const itemsList = screen.getByTestId('targets-picker-items-list');
     const cb = within(itemsList).getByRole('checkbox', { name: 'Furnace blower' });
     expect(cb).toHaveAttribute('aria-checked', 'true');
@@ -101,6 +112,7 @@ describe('TargetsPicker', () => {
   it('search filters both sections case-insensitively', async () => {
     const user = userEvent.setup();
     setup();
+    await expandSections(user);
     const search = screen.getByLabelText('Filter targets');
     await user.type(search, 'plumb');
     // Plumbing system still visible
@@ -114,6 +126,7 @@ describe('TargetsPicker', () => {
   it('unchecking an item does not uncheck its system', async () => {
     const user = userEvent.setup();
     const { onChange } = setup([{ systemId: 's1' }, { itemId: 'i1' }, { itemId: 'i2' }]);
+    await expandSections(user);
     // Uncheck the i1 item
     const itemsList = screen.getByTestId('targets-picker-items-list');
     await user.click(within(itemsList).getByRole('checkbox', { name: 'Furnace blower' }));
@@ -127,6 +140,7 @@ describe('TargetsPicker', () => {
   it('unchecking a system does not auto-uncheck its components', async () => {
     const user = userEvent.setup();
     const { onChange } = setup([{ systemId: 's1' }, { itemId: 'i1' }, { itemId: 'i2' }]);
+    await expandSections(user);
     const systemsList = screen.getByTestId('targets-picker-systems-list');
     await user.click(within(systemsList).getByRole('checkbox', { name: /^HVAC/ }));
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -147,16 +161,19 @@ describe('TargetsPicker', () => {
     expect(onChange).toHaveBeenCalledWith([{ systemId: 's1' }]);
   });
 
-  it('shows empty state when no items or systems are provided', () => {
+  it('shows empty state when no items or systems are provided', async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <TargetsPicker value={[]} onChange={onChange} availableItems={[]} availableSystems={[]} />,
     );
+    await expandSections(user);
     expect(screen.getByText('no systems match.')).toBeInTheDocument();
     expect(screen.getByText('no items match.')).toBeInTheDocument();
   });
 
-  it('does not render archived items even if passed by parent', () => {
+  it('does not render archived items even if passed by parent', async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <TargetsPicker
@@ -169,6 +186,7 @@ describe('TargetsPicker', () => {
         availableSystems={[]}
       />,
     );
+    await expandSections(user);
     expect(screen.queryByText('Old furnace')).not.toBeInTheDocument();
     expect(screen.getByText('Live item')).toBeInTheDocument();
   });
@@ -176,6 +194,7 @@ describe('TargetsPicker', () => {
   it('keeps a selected target visible as a chip even when filtered out of view', async () => {
     const user = userEvent.setup();
     setup([{ itemId: 'i3' }]);
+    await expandSections(user);
     const search = screen.getByLabelText('Filter targets');
     await user.type(search, 'furn');
     // Dishwasher row not rendered in items list any more
@@ -184,5 +203,36 @@ describe('TargetsPicker', () => {
     // But the chip is still there
     const chips = screen.getByTestId('targets-picker-chips');
     expect(within(chips).getByText('Dishwasher')).toBeInTheDocument();
+  });
+
+  it('both sections start collapsed (lists hidden on mount)', () => {
+    setup([{ systemId: 's1' }, { itemId: 'i1' }]);
+    expect(screen.queryByTestId('targets-picker-systems-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('targets-picker-items-list')).not.toBeInTheDocument();
+  });
+
+  it('collapsed headers show a selected-count badge only when > 0', () => {
+    const { rerender } = render(
+      <TargetsPicker value={[]} onChange={vi.fn()} availableItems={[]} availableSystems={[]} />,
+    );
+    expect(screen.queryByText('selected', { exact: false })).not.toBeInTheDocument();
+    rerender(
+      <TargetsPicker
+        value={[{ systemId: 's1' }, { itemId: 'i1' }, { itemId: 'i2' }]}
+        onChange={vi.fn()}
+        availableItems={[]}
+        availableSystems={[]}
+      />,
+    );
+    expect(screen.getByText('1 selected')).toBeInTheDocument(); // systems
+    expect(screen.getByText('2 selected')).toBeInTheDocument(); // items
+  });
+
+  it('expanding a collapsed section reveals its list', async () => {
+    const user = userEvent.setup();
+    setup();
+    expect(screen.queryByTestId('targets-picker-items-list')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Items/ }));
+    expect(screen.getByTestId('targets-picker-items-list')).toBeInTheDocument();
   });
 });
