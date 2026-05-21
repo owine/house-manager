@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
+import { withWeeklyAnchor } from './anchor';
 import { computeNextDueOn } from './recurrence';
 import {
   completeReminderSchema,
@@ -75,7 +76,9 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
   const reminder = await prisma.reminder.create({
     data: {
       ...rest,
-      recurrence,
+      // Stamp a stable anchor for bi-weekly+ weekly recurrences (no-op
+      // otherwise) so parity doesn't drift across completions. Seed = nextDueOn.
+      recurrence: withWeeklyAnchor(recurrence, nextDueOn),
       description: description || null,
       notifyUserIds: notifyUserIds && notifyUserIds.length > 0 ? notifyUserIds : [session.user.id],
       targets: {
@@ -109,7 +112,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { id, targets, description, notifyUserIds, nextDueOn, ...rest } = parsed.data;
+  const { id, targets, description, notifyUserIds, nextDueOn, recurrence, ...rest } = parsed.data;
 
   // Ownership-gated lookup: a user can only update reminders they're notified
   // on. findFirst (not findUnique) so we can compose the `notifyUserIds.has`
@@ -132,6 +135,22 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   const data: Record<string, unknown> = { ...rest };
   if ('description' in parsed.data) data.description = description || null;
   if (notifyUserIds !== undefined) data.notifyUserIds = notifyUserIds;
+  if (recurrence !== undefined) {
+    // Re-anchor on any weekly edit so bi-weekly+ parity follows the (possibly
+    // new) seed. Prefer the supplied nextDueOn; the combined create/update form
+    // always submits both, but if recurrence is changed without nextDueOn fall
+    // back to the earliest existing target's nextDueOn as the anchor seed.
+    let seedDueOn = nextDueOn;
+    if (!seedDueOn && recurrence.kind === 'weekly' && recurrence.interval > 1) {
+      const earliest = await prisma.reminderTarget.findFirst({
+        where: { reminderId: id },
+        orderBy: { nextDueOn: 'asc' },
+        select: { nextDueOn: true },
+      });
+      seedDueOn = earliest?.nextDueOn ?? new Date();
+    }
+    data.recurrence = withWeeklyAnchor(recurrence, seedDueOn ?? new Date());
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.reminder.update({ where: { id }, data });
