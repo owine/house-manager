@@ -7,6 +7,7 @@ export const metadata: Metadata = { title: 'checklists' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ChecklistCard } from '@/components/checklists/ChecklistCard';
+import { ChecklistCreateMenu } from '@/components/checklists/ChecklistCreateMenu';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
 import { listChecklists } from '@/lib/checklists/queries';
@@ -33,10 +34,7 @@ export default async function ChecklistsPage({ searchParams }: { searchParams: S
               >
                 {showArchived ? 'Active only' : 'Show archived'}
               </Button>
-              <Button render={<Link href="/checklists/new" />}>
-                <Plus className="h-4 w-4" />
-                New checklist
-              </Button>
+              <ChecklistCreateMenu />
             </div>
           }
         />
