@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
+import { assembleReminderEvents } from '@/lib/ical/assemble';
 import { buildIcal } from '@/lib/ical/build';
 import { parseRecurrence } from '@/lib/reminders/schema';
 
@@ -28,23 +29,30 @@ export async function GET(_req: Request, { params }: { params: Params }) {
       recurrence: true,
       leadTimeDays: true,
       targets: { select: { nextDueOn: true }, orderBy: { nextDueOn: 'asc' }, take: 1 },
+      // Merged across targets — single-series UX. Unbounded today; to cap history later add
+      // `where: { completedOn: { gte: cutoff } }` here (see spec, no structural change).
+      completions: { select: { completedOn: true }, orderBy: { completedOn: 'asc' } },
     },
   });
 
   const env = getEnv();
-  const body = buildIcal(
-    reminders
-      .filter((r) => r.targets.length > 0)
-      .map((r) => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        recurrence: parseRecurrence(r.recurrence),
-        nextDueOn: r.targets[0].nextDueOn,
-        leadTimeDays: r.leadTimeDays,
-      })),
-    env.APP_URL ?? '',
-  );
+  const events = reminders
+    .filter((r) => r.targets.length > 0)
+    .flatMap((r) =>
+      assembleReminderEvents(
+        {
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          recurrence: parseRecurrence(r.recurrence),
+          nextDueOn: r.targets[0].nextDueOn,
+          leadTimeDays: r.leadTimeDays,
+          completions: r.completions.map((c) => c.completedOn),
+        },
+        new Date(),
+      ),
+    );
+  const body = buildIcal(events, env.APP_URL ?? '');
 
   return new Response(body, {
     status: 200,
