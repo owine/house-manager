@@ -99,6 +99,12 @@ You don't pass these at runtime — they're baked into the image at build time.
 | `pnpm verify` | lint + typecheck + test:unit (run before pushing) |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:seed` | Prisma |
 
+## Further docs
+
+- [`docs/TESTING.md`](TESTING.md) — test tiers, decision matrix, per-feature checklist, `@critical` policy, coverage floor.
+- [`docs/observability.md`](observability.md) — logging (Pino) and error reporting (Sentry/GlitchTip).
+- [`docs/backups.md`](backups.md) — pg_dump backups, sweeper, missed-tick recovery.
+
 ## Architecture notes
 
 - **Auth gate**: `app/(app)/layout.tsx` is the sole authentication boundary. Protected routes must live under that route group. `middleware.ts` was removed in Task 12 due to an Auth.js v5 JWE-vs-database-session incompatibility; if Plan 2+ adds many protected route groups, switch to JWT sessions and re-introduce middleware.

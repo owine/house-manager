@@ -6,8 +6,11 @@
 #   1. Pulls connection-y values (DATABASE_URL, MEILI_*, AUTH_SECRET) from .env
 #      so we don't have to duplicate them.
 #   2. Overrides the AUTH_OIDC_* + AUTH_URL vars to match the mock setup.
-#   3. Stubs the env vars lib/env.ts requires (push, email, anthropic).
-#   4. Forwards any args to `playwright test`.
+#   3. Stubs the env vars lib/env.ts requires (push, email, anthropic, voyage)
+#      and matches CI's e2e flags (ASK_ENABLED=false, OCR_BACKEND=none).
+#   4. Seeds categories (idempotent) so the harness's category combobox is
+#      populated, matching CI's separate db:seed step.
+#   5. Forwards any args to `playwright test`.
 #
 # Usage:
 #   pnpm test:e2e:local                       # full suite
@@ -22,6 +25,10 @@ if [ ! -f .env ]; then
 fi
 
 extract() { grep "^$1=" .env | cut -d= -f2-; }
+
+# Seed categories (CI runs db:seed separately; the harness's category combobox
+# is empty otherwise). Idempotent upsert.
+DATABASE_URL=$(extract DATABASE_URL) pnpm exec tsx --env-file=.env prisma/seed.ts
 
 DATABASE_URL=$(extract DATABASE_URL) \
 MEILI_HOST=$(extract MEILI_HOST) \
@@ -38,4 +45,7 @@ WEB_PUSH_CONTACT_EMAIL=mailto:ci@example.com \
 FORWARDEMAIL_API_KEY=fixture \
 FORWARDEMAIL_FROM_ADDRESS=ci@example.com \
 ANTHROPIC_API_KEY=sk-ant-test-placeholder \
+VOYAGE_API_KEY=fixture \
+ASK_ENABLED=false \
+OCR_BACKEND=none \
 exec pnpm exec playwright test "$@"

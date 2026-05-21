@@ -24,5 +24,17 @@ export default defineConfig({
     // generous enough not to hurt.
     testTimeout: 60_000,
     hookTimeout: 120_000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['lib/**', 'worker/**', 'components/**'],
+      exclude: ['**/*.test.ts', '**/*.test.tsx', '**/*.d.ts', '**/*.config.*', '**/*.md'],
+      thresholds: {
+        statements: 46,
+        branches: 39,
+        functions: 39,
+        lines: 47,
+      },
+    },
   },
 });

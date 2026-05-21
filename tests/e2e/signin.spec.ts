@@ -5,7 +5,7 @@ test.beforeEach(async () => {
   await resetAuth();
 });
 
-test('signs in via mock OIDC and lands on dashboard', async ({ page, context }) => {
+test('signs in via mock OIDC and lands on dashboard @critical', async ({ page, context }) => {
   await context.clearCookies();
   await signIn(page);
   await expect(page).toHaveURL(/\/dashboard$/);

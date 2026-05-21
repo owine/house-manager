@@ -5,7 +5,7 @@ test.beforeEach(async () => {
   await resetAuth();
 });
 
-test('signs in, adds an item, logs service, sees activity on dashboard', async ({
+test('signs in, adds an item, logs service, sees activity on dashboard @critical', async ({
   page,
   context,
 }) => {
