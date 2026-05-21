@@ -12,13 +12,6 @@ describe('recurrenceSchema', () => {
     [{ kind: 'interval', every: 0, unit: 'day' }, false],
     [{ kind: 'interval', every: 3651, unit: 'day' }, false],
     [{ kind: 'interval', every: 60 }, false],
-    [{ kind: 'monthly', dayOfMonth: 15 }, true],
-    [{ kind: 'monthly', dayOfMonth: 0 }, false],
-    [{ kind: 'monthly', dayOfMonth: 29 }, false],
-    [{ kind: 'yearly', month: 3, day: 15 }, true],
-    [{ kind: 'yearly', month: 0, day: 15 }, false],
-    [{ kind: 'yearly', month: 13, day: 15 }, false],
-    [{ kind: 'yearly', month: 3, day: 29 }, false],
     [{ kind: 'unknown' }, false],
   ])('parses %j → success=%s', (input, expected) => {
     expect(recurrenceSchema.safeParse(input).success).toBe(expected);
@@ -155,49 +148,55 @@ describe('recurrenceSchema — new kinds', () => {
     );
   });
   it('accepts weekly with weekdays', () => {
-    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 4] }).success).toBe(true);
-  });
-  it('rejects weekly with empty weekdays', () => {
-    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [] }).success).toBe(false);
-  });
-  it('rejects weekly with duplicate weekdays', () => {
-    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 1] }).success).toBe(false);
-  });
-  it('rejects weekly with out-of-range weekday', () => {
-    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [7] }).success).toBe(false);
-  });
-  it('accepts monthlyWeekday', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'monthlyWeekday', week: -1, weekday: 5 }).success,
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 4], interval: 1 }).success,
     ).toBe(true);
   });
-  it('rejects monthlyWeekday with bad week', () => {
+  it('rejects weekly with empty weekdays', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [], interval: 1 }).success).toBe(
+      false,
+    );
+  });
+  it('rejects weekly with duplicate weekdays', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'monthlyWeekday', week: 0, weekday: 5 }).success,
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1, 1], interval: 1 }).success,
     ).toBe(false);
   });
-  it("accepts monthly 'last'", () => {
-    expect(recurrenceSchema.safeParse({ kind: 'monthly', dayOfMonth: 'last' }).success).toBe(true);
+  it('rejects weekly with out-of-range weekday', () => {
+    expect(recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [7], interval: 1 }).success).toBe(
+      false,
+    );
   });
   it('accepts activeMonths on weekly', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [4, 5, 6] })
-        .success,
+      recurrenceSchema.safeParse({
+        kind: 'weekly',
+        weekdays: [1],
+        interval: 1,
+        activeMonths: [4, 5, 6],
+      }).success,
     ).toBe(true);
   });
   it('rejects empty activeMonths', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [] }).success,
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], interval: 1, activeMonths: [] })
+        .success,
     ).toBe(false);
   });
   it('rejects duplicate activeMonths', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [4, 4] }).success,
+      recurrenceSchema.safeParse({
+        kind: 'weekly',
+        weekdays: [1],
+        interval: 1,
+        activeMonths: [4, 4],
+      }).success,
     ).toBe(false);
   });
   it('rejects out-of-range activeMonths', () => {
     expect(
-      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], activeMonths: [13] }).success,
+      recurrenceSchema.safeParse({ kind: 'weekly', weekdays: [1], interval: 1, activeMonths: [13] })
+        .success,
     ).toBe(false);
   });
 });
@@ -222,5 +221,119 @@ describe('parseRecurrence', () => {
   });
   it('throws on malformed JSON', () => {
     expect(() => parseRecurrence({ kind: 'interval' })).toThrow();
+  });
+});
+
+describe('recurrenceSchema — array shapes', () => {
+  it.each([
+    [{ kind: 'weekly', weekdays: [1], interval: 2 }, true],
+    [{ kind: 'weekly', weekdays: [1] }, false],
+    [{ kind: 'weekly', weekdays: [1], interval: 0 }, false],
+    [{ kind: 'weekly', weekdays: [1], interval: 53 }, false],
+    [{ kind: 'weekly', weekdays: [1], interval: 2, anchor: '2026-05-19' }, true],
+    [{ kind: 'monthly', days: [1, 15], last: false }, true],
+    [{ kind: 'monthly', days: [], last: true }, true],
+    [{ kind: 'monthly', days: [], last: false }, false],
+    [{ kind: 'monthly', days: [1, 1], last: false }, false],
+    [{ kind: 'monthly', days: [29], last: false }, false],
+    [
+      {
+        kind: 'monthlyWeekday',
+        combos: [
+          { week: 1, weekday: 1 },
+          { week: 3, weekday: 1 },
+        ],
+      },
+      true,
+    ],
+    [{ kind: 'monthlyWeekday', combos: [] }, false],
+    [
+      {
+        kind: 'monthlyWeekday',
+        combos: [
+          { week: 1, weekday: 1 },
+          { week: 1, weekday: 1 },
+        ],
+      },
+      false,
+    ],
+    [{ kind: 'monthlyWeekday', combos: [{ week: 0, weekday: 1 }] }, false],
+    [
+      {
+        kind: 'yearly',
+        dates: [
+          { month: 1, day: 1 },
+          { month: 7, day: 1 },
+        ],
+      },
+      true,
+    ],
+    [{ kind: 'yearly', dates: [{ month: 1, day: 31 }] }, true],
+    [{ kind: 'yearly', dates: [] }, false],
+    [
+      {
+        kind: 'yearly',
+        dates: [
+          { month: 1, day: 1 },
+          { month: 1, day: 1 },
+        ],
+      },
+      false,
+    ],
+    [{ kind: 'yearly', dates: [{ month: 13, day: 1 }] }, false],
+    [{ kind: 'yearly', dates: [{ month: 1, day: 32 }] }, false],
+  ])('parses %j → success=%s', (input, expected) => {
+    expect(recurrenceSchema.safeParse(input).success).toBe(expected);
+  });
+});
+
+describe('parseRecurrence — legacy normalization', () => {
+  it('weekly without interval → interval 1', () => {
+    expect(parseRecurrence({ kind: 'weekly', weekdays: [1] })).toEqual({
+      kind: 'weekly',
+      weekdays: [1],
+      interval: 1,
+    });
+  });
+  it('monthly dayOfMonth number → days[]', () => {
+    expect(parseRecurrence({ kind: 'monthly', dayOfMonth: 15 })).toEqual({
+      kind: 'monthly',
+      days: [15],
+      last: false,
+    });
+  });
+  it("monthly dayOfMonth 'last' → last:true", () => {
+    expect(parseRecurrence({ kind: 'monthly', dayOfMonth: 'last' })).toEqual({
+      kind: 'monthly',
+      days: [],
+      last: true,
+    });
+  });
+  it('monthlyWeekday single → combos[]', () => {
+    expect(parseRecurrence({ kind: 'monthlyWeekday', week: -1, weekday: 5 })).toEqual({
+      kind: 'monthlyWeekday',
+      combos: [{ week: -1, weekday: 5 }],
+    });
+  });
+  it('yearly single → dates[]', () => {
+    expect(parseRecurrence({ kind: 'yearly', month: 4, day: 15 })).toEqual({
+      kind: 'yearly',
+      dates: [{ month: 4, day: 15 }],
+    });
+  });
+  it('legacy interval {days:N} still maps to {every,unit}', () => {
+    expect(parseRecurrence({ kind: 'interval', days: 30 })).toEqual({
+      kind: 'interval',
+      every: 30,
+      unit: 'day',
+    });
+  });
+  it('preserves activeMonths through monthly normalization', () => {
+    expect(parseRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [7] })).toEqual({
+      kind: 'monthly',
+      days: [1],
+      last: false,
+      activeMonths: [7],
+    });
   });
 });

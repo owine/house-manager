@@ -11,3 +11,6 @@ test-results
 coverage
 /data
 dist
+
+# Brainstorming visual companion mockups
+.superpowers/
