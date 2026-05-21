@@ -8,6 +8,7 @@ vi.mock('@/lib/env', () => ({
 
 let ctx: IntegrationContext;
 let itemId: string;
+let itemId2: string;
 let GET: typeof import('@/app/api/calendar/[token]/route').GET;
 
 beforeAll(async () => {
@@ -21,6 +22,8 @@ beforeAll(async () => {
   });
   const item = await ctx.prisma.item.create({ data: { name: 'Test Item', categoryId: cat.id } });
   itemId = item.id;
+  const item2 = await ctx.prisma.item.create({ data: { name: 'Test Item 2', categoryId: cat.id } });
+  itemId2 = item2.id;
 }, 180_000);
 afterAll(async () => {
   await teardownIntegration(ctx);
@@ -94,6 +97,46 @@ describe('ICS feed route', () => {
     const text = await fetchFeed('tok-abc');
     expect(text).toContain('SUMMARY:✅ Register warranty');
     expect(text).not.toContain('9999');
+  });
+
+  it('deduplicates completions across targets: two targets completed on the same UTC day render one ✅', async () => {
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Replace smoke detector battery',
+        recurrence: { kind: 'once' },
+        leadTimeDays: 3,
+        notifyUserIds: ['u1'],
+        targets: {
+          create: [
+            { itemId, nextDueOn: new Date('9999-12-31T00:00:00.000Z') },
+            { itemId: itemId2, nextDueOn: new Date('9999-12-31T00:00:00.000Z') },
+          ],
+        },
+      },
+      include: { targets: true },
+    });
+    // Both targets completed on the same UTC day (different hours)
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[0].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-15T08:00:00Z'),
+      },
+    });
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[1].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-15T14:00:00Z'),
+      },
+    });
+
+    const text = await fetchFeed('tok-abc');
+    // Only ONE ✅ summary line should appear (deduped by UTC day across both targets)
+    const completedCount = text.split('SUMMARY:✅ Replace smoke detector battery').length - 1;
+    expect(completedCount).toBe(1);
   });
 
   it('keeps both the ✅ and the plain due event when they fall on the same UTC day', async () => {
