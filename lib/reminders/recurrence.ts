@@ -42,6 +42,15 @@ function addMonthsClamped(from: Date, months: number): Date {
   return target;
 }
 
+/** Next occurrence of (month, day) strictly after `after`, clamping day to month length. */
+function nextYearlyDate(after: Date, month: number, day: number): Date {
+  for (let year = after.getUTCFullYear(); ; year++) {
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate(); // day 0 of next month
+    const cand = new Date(Date.UTC(year, month - 1, Math.min(day, lastDay)));
+    if (cand.getTime() > after.getTime()) return cand;
+  }
+}
+
 /** `from` advanced by `every` whole units, calendar-aware (months/years clamp). */
 function addInterval(from: Date, every: number, unit: 'day' | 'week' | 'month' | 'year'): Date {
   switch (unit) {
@@ -96,43 +105,59 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
       }
       break;
     }
-    case 'weekly':
-      next = firstAfter(
-        {
+    case 'weekly': {
+      const byweekday = rec.weekdays.map((d) => RRULE_WEEKDAY[d]);
+      if (rec.interval > 1) {
+        const anchor = rec.anchor ? new Date(`${rec.anchor}T00:00:00.000Z`) : completedOn;
+        const rule = new RRule({
           freq: RRule.WEEKLY,
-          byweekday: rec.weekdays.map((d) => RRULE_WEEKDAY[d]),
+          interval: rec.interval,
+          byweekday,
+          dtstart: anchor,
           ...(rec.activeMonths ? { bymonth: rec.activeMonths } : {}),
-        },
-        completedOn,
-      );
+        });
+        const after = rule.after(completedOn, /* inc */ false);
+        if (!after) throw new Error('rrule returned no weekly occurrence');
+        next = after;
+      } else {
+        next = firstAfter(
+          {
+            freq: RRule.WEEKLY,
+            byweekday,
+            ...(rec.activeMonths ? { bymonth: rec.activeMonths } : {}),
+          },
+          completedOn,
+        );
+      }
       break;
-    case 'monthly':
+    }
+    case 'monthly': {
+      const bymonthday = [...rec.days, ...(rec.last ? [-1] : [])];
       next = firstAfter(
         {
           freq: RRule.MONTHLY,
-          bymonthday: rec.dayOfMonth === 'last' ? [-1] : [rec.dayOfMonth],
+          bymonthday,
           ...(rec.activeMonths ? { bymonth: rec.activeMonths } : {}),
         },
         completedOn,
       );
       break;
+    }
     case 'monthlyWeekday':
       next = firstAfter(
         {
           freq: RRule.MONTHLY,
-          byweekday: [RRULE_WEEKDAY[rec.weekday]],
-          bysetpos: [rec.week],
+          byweekday: rec.combos.map((c) => RRULE_WEEKDAY[c.weekday].nth(c.week)),
           ...(rec.activeMonths ? { bymonth: rec.activeMonths } : {}),
         },
         completedOn,
       );
       break;
-    case 'yearly':
-      next = firstAfter(
-        { freq: RRule.YEARLY, bymonth: [rec.month], bymonthday: [rec.day] },
-        completedOn,
-      );
+    case 'yearly': {
+      const candidates = rec.dates.map((d) => nextYearlyDate(completedOn, d.month, d.day));
+      next = candidates.reduce((min, c) => (c.getTime() < min.getTime() ? c : min));
       break;
+    }
   }
   return toUtcMidnight(next);
 }

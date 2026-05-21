@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeNextDueOn, FAR_FUTURE, isSentinelDate, previewOccurrences } from './recurrence';
+import type { Recurrence } from './schema';
 
 describe('computeNextDueOn', () => {
   it('interval: returns completedOn + days', () => {
@@ -10,25 +11,25 @@ describe('computeNextDueOn', () => {
 
   it('monthly: returns next dayOfMonth strictly after completedOn', () => {
     const completed = new Date('2026-04-10T00:00:00Z');
-    const next = computeNextDueOn({ kind: 'monthly', dayOfMonth: 15 }, completed);
+    const next = computeNextDueOn({ kind: 'monthly', days: [15], last: false }, completed);
     expect(next.toISOString().slice(0, 10)).toBe('2026-04-15');
   });
 
   it('monthly: skips current month if dayOfMonth already passed', () => {
     const completed = new Date('2026-04-20T00:00:00Z');
-    const next = computeNextDueOn({ kind: 'monthly', dayOfMonth: 15 }, completed);
+    const next = computeNextDueOn({ kind: 'monthly', days: [15], last: false }, completed);
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-15');
   });
 
   it('yearly: returns next month/day strictly after completedOn', () => {
     const completed = new Date('2026-03-20T00:00:00Z');
-    const next = computeNextDueOn({ kind: 'yearly', month: 3, day: 15 }, completed);
+    const next = computeNextDueOn({ kind: 'yearly', dates: [{ month: 3, day: 15 }] }, completed);
     expect(next.toISOString().slice(0, 10)).toBe('2027-03-15');
   });
 
   it('yearly: returns same year if not yet passed', () => {
     const completed = new Date('2026-01-10T00:00:00Z');
-    const next = computeNextDueOn({ kind: 'yearly', month: 3, day: 15 }, completed);
+    const next = computeNextDueOn({ kind: 'yearly', dates: [{ month: 3, day: 15 }] }, completed);
     expect(next.toISOString().slice(0, 10)).toBe('2026-03-15');
   });
 
@@ -46,11 +47,11 @@ describe('computeNextDueOn — normalizes to UTC midnight', () => {
     expect(d.toISOString()).toBe('2026-05-22T00:00:00.000Z');
   });
   it('weekly strips time-of-day', () => {
-    const d = computeNextDueOn({ kind: 'weekly', weekdays: [1] }, noon); // next Mon
+    const d = computeNextDueOn({ kind: 'weekly', weekdays: [1], interval: 1 }, noon); // next Mon
     expect(d.toISOString()).toBe('2026-05-18T00:00:00.000Z');
   });
   it('monthly strips time-of-day', () => {
-    const d = computeNextDueOn({ kind: 'monthly', dayOfMonth: 15 }, noon);
+    const d = computeNextDueOn({ kind: 'monthly', days: [15], last: false }, noon);
     expect(d.toISOString()).toBe('2026-05-15T00:00:00.000Z');
   });
   it('interval month-end keeps the clamped date at midnight', () => {
@@ -83,7 +84,7 @@ describe('previewOccurrences', () => {
 
   it('returns N future occurrences for monthly', () => {
     const occ = previewOccurrences(
-      { kind: 'monthly', dayOfMonth: 15 },
+      { kind: 'monthly', days: [15], last: false },
       new Date('2026-05-01T00:00:00Z'),
       3,
     );
@@ -151,21 +152,21 @@ describe('computeNextDueOn — units', () => {
 describe('computeNextDueOn — weekly', () => {
   it('single weekday: next Monday after a Tuesday completion', () => {
     const next = computeNextDueOn(
-      { kind: 'weekly', weekdays: [1] },
+      { kind: 'weekly', weekdays: [1], interval: 1 },
       new Date('2026-05-12T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-18');
   });
   it('multi weekday: Mon & Thu — completing Tue gives Thu', () => {
     const next = computeNextDueOn(
-      { kind: 'weekly', weekdays: [1, 4] },
+      { kind: 'weekly', weekdays: [1, 4], interval: 1 },
       new Date('2026-05-12T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-14');
   });
   it('wraps to next week: completing Fri with Mon-only', () => {
     const next = computeNextDueOn(
-      { kind: 'weekly', weekdays: [1] },
+      { kind: 'weekly', weekdays: [1], interval: 1 },
       new Date('2026-05-15T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-18');
@@ -175,14 +176,14 @@ describe('computeNextDueOn — weekly', () => {
 describe('computeNextDueOn — monthlyWeekday', () => {
   it('first Monday', () => {
     const next = computeNextDueOn(
-      { kind: 'monthlyWeekday', week: 1, weekday: 1 },
+      { kind: 'monthlyWeekday', combos: [{ week: 1, weekday: 1 }] },
       new Date('2026-05-10T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-06-01');
   });
   it('last Friday', () => {
     const next = computeNextDueOn(
-      { kind: 'monthlyWeekday', week: -1, weekday: 5 },
+      { kind: 'monthlyWeekday', combos: [{ week: -1, weekday: 5 }] },
       new Date('2026-05-01T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-29');
@@ -192,7 +193,7 @@ describe('computeNextDueOn — monthlyWeekday', () => {
 describe('computeNextDueOn — monthly last day', () => {
   it("'last' lands on the final day of the month", () => {
     const next = computeNextDueOn(
-      { kind: 'monthly', dayOfMonth: 'last' },
+      { kind: 'monthly', days: [], last: true },
       new Date('2026-02-10T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-02-28');
@@ -212,17 +213,125 @@ describe('computeNextDueOn — seasonality', () => {
   });
   it('weekly with bymonth filter only fires in active months', () => {
     const next = computeNextDueOn(
-      { kind: 'weekly', weekdays: [1], activeMonths: [11, 12, 1, 2] },
+      { kind: 'weekly', weekdays: [1], interval: 1, activeMonths: [11, 12, 1, 2] },
       new Date('2026-05-12T00:00:00Z'),
     );
     expect(next.getUTCMonth() + 1).toBe(11);
   });
   it('omitted activeMonths is year-round (unchanged)', () => {
     const next = computeNextDueOn(
-      { kind: 'weekly', weekdays: [1] },
+      { kind: 'weekly', weekdays: [1], interval: 1 },
       new Date('2026-05-12T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-18');
+  });
+});
+
+describe('computeNextDueOn — multi-value & bi-weekly', () => {
+  it('weekly interval 1 unchanged: next Monday after a Tuesday', () => {
+    const d = computeNextDueOn(
+      { kind: 'weekly', weekdays: [1], interval: 1 },
+      new Date('2026-05-12T00:00:00Z'),
+    );
+    expect(d.toISOString().slice(0, 10)).toBe('2026-05-18');
+  });
+  it('weekly interval 2 (every other Tuesday) holds parity from anchor', () => {
+    const rec = { kind: 'weekly' as const, weekdays: [2], interval: 2, anchor: '2026-05-19' };
+    const d1 = computeNextDueOn(rec, new Date('2026-05-19T00:00:00Z'));
+    expect(d1.toISOString().slice(0, 10)).toBe('2026-06-02');
+    const d2 = computeNextDueOn(rec, new Date('2026-05-21T00:00:00Z'));
+    expect(d2.toISOString().slice(0, 10)).toBe('2026-06-02');
+  });
+  it('weekly interval 2 with seasonality skips off-parity AND off-season Tuesdays', () => {
+    // Parity Tuesdays from the anchor: …05-19, 06-02, 06-16… activeMonths=[6]
+    // forces the first allowed occurrence after 05-19 to be the June parity date.
+    const rec = {
+      kind: 'weekly' as const,
+      weekdays: [2],
+      interval: 2,
+      anchor: '2026-05-19',
+      activeMonths: [6],
+    };
+    const d = computeNextDueOn(rec, new Date('2026-05-19T00:00:00Z'));
+    expect(d.toISOString().slice(0, 10)).toBe('2026-06-02');
+  });
+  it('weekly interval 2 without anchor falls back to completedOn parity', () => {
+    // No anchor → dtstart = completedOn; first occurrence is +2 weeks.
+    const rec = { kind: 'weekly' as const, weekdays: [2], interval: 2 };
+    const d = computeNextDueOn(rec, new Date('2026-05-19T00:00:00Z')); // a Tuesday
+    expect(d.toISOString().slice(0, 10)).toBe('2026-06-02');
+  });
+  it('monthly multi-day: 1 & 15 picks the nearest upcoming', () => {
+    const rec = { kind: 'monthly' as const, days: [1, 15], last: false };
+    expect(computeNextDueOn(rec, new Date('2026-05-03T00:00:00Z')).toISOString().slice(0, 10)).toBe(
+      '2026-05-15',
+    );
+    expect(computeNextDueOn(rec, new Date('2026-05-16T00:00:00Z')).toISOString().slice(0, 10)).toBe(
+      '2026-06-01',
+    );
+  });
+  it('monthly days + last: last-day competes with explicit days', () => {
+    const rec = { kind: 'monthly' as const, days: [15], last: true };
+    expect(computeNextDueOn(rec, new Date('2026-05-16T00:00:00Z')).toISOString().slice(0, 10)).toBe(
+      '2026-05-31',
+    );
+  });
+  it('monthlyWeekday combos: first & third Monday', () => {
+    const rec: Recurrence = {
+      kind: 'monthlyWeekday',
+      combos: [
+        { week: 1, weekday: 1 },
+        { week: 3, weekday: 1 },
+      ],
+    };
+    const first = computeNextDueOn(rec, new Date('2026-05-01T00:00:00Z'));
+    expect(first.toISOString().slice(0, 10)).toBe('2026-05-04');
+    const next = computeNextDueOn(rec, first);
+    expect(next.toISOString().slice(0, 10)).toBe('2026-05-18');
+  });
+  it('monthlyWeekday mixed combos: first Monday + last Friday', () => {
+    const rec: Recurrence = {
+      kind: 'monthlyWeekday',
+      combos: [
+        { week: 1, weekday: 1 },
+        { week: -1, weekday: 5 },
+      ],
+    };
+    expect(computeNextDueOn(rec, new Date('2026-05-05T00:00:00Z')).toISOString().slice(0, 10)).toBe(
+      '2026-05-29',
+    );
+  });
+  it('yearly multi-date: Jan 1 & Jul 1 alternates', () => {
+    const rec = {
+      kind: 'yearly' as const,
+      dates: [
+        { month: 1, day: 1 },
+        { month: 7, day: 1 },
+      ],
+    };
+    const a = computeNextDueOn(rec, new Date('2026-03-01T00:00:00Z'));
+    expect(a.toISOString().slice(0, 10)).toBe('2026-07-01');
+    const b = computeNextDueOn(rec, a);
+    expect(b.toISOString().slice(0, 10)).toBe('2027-01-01');
+  });
+  it('yearly clamps impossible day: Feb 31 → Feb 28 (2026 non-leap)', () => {
+    const rec = { kind: 'yearly' as const, dates: [{ month: 2, day: 31 }] };
+    expect(computeNextDueOn(rec, new Date('2026-01-01T00:00:00Z')).toISOString().slice(0, 10)).toBe(
+      '2026-02-28',
+    );
+  });
+  it('previewOccurrences alternates a multi-date yearly recurrence', () => {
+    const rec = {
+      kind: 'yearly' as const,
+      dates: [
+        { month: 1, day: 1 },
+        { month: 7, day: 1 },
+      ],
+    };
+    const occ = previewOccurrences(rec, new Date('2026-03-01T00:00:00Z'), 4).map((d) =>
+      d.toISOString().slice(0, 10),
+    );
+    expect(occ).toEqual(['2026-07-01', '2027-01-01', '2027-07-01', '2028-01-01']);
   });
 });
 

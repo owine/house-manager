@@ -11,21 +11,75 @@ describe('describeRecurrence', () => {
       'Every 3 months',
     ));
   it('weekly multi', () =>
-    expect(describeRecurrence({ kind: 'weekly', weekdays: [1, 4] })).toBe('Every Mon & Thu'));
+    expect(describeRecurrence({ kind: 'weekly', weekdays: [1, 4], interval: 1 })).toBe(
+      'Every Mon & Thu',
+    ));
+  it('weekly every other single weekday', () =>
+    expect(describeRecurrence({ kind: 'weekly', weekdays: [2], interval: 2 })).toBe(
+      'Every other Tuesday',
+    ));
+  it('weekly interval >2 multi', () =>
+    expect(describeRecurrence({ kind: 'weekly', weekdays: [1, 3], interval: 3 })).toBe(
+      'Every 3 weeks on Mon & Wed',
+    ));
+  it('weekly interval 1 multi unchanged', () =>
+    expect(describeRecurrence({ kind: 'weekly', weekdays: [1, 4], interval: 1 })).toBe(
+      'Every Mon & Thu',
+    ));
   it('monthly day', () =>
-    expect(describeRecurrence({ kind: 'monthly', dayOfMonth: 15 })).toBe('Monthly on the 15th'));
-  it('monthly last', () =>
-    expect(describeRecurrence({ kind: 'monthly', dayOfMonth: 'last' })).toBe(
+    expect(describeRecurrence({ kind: 'monthly', days: [15], last: false })).toBe(
+      'Monthly on the 15th',
+    ));
+  it('monthly multi-day', () =>
+    expect(describeRecurrence({ kind: 'monthly', days: [1, 15], last: false })).toBe(
+      'Monthly on the 1st & 15th',
+    ));
+  it('monthly days + last', () =>
+    expect(describeRecurrence({ kind: 'monthly', days: [15], last: true })).toBe(
+      'Monthly on the 15th + last day',
+    ));
+  it('monthly only last', () =>
+    expect(describeRecurrence({ kind: 'monthly', days: [], last: true })).toBe(
       'Last day of the month',
     ));
   it('monthlyWeekday last', () =>
-    expect(describeRecurrence({ kind: 'monthlyWeekday', week: -1, weekday: 5 })).toBe(
+    expect(describeRecurrence({ kind: 'monthlyWeekday', combos: [{ week: -1, weekday: 5 }] })).toBe(
       'Last Friday of the month',
     ));
+  it('monthlyWeekday combos', () =>
+    expect(
+      describeRecurrence({
+        kind: 'monthlyWeekday',
+        combos: [
+          { week: 1, weekday: 1 },
+          { week: 3, weekday: 1 },
+        ],
+      }),
+    ).toBe('First & Third Monday of the month'));
+  it('monthlyWeekday mixed combos', () =>
+    expect(
+      describeRecurrence({
+        kind: 'monthlyWeekday',
+        combos: [
+          { week: 1, weekday: 1 },
+          { week: -1, weekday: 5 },
+        ],
+      }),
+    ).toBe('First Monday & Last Friday of the month'));
   it('yearly', () =>
-    expect(describeRecurrence({ kind: 'yearly', month: 4, day: 15 })).toBe(
-      'Every year on April 15',
+    expect(describeRecurrence({ kind: 'yearly', dates: [{ month: 4, day: 15 }] })).toBe(
+      'Every year on Apr 15',
     ));
+  it('yearly multi-date', () =>
+    expect(
+      describeRecurrence({
+        kind: 'yearly',
+        dates: [
+          { month: 1, day: 1 },
+          { month: 7, day: 1 },
+        ],
+      }),
+    ).toBe('Every year on Jan 1 & Jul 1'));
   it('once', () => expect(describeRecurrence({ kind: 'once' })).toBe('Once (does not repeat)'));
   it('season suffix', () =>
     expect(
@@ -37,15 +91,25 @@ describe('describeRecurrence', () => {
       }),
     ).toBe('Every 2 weeks (Apr–Oct)'));
   it('non-contiguous season suffix', () =>
-    expect(describeRecurrence({ kind: 'weekly', weekdays: [1], activeMonths: [3, 6, 9, 12] })).toBe(
-      'Every Mon (Mar, Jun, Sep, Dec)',
-    ));
+    expect(
+      describeRecurrence({
+        kind: 'weekly',
+        weekdays: [1],
+        interval: 1,
+        activeMonths: [3, 6, 9, 12],
+      }),
+    ).toBe('Every Mon (Mar, Jun, Sep, Dec)'));
   it('wrap-around season suffix (Nov–Feb)', () =>
     expect(
-      describeRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [11, 12, 1, 2] }),
+      describeRecurrence({
+        kind: 'monthly',
+        days: [1],
+        last: false,
+        activeMonths: [11, 12, 1, 2],
+      }),
     ).toBe('Monthly on the 1st (Nov–Feb)'));
   it('single-month season suffix', () =>
-    expect(describeRecurrence({ kind: 'monthly', dayOfMonth: 1, activeMonths: [7] })).toBe(
+    expect(describeRecurrence({ kind: 'monthly', days: [1], last: false, activeMonths: [7] })).toBe(
       'Monthly on the 1st (Jul)',
     ));
 });

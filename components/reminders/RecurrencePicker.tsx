@@ -1,8 +1,10 @@
 'use client';
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
@@ -20,6 +22,8 @@ type Props = {
 };
 
 type NthWeek = 1 | 2 | 3 | 4 | -1;
+type Combo = { week: NthWeek; weekday: number };
+type MonthDay = { month: number; day: number };
 
 // All picker state lives in one object so emit handlers can compute the next
 // recurrence from a merged value (avoids the React stale-setState pitfall).
@@ -28,12 +32,14 @@ type State = {
   every: number;
   unit: 'day' | 'week' | 'month' | 'year';
   weekdays: number[];
-  dayOfMonth: number;
+  weeklyInterval: number; // 1 = every week
+  monthlyDays: number[];
   monthlyLast: boolean;
-  nthWeek: NthWeek;
-  nthWeekday: number;
-  yearMonth: number;
-  yearDay: number;
+  monthlyDayInput: number; // transient "add day" field
+  nthCombos: Combo[];
+  nthWeekInput: NthWeek; // transient
+  nthWeekdayInput: number; // transient
+  yearlyDates: MonthDay[];
   seasonEnabled: boolean;
   activeMonths: number[];
 };
@@ -42,9 +48,14 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_LABELS = MONTHS.map((m) =>
+const MONTH_SHORT = MONTHS.map((m) =>
   new Date(2026, m - 1, 1).toLocaleString('en-US', { month: 'short' }),
 );
+const MONTH_LONG = MONTHS.map((m) =>
+  new Date(2026, m - 1, 1).toLocaleString('en-US', { month: 'long' }),
+);
+// Hardcoded month lengths; Feb shows 29 (runtime clamps impossible days).
+const MONTH_LENGTHS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const NTH_WEEKS: { label: string; value: NthWeek }[] = [
   { label: 'First', value: 1 },
   { label: 'Second', value: 2 },
@@ -80,14 +91,17 @@ function buildRecurrence(s: State): Recurrence {
     case 'interval':
       return withSeason({ kind: 'interval', every: s.every, unit: s.unit }, s);
     case 'weekly':
-      return withSeason({ kind: 'weekly', weekdays: s.weekdays }, s);
+      return withSeason({ kind: 'weekly', weekdays: s.weekdays, interval: s.weeklyInterval }, s);
     case 'monthly':
-      return withSeason({ kind: 'monthly', dayOfMonth: s.monthlyLast ? 'last' : s.dayOfMonth }, s);
+      return withSeason(
+        { kind: 'monthly', days: [...s.monthlyDays].sort((a, b) => a - b), last: s.monthlyLast },
+        s,
+      );
     case 'monthlyWeekday':
-      return withSeason({ kind: 'monthlyWeekday', week: s.nthWeek, weekday: s.nthWeekday }, s);
+      return withSeason({ kind: 'monthlyWeekday', combos: s.nthCombos }, s);
     case 'yearly':
       // Seasonality is hidden for `yearly` per spec; never folded in.
-      return { kind: 'yearly', month: s.yearMonth, day: s.yearDay };
+      return { kind: 'yearly', dates: s.yearlyDates };
     default:
       return { kind: 'once' };
   }
@@ -100,12 +114,14 @@ function initialState(dv?: Recurrence): State {
     every: dv?.kind === 'interval' ? dv.every : 60,
     unit: dv?.kind === 'interval' ? dv.unit : 'day',
     weekdays: dv?.kind === 'weekly' ? dv.weekdays : [1],
-    dayOfMonth: dv?.kind === 'monthly' && dv.dayOfMonth !== 'last' ? dv.dayOfMonth : 1,
-    monthlyLast: dv?.kind === 'monthly' && dv.dayOfMonth === 'last',
-    nthWeek: dv?.kind === 'monthlyWeekday' ? dv.week : 1,
-    nthWeekday: dv?.kind === 'monthlyWeekday' ? dv.weekday : 1,
-    yearMonth: dv?.kind === 'yearly' ? dv.month : 1,
-    yearDay: dv?.kind === 'yearly' ? dv.day : 1,
+    weeklyInterval: dv?.kind === 'weekly' ? dv.interval : 1,
+    monthlyDays: dv?.kind === 'monthly' ? dv.days : [1],
+    monthlyLast: dv?.kind === 'monthly' ? dv.last : false,
+    monthlyDayInput: 1,
+    nthCombos: dv?.kind === 'monthlyWeekday' ? dv.combos : [{ week: 1, weekday: 1 }],
+    nthWeekInput: 1,
+    nthWeekdayInput: 1,
+    yearlyDates: dv?.kind === 'yearly' ? dv.dates : [{ month: 1, day: 1 }],
     seasonEnabled: seasonMonths.length > 0,
     activeMonths: seasonMonths,
   };
@@ -145,8 +161,37 @@ function ToggleRow({
   );
 }
 
+/** A removable chip used by monthly/monthlyWeekday/yearly multi-value rows. */
+function Chip({
+  label,
+  onRemove,
+  ariaLabel,
+}: {
+  label: string;
+  onRemove: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs">
+      {label}
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        aria-label={ariaLabel}
+        onClick={onRemove}
+        className="rounded-full"
+      >
+        <XIcon />
+      </Button>
+    </span>
+  );
+}
+
 export function RecurrencePicker({ defaultValue, onChange }: Props) {
   const [state, setState] = useState<State>(() => initialState(defaultValue));
+  const [yearlyOpen, setYearlyOpen] = useState(false);
+  const [viewMonth, setViewMonth] = useState(1);
 
   // Merge a partial update into state, then emit the resulting recurrence — both
   // derived from the same `next` value, in the event handler (never inside the
@@ -169,9 +214,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
     const weekdays = has
       ? state.weekdays.filter((d) => d !== value)
       : [...state.weekdays, value].sort((a, b) => a - b);
-    const next = { ...state, weekdays };
-    setState(next);
-    onChange(buildRecurrence(next));
+    update({ weekdays });
   };
 
   const toggleMonth = (value: number) => {
@@ -181,14 +224,65 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
       : [...state.activeMonths, value].sort((a, b) => a - b);
     // Auto-disable the seasonal switch when the last active month is removed,
     // so it can never sit "on" with zero months (a confusing silent no-op).
-    const next = {
-      ...state,
+    update({
       activeMonths,
       seasonEnabled: activeMonths.length > 0 ? state.seasonEnabled : false,
-    };
-    setState(next);
-    onChange(buildRecurrence(next));
+    });
   };
+
+  // monthly multi-day -------------------------------------------------------
+  const addMonthlyDay = () => {
+    const d = state.monthlyDayInput;
+    if (d < 1 || d > 28 || state.monthlyDays.includes(d)) return;
+    update({ monthlyDays: [...state.monthlyDays, d].sort((a, b) => a - b) });
+  };
+  const removeMonthlyDay = (d: number) => {
+    // Don't strand monthly with no days while `last` is off (schema refine).
+    if (state.monthlyDays.length === 1 && !state.monthlyLast) return;
+    update({ monthlyDays: state.monthlyDays.filter((x) => x !== d) });
+  };
+  const setMonthlyLast = (c: boolean) => {
+    // Turning off last-of-month while there are zero days would emit invalid
+    // state; force at least day 1 back in.
+    if (!c && state.monthlyDays.length === 0) {
+      update({ monthlyLast: false, monthlyDays: [1] });
+      return;
+    }
+    update({ monthlyLast: c });
+  };
+
+  // monthlyWeekday combos ---------------------------------------------------
+  const addCombo = () => {
+    const key = `${state.nthWeekInput}:${state.nthWeekdayInput}`;
+    if (state.nthCombos.some((c) => `${c.week}:${c.weekday}` === key)) return;
+    update({
+      nthCombos: [...state.nthCombos, { week: state.nthWeekInput, weekday: state.nthWeekdayInput }],
+    });
+  };
+  const removeCombo = (combo: Combo) => {
+    if (state.nthCombos.length === 1) return; // keep ≥1
+    update({
+      nthCombos: state.nthCombos.filter(
+        (c) => !(c.week === combo.week && c.weekday === combo.weekday),
+      ),
+    });
+  };
+
+  // yearly dates ------------------------------------------------------------
+  const addYearlyDate = (month: number, day: number) => {
+    const key = `${month}:${day}`;
+    if (state.yearlyDates.some((d) => `${d.month}:${d.day}` === key)) return;
+    update({ yearlyDates: [...state.yearlyDates, { month, day }] });
+  };
+  const removeYearlyDate = (date: MonthDay) => {
+    if (state.yearlyDates.length === 1) return; // keep ≥1
+    update({
+      yearlyDates: state.yearlyDates.filter((d) => !(d.month === date.month && d.day === date.day)),
+    });
+  };
+
+  const nthWeekItems = NTH_WEEKS.map((w) => ({ label: w.label, value: String(w.value) }));
+  const weekdayItems = WEEKDAYS.map((d) => ({ label: WEEKDAY_LONG[d], value: String(d) }));
 
   const showSeasonality = state.kind !== 'once' && state.kind !== 'yearly';
 
@@ -229,8 +323,18 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <RadioGroupItem id="recur-weekly" value="weekly" />
           <Label htmlFor="recur-weekly" className="text-sm font-normal">
-            Every week on:
+            Every
           </Label>
+          <Input
+            type="number"
+            min={1}
+            max={52}
+            value={state.weeklyInterval}
+            onChange={(e) => update({ weeklyInterval: clampInt(e.target.value, 1, 52, 1) })}
+            className="w-16"
+            aria-label="Weeks between occurrences"
+          />
+          <span className="text-sm">week(s) on:</span>
           <ToggleRow
             options={WEEKDAYS.map((d) => ({ label: WEEKDAY_LABELS[d], value: d }))}
             selected={state.weekdays}
@@ -249,17 +353,33 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             type="number"
             min={1}
             max={28}
-            value={state.dayOfMonth}
-            disabled={state.monthlyLast}
-            onChange={(e) => update({ dayOfMonth: clampInt(e.target.value, 1, 28, 1) })}
+            value={state.monthlyDayInput}
+            onChange={(e) => update({ monthlyDayInput: clampInt(e.target.value, 1, 28, 1) })}
             className="w-16"
+            aria-label="Day of month to add"
           />
           <span className="text-xs text-muted-foreground">(1–28)</span>
+          <Button type="button" size="sm" variant="outline" onClick={addMonthlyDay}>
+            Add
+          </Button>
+          {/* biome-ignore lint/a11y/useSemanticElements: chip list of selected days; role="group" is correct here */}
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Selected days of month">
+            {[...state.monthlyDays]
+              .sort((a, b) => a - b)
+              .map((d) => (
+                <Chip
+                  key={d}
+                  label={String(d)}
+                  ariaLabel={`Remove day ${d}`}
+                  onRemove={() => removeMonthlyDay(d)}
+                />
+              ))}
+          </div>
           <div className="flex items-center gap-2">
             <Switch
               id="recur-monthly-last"
               checked={state.monthlyLast}
-              onCheckedChange={(c) => update({ monthlyLast: c })}
+              onCheckedChange={setMonthlyLast}
             />
             <Label htmlFor="recur-monthly-last" className="text-sm font-normal">
               Last day of month
@@ -274,36 +394,58 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             On the
           </Label>
           <Select
-            value={String(state.nthWeek)}
-            onValueChange={(v) => update({ nthWeek: Number(v) as NthWeek })}
+            items={nthWeekItems}
+            value={String(state.nthWeekInput)}
+            onValueChange={(v) => update({ nthWeekInput: Number(v ?? 1) as NthWeek })}
           >
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28" aria-label="Week position">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {NTH_WEEKS.map((w) => (
-                <SelectItem key={w.value} value={String(w.value)}>
-                  {w.label}
+              {nthWeekItems.map((it) => (
+                <SelectItem key={it.value} value={it.value}>
+                  {it.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select
-            value={String(state.nthWeekday)}
-            onValueChange={(v) => update({ nthWeekday: Number(v) })}
+            items={weekdayItems}
+            value={String(state.nthWeekdayInput)}
+            onValueChange={(v) => update({ nthWeekdayInput: Number(v ?? 0) })}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36" aria-label="Weekday">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {WEEKDAYS.map((d) => (
-                <SelectItem key={d} value={String(d)}>
-                  {WEEKDAY_LONG[d]}
+              {weekdayItems.map((it) => (
+                <SelectItem key={it.value} value={it.value}>
+                  {it.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <span className="text-sm">of every month</span>
+          <Button type="button" size="sm" variant="outline" onClick={addCombo}>
+            Add
+          </Button>
+          {/* biome-ignore lint/a11y/useSemanticElements: chip list of nth-weekday combos; role="group" is correct here */}
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label="Selected nth-weekday combos"
+          >
+            {state.nthCombos.map((c) => {
+              const label = `${NTH_WEEKS.find((w) => w.value === c.week)?.label ?? c.week} ${WEEKDAY_LONG[c.weekday]}`;
+              return (
+                <Chip
+                  key={`${c.week}:${c.weekday}`}
+                  label={label}
+                  ariaLabel={`Remove ${label}`}
+                  onRemove={() => removeCombo(c)}
+                />
+              );
+            })}
+          </div>
         </div>
 
         {/* yearly */}
@@ -312,29 +454,67 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           <Label htmlFor="recur-yearly" className="text-sm font-normal">
             Every year on
           </Label>
-          <Select
-            value={String(state.yearMonth)}
-            onValueChange={(v) => update({ yearMonth: Number(v) })}
-          >
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTHS.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {new Date(2026, m - 1, 1).toLocaleString('en-US', { month: 'long' })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="number"
-            min={1}
-            max={28}
-            value={state.yearDay}
-            onChange={(e) => update({ yearDay: clampInt(e.target.value, 1, 28, 1) })}
-            className="w-16"
-          />
+          {/* biome-ignore lint/a11y/useSemanticElements: chip list of yearly dates; role="group" is correct here */}
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Selected dates">
+            {state.yearlyDates.map((d) => {
+              const label = `${MONTH_SHORT[d.month - 1]} ${d.day}`;
+              return (
+                <Chip
+                  key={`${d.month}:${d.day}`}
+                  label={label}
+                  ariaLabel={`Remove ${label}`}
+                  onRemove={() => removeYearlyDate(d)}
+                />
+              );
+            })}
+          </div>
+          <Popover open={yearlyOpen} onOpenChange={setYearlyOpen}>
+            <PopoverTrigger
+              render={
+                <Button type="button" size="sm" variant="outline">
+                  Add date
+                </Button>
+              }
+            />
+            <PopoverContent className="w-64">
+              <div className="mb-2 flex items-center justify-between">
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Previous month"
+                  onClick={() => setViewMonth((m) => (m === 1 ? 12 : m - 1))}
+                >
+                  <ChevronLeftIcon />
+                </Button>
+                <span className="text-sm font-medium">{MONTH_LONG[viewMonth - 1]}</span>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Next month"
+                  onClick={() => setViewMonth((m) => (m === 12 ? 1 : m + 1))}
+                >
+                  <ChevronRightIcon />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {Array.from({ length: MONTH_LENGTHS[viewMonth - 1] }, (_, i) => i + 1).map(
+                  (day) => (
+                    <Button
+                      key={day}
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      onClick={() => addYearlyDate(viewMonth, day)}
+                    >
+                      {day}
+                    </Button>
+                  ),
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         {/* once */}
@@ -362,7 +542,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           </div>
           {state.seasonEnabled && (
             <ToggleRow
-              options={MONTHS.map((m) => ({ label: MONTH_LABELS[m - 1], value: m }))}
+              options={MONTHS.map((m) => ({ label: MONTH_SHORT[m - 1], value: m }))}
               selected={state.activeMonths}
               onToggle={toggleMonth}
               ariaLabel="Active months"

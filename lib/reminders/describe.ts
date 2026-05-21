@@ -17,21 +17,6 @@ const MON_SHORT = [
   'Nov',
   'Dec',
 ];
-const MON_LONG = [
-  '',
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 const WEEK_LABEL: Record<number, string> = {
   1: 'First',
   2: 'Second',
@@ -86,17 +71,32 @@ export function describeRecurrence(rec: Recurrence): string {
       const base = rec.every === 1 ? `Every ${rec.unit}` : `Every ${rec.every} ${rec.unit}s`;
       return base + season;
     }
-    case 'weekly':
-      return `Every ${rec.weekdays.map((d) => WD_SHORT[d]).join(' & ')}${season}`;
-    case 'monthly':
-      return (
-        (rec.dayOfMonth === 'last'
-          ? 'Last day of the month'
-          : `Monthly on the ${ordinal(rec.dayOfMonth)}`) + season
-      );
-    case 'monthlyWeekday':
-      return `${WEEK_LABEL[rec.week]} ${WD_LONG[rec.weekday]} of the month${season}`;
+    case 'weekly': {
+      const days = rec.weekdays.map((d) => WD_SHORT[d]).join(' & ');
+      if (rec.interval === 1) return `Every ${days}${season}`;
+      if (rec.interval === 2 && rec.weekdays.length === 1)
+        return `Every other ${WD_LONG[rec.weekdays[0]]}${season}`;
+      return `Every ${rec.interval} weeks on ${days}${season}`;
+    }
+    case 'monthly': {
+      const dayList = rec.days.map((d) => ordinal(d)).join(' & ');
+      let base: string;
+      if (rec.days.length === 0) base = 'Last day of the month';
+      else base = `Monthly on the ${dayList}${rec.last ? ' + last day' : ''}`;
+      return base + season;
+    }
+    case 'monthlyWeekday': {
+      const uniqWeekdays = new Set(rec.combos.map((c) => c.weekday));
+      let label: string;
+      if (uniqWeekdays.size === 1) {
+        const wd = WD_LONG[rec.combos[0].weekday];
+        label = `${rec.combos.map((c) => WEEK_LABEL[c.week]).join(' & ')} ${wd}`;
+      } else {
+        label = rec.combos.map((c) => `${WEEK_LABEL[c.week]} ${WD_LONG[c.weekday]}`).join(' & ');
+      }
+      return `${label} of the month${season}`;
+    }
     case 'yearly':
-      return `Every year on ${MON_LONG[rec.month]} ${rec.day}${season}`;
+      return `Every year on ${rec.dates.map((d) => `${MON_SHORT[d.month]} ${d.day}`).join(' & ')}`;
   }
 }
