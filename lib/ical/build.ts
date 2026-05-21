@@ -1,42 +1,28 @@
 import ical, { ICalAlarmType, ICalCalendarMethod } from 'ical-generator';
-import { previewOccurrences } from '@/lib/reminders/recurrence';
-import type { Recurrence } from '@/lib/reminders/schema';
+import type { CalendarEvent } from './assemble';
 
-export type IcalReminderRow = {
-  id: string;
-  title: string;
-  description: string | null;
-  recurrence: Recurrence;
-  nextDueOn: Date;
-  leadTimeDays: number;
-};
-
-export function buildIcal(reminders: IcalReminderRow[], appUrl: string): string {
+export function buildIcal(events: CalendarEvent[], appUrl: string): string {
   const cal = ical({
     name: 'House Manager',
     method: ICalCalendarMethod.PUBLISH,
   });
-  for (const r of reminders) {
-    const occurrences = [r.nextDueOn, ...previewOccurrences(r.recurrence, r.nextDueOn, 11)];
-    for (const date of occurrences) {
-      const dateOnly = new Date(
-        Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-      );
-      cal.createEvent({
-        id: `reminder-${r.id}-${dateOnly.toISOString().slice(0, 10)}`,
-        start: dateOnly,
-        end: dateOnly,
-        allDay: true,
-        summary: r.title,
-        description: r.description ?? '',
-        url: `${appUrl}/reminders/${r.id}`,
-        alarms: [
-          {
-            type: ICalAlarmType.display,
-            trigger: r.leadTimeDays * 86_400, // seconds before
-            description: `${r.title} due`,
-          },
-        ],
+  for (const e of events) {
+    const event = cal.createEvent({
+      id: e.uid,
+      start: e.date,
+      end: e.date,
+      allDay: true,
+      summary: e.title,
+      description: e.description,
+      url: `${appUrl}/reminders/${e.reminderId}`,
+    });
+    if (e.alarmSecondsBefore !== null) {
+      event.createAlarm({
+        type: ICalAlarmType.display,
+        // ical-generator reads a positive `trigger` as "N seconds BEFORE the event"
+        // (it emits the RFC-5545 negative duration itself) — don't pre-negate this.
+        trigger: e.alarmSecondsBefore,
+        description: `${e.title} due`,
       });
     }
   }
