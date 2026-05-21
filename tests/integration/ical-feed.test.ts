@@ -1,12 +1,29 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildIcal } from '@/lib/ical/build';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
+vi.mock('@/lib/env', () => ({
+  getEnv: vi.fn(() => ({ APP_URL: 'http://localhost:3000' })),
+}));
+
 let ctx: IntegrationContext;
+let itemId: string;
+let itemId2: string;
+let GET: typeof import('@/app/api/calendar/[token]/route').GET;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
+  const route = await import('@/app/api/calendar/[token]/route');
+  GET = route.GET;
+  const cat = await ctx.prisma.category.upsert({
+    where: { slug: 'ical-feed-test' },
+    create: { slug: 'ical-feed-test', name: 'IcalFeedTest', sortOrder: 999 },
+    update: {},
+  });
+  const item = await ctx.prisma.item.create({ data: { name: 'Test Item', categoryId: cat.id } });
+  itemId = item.id;
+  const item2 = await ctx.prisma.item.create({ data: { name: 'Test Item 2', categoryId: cat.id } });
+  itemId2 = item2.id;
 }, 180_000);
 afterAll(async () => {
   await teardownIntegration(ctx);
@@ -22,32 +39,130 @@ beforeEach(async () => {
   });
 });
 
-describe('buildIcal', () => {
-  it('returns a VCALENDAR with one VEVENT per occurrence (12 for a recurring reminder)', () => {
-    const text = buildIcal(
-      [
-        {
-          id: 'r1',
-          title: 'Replace HVAC filter',
-          description: 'use MERV 13',
-          recurrence: { kind: 'interval', every: 30, unit: 'day' },
-          nextDueOn: new Date('2026-06-30T00:00:00Z'),
-          leadTimeDays: 3,
-        },
-      ],
-      'https://example.com',
-    );
-    expect(text).toContain('BEGIN:VCALENDAR');
-    expect(text).toContain('END:VCALENDAR');
-    const eventCount = (text.match(/BEGIN:VEVENT/g) ?? []).length;
-    expect(eventCount).toBe(12);
-    expect(text).toContain('SUMMARY:Replace HVAC filter');
-    expect(text).toContain('TRIGGER:-P3D'); // 3 days in compact period notation
+async function fetchFeed(token: string): Promise<string> {
+  const res = await GET(new Request(`http://test/api/calendar/${token}.ics`), {
+    params: Promise.resolve({ token: `${token}.ics` }),
+  });
+  expect(res.status).toBe(200);
+  return res.text();
+}
+
+describe('ICS feed route', () => {
+  it('shows a recurring reminder with a ✅ completed event on the completion date', async () => {
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Replace HVAC filter',
+        description: 'use MERV 13',
+        recurrence: { kind: 'interval', every: 30, unit: 'day' },
+        leadTimeDays: 3,
+        notifyUserIds: ['u1'],
+        targets: { create: { itemId, nextDueOn: new Date('2026-06-30T00:00:00Z') } },
+      },
+      include: { targets: true },
+    });
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[0].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-04T10:00:00Z'),
+      },
+    });
+
+    const text = await fetchFeed('tok-abc');
+    expect(text).toContain('SUMMARY:✅ Replace HVAC filter');
+    expect(text).toContain('SUMMARY:Replace HVAC filter'); // the due/projected series too
   });
 
-  it('returns 0 events for an empty list', () => {
-    const text = buildIcal([], 'https://example.com');
-    expect(text).toContain('BEGIN:VCALENDAR');
-    expect(text).not.toContain('BEGIN:VEVENT');
+  it('omits the year-9999 sentinel event for a completed one-shot but keeps the ✅', async () => {
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Register warranty',
+        recurrence: { kind: 'once' },
+        leadTimeDays: 3,
+        notifyUserIds: ['u1'],
+        targets: { create: { itemId, nextDueOn: new Date('9999-12-31T00:00:00.000Z') } },
+      },
+      include: { targets: true },
+    });
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[0].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-04T10:00:00Z'),
+      },
+    });
+
+    const text = await fetchFeed('tok-abc');
+    expect(text).toContain('SUMMARY:✅ Register warranty');
+    expect(text).not.toContain('9999');
+  });
+
+  it('deduplicates completions across targets: two targets completed on the same UTC day render one ✅', async () => {
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Replace smoke detector battery',
+        recurrence: { kind: 'once' },
+        leadTimeDays: 3,
+        notifyUserIds: ['u1'],
+        targets: {
+          create: [
+            { itemId, nextDueOn: new Date('9999-12-31T00:00:00.000Z') },
+            { itemId: itemId2, nextDueOn: new Date('9999-12-31T00:00:00.000Z') },
+          ],
+        },
+      },
+      include: { targets: true },
+    });
+    // Both targets completed on the same UTC day (different hours)
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[0].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-15T08:00:00Z'),
+      },
+    });
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[1].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-15T14:00:00Z'),
+      },
+    });
+
+    const text = await fetchFeed('tok-abc');
+    // Only ONE ✅ summary line should appear (deduped by UTC day across both targets)
+    const completedCount = text.split('SUMMARY:✅ Replace smoke detector battery').length - 1;
+    expect(completedCount).toBe(1);
+  });
+
+  it('keeps both the ✅ and the plain due event when they fall on the same UTC day', async () => {
+    const due = new Date('2026-05-10T00:00:00Z');
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Test collision',
+        recurrence: { kind: 'once' },
+        leadTimeDays: 3,
+        notifyUserIds: ['u1'],
+        targets: { create: { itemId, nextDueOn: due } },
+      },
+      include: { targets: true },
+    });
+    await ctx.prisma.reminderCompletion.create({
+      data: {
+        reminderId: reminder.id,
+        targetId: reminder.targets[0].id,
+        completedById: 'u1',
+        completedOn: new Date('2026-05-10T08:00:00Z'),
+      },
+    });
+
+    const text = await fetchFeed('tok-abc');
+    expect(text).toContain('SUMMARY:✅ Test collision');
+    expect(text).toContain('SUMMARY:Test collision');
+    expect((text.match(/BEGIN:VEVENT/g) ?? []).length).toBe(2);
   });
 });

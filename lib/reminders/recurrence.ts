@@ -2,7 +2,12 @@ import { RRule, type Weekday } from 'rrule';
 import type { Recurrence } from './schema';
 
 const DAY_MS = 86_400_000;
-const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
+export const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
+
+/** True when a date is the "never re-fires" sentinel a completed one-shot carries. */
+export function isSentinelDate(d: Date): boolean {
+  return d.getTime() === FAR_FUTURE.getTime();
+}
 // Worst case is ~50 steps (small day-interval across a multi-month off-season); 1000 is a fail-loud ceiling.
 const SKIP_CAP = 1000;
 
