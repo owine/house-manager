@@ -91,6 +91,38 @@ describe('assembleReminderEvents', () => {
     expect(events.find((e) => e.kind === 'due')?.alarmSecondsBefore).toBe(3 * 86_400);
   });
 
+  it('two completions on the same UTC day produce two distinct completed events with distinct UIDs', () => {
+    const events = assembleReminderEvents(
+      base({
+        recurrence: { kind: 'interval', every: 30, unit: 'day' },
+        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        completions: [new Date('2026-05-04T10:00:00Z'), new Date('2026-05-04T14:00:00Z')],
+      }),
+      NOW,
+    );
+    const completed = events.filter((e) => e.kind === 'completed');
+    expect(completed).toHaveLength(2);
+    expect(completed[0]).toBeDefined();
+    expect(completed[1]).toBeDefined();
+    expect(completed[0]?.uid).not.toBe(completed[1]?.uid);
+  });
+
+  it('projected UIDs contain -proj- and are distinct from the due UID', () => {
+    const events = assembleReminderEvents(
+      base({
+        recurrence: { kind: 'interval', every: 30, unit: 'day' },
+        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+      }),
+      NOW,
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.uid).not.toContain('-proj-');
+    const projected = events.filter((e) => e.kind === 'projected');
+    expect(projected.length).toBeGreaterThan(0);
+    expect(projected.every((e) => e.uid.includes('-proj-'))).toBe(true);
+  });
+
   it('null description becomes empty string on every event', () => {
     const events = assembleReminderEvents(
       base({

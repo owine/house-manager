@@ -41,10 +41,10 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
   const leadSeconds = input.leadTimeDays * 86_400;
   const events: CalendarEvent[] = [];
 
-  for (const completedOn of input.completions) {
+  input.completions.forEach((completedOn, i) => {
     const date = utcMidnight(completedOn);
     events.push({
-      uid: `reminder-${input.id}-done-${isoDate(date)}`,
+      uid: `reminder-${input.id}-done-${isoDate(date)}-${i}`,
       reminderId: input.id,
       date,
       title: `✅ ${input.title}`,
@@ -52,7 +52,7 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
       kind: 'completed',
       alarmSecondsBefore: null,
     });
-  }
+  });
 
   if (!isSentinelDate(input.nextDueOn)) {
     const date = utcMidnight(input.nextDueOn);
@@ -69,7 +69,7 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
     for (const occ of previewOccurrences(input.recurrence, input.nextDueOn, 11)) {
       const d = utcMidnight(occ);
       events.push({
-        uid: `reminder-${input.id}-${isoDate(d)}`,
+        uid: `reminder-${input.id}-proj-${isoDate(d)}`,
         reminderId: input.id,
         date: d,
         title: input.title,
