@@ -205,6 +205,11 @@ on the same UTC day:
 
 ## Out of scope / future
 
+- **The in-app calendar view** (`app/(app)/reminders/calendar/page.tsx` →
+  `lib/calendar/queries.ts` → `components/calendar/MonthGrid.tsx`) is a *separate* surface
+  and is intentionally **not** changed here. It already renders active reminder targets
+  (blue) and service records (green, including those auto-created from completions); this
+  spec touches only the subscribable `.ics` export feed.
 - Per-target series for multi-target reminders (chose merged single series).
 - A bounded history window (chose all-history; documented where to add the filter).
 - A dedicated overdue marker / distinct glyph (chose plain = overdue).

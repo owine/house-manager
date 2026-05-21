@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-21-completion-aware-ics-feed-design.md`
 
+**Scope note:** This touches only the subscribable `.ics` export feed. The in-app month-grid calendar view (`app/(app)/reminders/calendar/`, `lib/calendar/queries.ts`, `components/calendar/MonthGrid.tsx`) is a separate surface and is **not** modified.
+
 ---
 
 ## File Structure
