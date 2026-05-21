@@ -41,10 +41,14 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
   const leadSeconds = input.leadTimeDays * 86_400;
   const events: CalendarEvent[] = [];
 
-  input.completions.forEach((completedOn, i) => {
+  const seenDays = new Set<string>();
+  for (const completedOn of input.completions) {
     const date = utcMidnight(completedOn);
+    const key = isoDate(date);
+    if (seenDays.has(key)) continue;
+    seenDays.add(key);
     events.push({
-      uid: `reminder-${input.id}-done-${isoDate(date)}-${i}`,
+      uid: `reminder-${input.id}-done-${key}`,
       reminderId: input.id,
       date,
       title: `✅ ${input.title}`,
@@ -52,10 +56,11 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
       kind: 'completed',
       alarmSecondsBefore: null,
     });
-  });
+  }
 
   if (!isSentinelDate(input.nextDueOn)) {
     const date = utcMidnight(input.nextDueOn);
+    const todayUtc = utcMidnight(now);
     events.push({
       uid: `reminder-${input.id}-${isoDate(date)}`,
       reminderId: input.id,
@@ -63,7 +68,7 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
       title: input.title,
       description,
       kind: 'due',
-      alarmSecondsBefore: input.nextDueOn.getTime() >= now.getTime() ? leadSeconds : null,
+      alarmSecondsBefore: date.getTime() >= todayUtc.getTime() ? leadSeconds : null,
     });
 
     for (const occ of previewOccurrences(input.recurrence, input.nextDueOn, 11)) {

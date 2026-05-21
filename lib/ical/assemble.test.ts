@@ -91,7 +91,7 @@ describe('assembleReminderEvents', () => {
     expect(events.find((e) => e.kind === 'due')?.alarmSecondsBefore).toBe(3 * 86_400);
   });
 
-  it('two completions on the same UTC day produce two distinct completed events with distinct UIDs', () => {
+  it('two completions on the same UTC day produce exactly ONE completed event (deduped)', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
@@ -101,10 +101,36 @@ describe('assembleReminderEvents', () => {
       NOW,
     );
     const completed = events.filter((e) => e.kind === 'completed');
-    expect(completed).toHaveLength(2);
+    expect(completed).toHaveLength(1);
     expect(completed[0]).toBeDefined();
-    expect(completed[1]).toBeDefined();
-    expect(completed[0]?.uid).not.toBe(completed[1]?.uid);
+    expect(completed[0]?.uid).toBe('reminder-r1-done-2026-05-04');
+    expect(completed[0]?.date.toISOString().slice(0, 10)).toBe('2026-05-04');
+  });
+
+  it('completions on different UTC days each produce one completed event', () => {
+    const events = assembleReminderEvents(
+      base({
+        recurrence: { kind: 'interval', every: 30, unit: 'day' },
+        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        completions: [new Date('2026-04-04T09:00:00Z'), new Date('2026-05-04T10:00:00Z')],
+      }),
+      NOW,
+    );
+    const completed = events.filter((e) => e.kind === 'completed');
+    expect(completed).toHaveLength(2);
+    expect(completed[0]?.date.toISOString().slice(0, 10)).toBe('2026-04-04');
+    expect(completed[1]?.date.toISOString().slice(0, 10)).toBe('2026-05-04');
+  });
+
+  it('due date same UTC day as now but mid-day now: still gets an alarm', () => {
+    const midDayNow = new Date('2026-05-21T14:00:00Z');
+    const events = assembleReminderEvents(
+      base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-05-21T00:00:00Z') }),
+      midDayNow,
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.alarmSecondsBefore).toBe(3 * 86_400);
   });
 
   it('projected UIDs contain -proj- and are distinct from the due UID', () => {
