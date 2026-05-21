@@ -36,6 +36,15 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # `every`: a changed file matches a filter only if it satisfies ALL
+          # rules. Without this, dorny's default OR semantics make the leading
+          # `**` match everything, so the `!`-exclusions are no-ops and every
+          # filter is always true (build-image ran on docs/test-only changes;
+          # the `tests` gate never skipped heavy jobs). With `every`, a file
+          # must match `**` AND none of the `!` excludes. Verified: a docs-only
+          # change yields image=false + tests=false; a *.test.ts-only change
+          # yields image=false (no image build) + tests=true.
+          predicate-quantifier: 'every'
           filters: |
             image:
               - '**'
