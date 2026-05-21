@@ -242,6 +242,25 @@ describe('computeNextDueOn — multi-value & bi-weekly', () => {
     const d2 = computeNextDueOn(rec, new Date('2026-05-21T00:00:00Z'));
     expect(d2.toISOString().slice(0, 10)).toBe('2026-06-02');
   });
+  it('weekly interval 2 with seasonality skips off-parity AND off-season Tuesdays', () => {
+    // Parity Tuesdays from the anchor: …05-19, 06-02, 06-16… activeMonths=[6]
+    // forces the first allowed occurrence after 05-19 to be the June parity date.
+    const rec = {
+      kind: 'weekly' as const,
+      weekdays: [2],
+      interval: 2,
+      anchor: '2026-05-19',
+      activeMonths: [6],
+    };
+    const d = computeNextDueOn(rec, new Date('2026-05-19T00:00:00Z'));
+    expect(d.toISOString().slice(0, 10)).toBe('2026-06-02');
+  });
+  it('weekly interval 2 without anchor falls back to completedOn parity', () => {
+    // No anchor → dtstart = completedOn; first occurrence is +2 weeks.
+    const rec = { kind: 'weekly' as const, weekdays: [2], interval: 2 };
+    const d = computeNextDueOn(rec, new Date('2026-05-19T00:00:00Z')); // a Tuesday
+    expect(d.toISOString().slice(0, 10)).toBe('2026-06-02');
+  });
   it('monthly multi-day: 1 & 15 picks the nearest upcoming', () => {
     const rec = { kind: 'monthly' as const, days: [1, 15], last: false };
     expect(computeNextDueOn(rec, new Date('2026-05-03T00:00:00Z')).toISOString().slice(0, 10)).toBe(
