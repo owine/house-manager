@@ -398,7 +398,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             value={String(state.nthWeekInput)}
             onValueChange={(v) => update({ nthWeekInput: Number(v ?? 1) as NthWeek })}
           >
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28" aria-label="Week position">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -414,7 +414,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             value={String(state.nthWeekdayInput)}
             onValueChange={(v) => update({ nthWeekdayInput: Number(v ?? 0) })}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36" aria-label="Weekday">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
