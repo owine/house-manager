@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeNextDueOn, previewOccurrences } from './recurrence';
+import { computeNextDueOn, FAR_FUTURE, isSentinelDate, previewOccurrences } from './recurrence';
 
 describe('computeNextDueOn', () => {
   it('interval: returns completedOn + days', () => {
@@ -223,5 +223,17 @@ describe('computeNextDueOn — seasonality', () => {
       new Date('2026-05-12T00:00:00Z'),
     );
     expect(next.toISOString().slice(0, 10)).toBe('2026-05-18');
+  });
+});
+
+describe('isSentinelDate', () => {
+  it('is true for the far-future sentinel a completed one-shot produces', () => {
+    const next = computeNextDueOn({ kind: 'once' }, new Date('2026-05-11T00:00:00Z'));
+    expect(isSentinelDate(next)).toBe(true);
+    expect(isSentinelDate(FAR_FUTURE)).toBe(true);
+  });
+
+  it('is false for a normal due date', () => {
+    expect(isSentinelDate(new Date('2026-06-30T00:00:00Z'))).toBe(false);
   });
 });
