@@ -43,7 +43,7 @@ These facts drive the design decisions below.
 |---|---|---|
 | Anchor date for a completed event | The **actual `completedOn` date** | Exact, already stored, no schedule reconstruction or completion-to-slot matching required. |
 | History window | **All completions** (unbounded) | Fine for a single household. Documented extension point: add a `completedOn >= cutoff` filter in the route if it ever grows. |
-| Multi-target reminders | **One merged series per reminder** (current UX) | Keeps the change minimal; completions across the reminder's targets are merged into one history stream. |
+| Multi-target reminders | **One merged series per reminder** (current UX) | Keeps the change minimal; completions across the reminder's targets are merged into one history stream. Because completing a multi-target reminder writes one `ReminderCompletion` per target with the same `completedOn`, the assembler **dedups completions by UTC day** — a reminder whose 3 targets are completed together shows **one** `✅` chip that day, not three. |
 | One-shot vs recurring treatment | **Uniform** — all kinds get `✅` history; the only kind-aware bit is sentinel suppression | One-shots are the only kind that produces the sentinel, so suppressing the sentinel due event is the single special case. |
 | Overdue marker | **None** — plain title = overdue when in the past | Explicit user intent. |
 | Prefix glyph | `✅ ` (U+2705, "white heavy check mark") on completed events only | Renders as a green checkbox in calendar clients. |
