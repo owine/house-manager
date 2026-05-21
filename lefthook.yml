@@ -19,6 +19,14 @@ pre-commit:
         fi
 
 pre-push:
+  parallel: true
   commands:
     test-changed:
       run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm test:unit
+    knip:
+      # Whole-repo dead-code/unused-export scan. Lives here, not pre-commit:
+      # it analyzes the full import graph (can't be scoped to staged files) and
+      # flags exports that are legitimately transient mid-branch. Push sees the
+      # finished branch state. DATABASE_URL is a throwaway — knip only loads
+      # prisma.config.ts to resolve the schema, it never opens a connection.
+      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && DATABASE_URL="postgresql://knip:knip@localhost:5432/knip" pnpm lint:knip
