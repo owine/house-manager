@@ -36,12 +36,14 @@ Single additive migration. (Eyeball the generated migration for unintended DROPs
 
 `createServiceRecord` / `updateServiceRecord` actions: pass `selfPerformed` through to the Prisma create/update (it's part of the validated `...rest`). No redirect change — `createServiceRecord` already returns `{ ok: true, data: { id } }`, which the inline-attachment flow depends on.
 
+**Partial-update caveat:** `updateServiceRecordSchema` is `.partial()`. Attach the two new refines (3-way minimum, and selfPerformed-XOR-vendor) *after* the `.partial()`/extend, and make the mutual-exclusivity refine fire **only when both `selfPerformed === true` and a non-empty `vendorId` are present** so partial edits that omit one field aren't wrongly rejected.
+
 ## Form (`components/service-records/ServiceRecordForm.tsx`)
 
 ### Self-performed toggle
 - A **"Self-performed" `Switch`** adjacent to the vendor field. When **on**: clear `vendorId` and disable the `VendorAutocomplete` (visually communicate "no vendor — you did this"). When **off**: vendor autocomplete is enabled as today.
-- The form's existing pre-flight "vendor or target" guard becomes "vendor or target or self-performed", mirroring the schema.
-- Edit forms hydrate `selfPerformed` from `defaultValues`.
+- The form's existing pre-flight "vendor or target" guard becomes "vendor or target or self-performed", mirroring the schema. Read `selfPerformed` from the **same form source** the schema validates (form state), not a divergent value, to avoid client/server mismatch.
+- Edit forms hydrate `selfPerformed` from `defaultValues`. Add `selfPerformed?: boolean` to the form's `FormDefaults` type and pass it from the edit page's `defaultValues`.
 
 ### Inline attachment staging
 - A new client field component **`PendingAttachmentsField`** (`components/service-records/PendingAttachmentsField.tsx`) that holds, in local state:
@@ -64,7 +66,7 @@ These reuse the existing `uploadAttachment` / `addAttachmentLink` actions verbat
 
 - **List table** (`ServiceRecordTable.tsx`) vendor column: when `selfPerformed`, render a **"Self-performed" badge** instead of the vendor link / dash.
 - **Detail page** (`app/(app)/service/[id]/page.tsx`) vendor area: same — show "Self-performed" where the vendor would render. Keep cost/notes/targets/attachments as-is.
-- Queries (`listServiceRecords` / `getServiceRecord`) must select `selfPerformed`.
+- Queries: both `listServiceRecords` and `getServiceRecord` use Prisma `include` (no scalar `select`), so `selfPerformed` is returned automatically once the column exists — **no query edit needed**. The real change is **type-level**: add `selfPerformed: boolean` to the hand-written `ServiceRecordRow` type in `ServiceRecordTable.tsx` and pass it through from the `/service` list page. The detail page reads the inferred query type, so it picks up the field automatically.
 
 ## Surfacing / discoverability
 
