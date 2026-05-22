@@ -387,6 +387,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           <div className="flex items-center gap-2">
             <Switch
               id="recur-monthly-last"
+              aria-label="Last day of month"
               checked={state.monthlyLast}
               onCheckedChange={setMonthlyLast}
             />
@@ -544,6 +545,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           <div className="flex items-center gap-2">
             <Switch
               id="recur-seasonal"
+              aria-label="Only certain months (seasonal)"
               checked={state.seasonEnabled}
               onCheckedChange={(c) =>
                 update({ seasonEnabled: c, ...(c ? {} : { activeMonths: [] }) })
