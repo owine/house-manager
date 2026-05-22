@@ -293,7 +293,11 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
       <RadioGroup value={state.kind} onValueChange={onKindChange} className="gap-2.5">
         {/* interval */}
         <div className="flex items-center gap-2">
-          <RadioGroupItem id="recur-interval" value="interval" />
+          <RadioGroupItem
+            id="recur-interval"
+            value="interval"
+            aria-label="Repeat on a fixed interval"
+          />
           <Label htmlFor="recur-interval" className="text-sm font-normal">
             Every
           </Label>
@@ -304,9 +308,10 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             value={state.every}
             onChange={(e) => update({ every: clampInt(e.target.value, 1, 3650, 1) })}
             className="w-20"
+            aria-label="Interval"
           />
           <Select value={state.unit} onValueChange={(v) => update({ unit: v as State['unit'] })}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28" aria-label="Interval unit">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -321,7 +326,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
         {/* weekly */}
         <div className="flex flex-wrap items-center gap-2">
-          <RadioGroupItem id="recur-weekly" value="weekly" />
+          <RadioGroupItem id="recur-weekly" value="weekly" aria-label="Repeat weekly" />
           <Label htmlFor="recur-weekly" className="text-sm font-normal">
             Every
           </Label>
@@ -345,7 +350,11 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
         {/* monthly */}
         <div className="flex flex-wrap items-center gap-2">
-          <RadioGroupItem id="recur-monthly" value="monthly" />
+          <RadioGroupItem
+            id="recur-monthly"
+            value="monthly"
+            aria-label="Repeat monthly on a day of the month"
+          />
           <Label htmlFor="recur-monthly" className="text-sm font-normal">
             Every month on day
           </Label>
@@ -378,6 +387,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           <div className="flex items-center gap-2">
             <Switch
               id="recur-monthly-last"
+              aria-label="Last day of month"
               checked={state.monthlyLast}
               onCheckedChange={setMonthlyLast}
             />
@@ -389,7 +399,11 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
         {/* monthlyWeekday */}
         <div className="flex flex-wrap items-center gap-2">
-          <RadioGroupItem id="recur-monthly-weekday" value="monthlyWeekday" />
+          <RadioGroupItem
+            id="recur-monthly-weekday"
+            value="monthlyWeekday"
+            aria-label="Repeat monthly on a weekday"
+          />
           <Label htmlFor="recur-monthly-weekday" className="text-sm font-normal">
             On the
           </Label>
@@ -450,7 +464,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
         {/* yearly */}
         <div className="flex flex-wrap items-center gap-2">
-          <RadioGroupItem id="recur-yearly" value="yearly" />
+          <RadioGroupItem id="recur-yearly" value="yearly" aria-label="Repeat yearly" />
           <Label htmlFor="recur-yearly" className="text-sm font-normal">
             Every year on
           </Label>
@@ -519,7 +533,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
         {/* once */}
         <div className="flex items-center gap-2">
-          <RadioGroupItem id="recur-once" value="once" />
+          <RadioGroupItem id="recur-once" value="once" aria-label="Does not repeat" />
           <Label htmlFor="recur-once" className="text-sm font-normal">
             Once on the due date (does not repeat)
           </Label>
@@ -531,6 +545,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
           <div className="flex items-center gap-2">
             <Switch
               id="recur-seasonal"
+              aria-label="Only certain months (seasonal)"
               checked={state.seasonEnabled}
               onCheckedChange={(c) =>
                 update({ seasonEnabled: c, ...(c ? {} : { activeMonths: [] }) })
