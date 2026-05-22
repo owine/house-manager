@@ -237,15 +237,34 @@ git commit -m "feat(service-records): show Self-performed badge in list + detail
 
 - [ ] **Step 1: Add a `disabled` prop to `VendorAutocomplete`**
 
-`VendorAutocomplete` manages its own `text` state via `useController`. Add an optional `disabled?: boolean` prop. When `disabled` is true: pass `disabled` to the `<Input>` and render empty text (the parent clears `vendorId` form value). Implementation: add `disabled` to `Props`, `disabled={disabled}` on `<Input>`, and `value={disabled ? '' : text}`.
+`VendorAutocomplete` manages its own `text` state via `useController`. Add an optional `disabled?: boolean` prop. When `disabled` is true: pass `disabled` to the `<Input>` and render empty text. Implementation: add `disabled` to `Props`, `disabled={disabled}` on `<Input>`, `value={disabled ? '' : text}`, AND clear the internal `text` when disabled turns on so re-enabling doesn't show a stale name (the parent sets `vendorId` to undefined, so they stay in sync):
+```ts
+useEffect(() => {
+  if (disabled) setText('');
+}, [disabled]);
+```
+(Backward-compatible — the prop is optional and only `ServiceRecordForm` passes it.)
 
 - [ ] **Step 2: Add `selfPerformed` to the form**
 
 In `ServiceRecordForm.tsx`:
 - Add to the client `formSchema`: `selfPerformed: z.boolean().default(false),`.
 - Add `selfPerformed?: boolean` to `FormDefaults`; set `selfPerformed: defaultValues?.selfPerformed ?? false` in `useForm` defaults.
-- Render a `Switch` (from `@/components/ui/switch`) bound to the `selfPerformed` field, above or beside the vendor field, with a label "Self-performed" and helper text "Logging work you did yourself? Turn this on and skip the vendor." When toggled **on**, call `form.setValue('vendorId', undefined)`.
-- Pass `disabled={form.watch('selfPerformed')}` to `<VendorAutocomplete .../>` and label the vendor field area so it reads as disabled when self-performed.
+- Render a `Switch` (from `@/components/ui/switch` — Base UI, uses **`checked` + `onCheckedChange(boolean)`**, NOT `value`/`onChange`; mirror the existing usage in `components/reminders/RecurrencePicker.tsx`). Place it above/beside the vendor field with an associated label "Self-performed" (use `<Label htmlFor="self-performed">` + `id="self-performed"` so `getByLabel('Self-performed')` works) and helper text "Logging work you did yourself? Turn this on and skip the vendor." Wire it explicitly:
+```tsx
+const selfPerformed = form.watch('selfPerformed');
+// …
+<Switch
+  id="self-performed"
+  checked={Boolean(selfPerformed)}
+  onCheckedChange={(v) => {
+    form.setValue('selfPerformed', v);
+    if (v) form.setValue('vendorId', undefined);
+  }}
+/>
+```
+(The `form.watch('selfPerformed')` + `form.setValue` pattern needs `selfPerformed` present in both `formSchema` and the `useForm` `defaultValues` literal at lines 84–90 — add `selfPerformed: defaultValues?.selfPerformed ?? false` there.)
+- Pass `disabled={Boolean(selfPerformed)}` to `<VendorAutocomplete .../>` so the vendor input is disabled + cleared while self-performed.
 - Update the pre-flight guard:
 ```ts
 const hasVendor = Boolean((formData as { vendorId?: string }).vendorId);
@@ -334,7 +353,9 @@ describe('PendingAttachmentsField', () => {
 
 - [ ] **Step 3: Implement `PendingAttachmentsField.tsx`**
 
-A client component. Exports `type StagedAttachments = { files: File[]; links: { url: string; label?: string }[] }` and `PendingAttachmentsField({ onChange }: { onChange: (s: StagedAttachments) => void })`. It owns `files`/`links` state, validates on add (file: type in the allowed set + size ≤ 25_000_000; link: `/^https?:\/\//i`), shows inline errors, renders a removable pending list (file name+size, link label/url with a "Remove {label}" button), a file `<input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,application/pdf">` labeled "Add files", and URL+label inputs with an "Add link" button. Calls `onChange` with the new state after every mutation. Use the constants from the existing uploader (`MAX_BYTES = 25_000_000`, the accept list) — define them locally to avoid importing server-only modules.
+A client component. Exports `type StagedAttachments = { files: File[]; links: { url: string; label?: string }[] }` and `PendingAttachmentsField({ onChange }: { onChange: (s: StagedAttachments) => void })`. It owns `files`/`links` state, validates on add (file: type in the allowed set + size ≤ 25_000_000; link: `/^https?:\/\//i`), shows inline errors, renders a removable pending list (file name+size, link label/url with a "Remove {label}" button), a file `<input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,application/pdf">`, and URL+label inputs with an "Add link" button. Calls `onChange` with the new state after every mutation. Use the constants from the existing uploader (`MAX_BYTES = 25_000_000`, the accept list) — define them locally to avoid importing server-only modules.
+
+**Accessible labels are required** (the component test + e2e select by label): give the file input an associated label "Add files" (`<label htmlFor="pending-files">` + `id`, or `aria-label="Add files"`), the URL input "Link URL", and the label input "Link label". Error text must be queryable (e.g. "Unsupported file type", "Link must start with http").
 
 - [ ] **Step 4: Run, verify pass** — `pnpm vitest run components/service-records/PendingAttachmentsField.test.tsx` → PASS.
 
@@ -406,7 +427,7 @@ test('self-performed record with a staged link: badge + link on detail', async (
     page.waitForURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 }),
     page.getByRole('button', { name: 'Save record' }).click(),
   ]);
-  await expect(page.getByText('Self-performed')).toBeVisible();
+  await expect(page.getByText('Self-performed', { exact: true })).toBeVisible();
   await expect(page.getByText('Deck cleaner')).toBeVisible();
 });
 ```
