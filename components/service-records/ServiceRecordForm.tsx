@@ -5,6 +5,10 @@ import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import {
+  PendingAttachmentsField,
+  type StagedAttachments,
+} from '@/components/service-records/PendingAttachmentsField';
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
 import {
   type AvailableItem,
@@ -23,6 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { addAttachmentLink, uploadAttachment } from '@/lib/attachments/actions';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
@@ -75,6 +80,7 @@ export function ServiceRecordForm({
   const [pending, startTransition] = useTransition();
   const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
   const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [staged, setStaged] = useState<StagedAttachments>({ files: [], links: [] });
 
   const performedOnDefault = defaultValues?.performedOn
     ? defaultValues.performedOn instanceof Date
@@ -128,9 +134,30 @@ export function ServiceRecordForm({
         if (!applied && !result.formError) toast.error('Failed to save service record');
         return;
       }
+      const newId = result.data.id;
+      let failures = 0;
+      for (const file of staged.files) {
+        const fd = new FormData();
+        fd.set('parentType', 'serviceRecord');
+        fd.set('parentId', newId);
+        fd.set('file', file);
+        const r = await uploadAttachment(fd);
+        if (!r.ok) failures++;
+      }
+      for (const link of staged.links) {
+        const fd = new FormData();
+        fd.set('parentType', 'serviceRecord');
+        fd.set('parentId', newId);
+        fd.set('externalUrl', link.url);
+        if (link.label) fd.set('displayLabel', link.label);
+        const r = await addAttachmentLink(fd);
+        if (!r.ok) failures++;
+      }
       const isEdit = !!defaultValues?.id;
       toast.success(isEdit ? 'Service record updated' : 'Service record created');
-      router.push(`/service/${result.data.id}`);
+      if (failures > 0)
+        toast.error(`${failures} attachment(s) failed — add them from the record page.`);
+      router.push(`/service/${newId}`);
     });
   });
 
@@ -289,6 +316,13 @@ export function ServiceRecordForm({
             </FormItem>
           )}
         />
+
+        {!defaultValues?.id && (
+          <FormItem>
+            <FormLabel>Attachments</FormLabel>
+            <PendingAttachmentsField onChange={setStaged} />
+          </FormItem>
+        )}
 
         <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
