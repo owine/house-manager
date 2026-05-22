@@ -47,8 +47,8 @@ export function ExtractedFieldsCard({ extraction }: Props) {
         )}
         {!hasAny && extraction.extractedAt !== null && (
           <p className="italic text-muted-foreground">
-            Extraction returned no usable fields for this email. You can try again via Reclassify
-            below, or fill in the service record manually after creating it.
+            Extraction returned no usable fields for this email. Use Reclassify to retry (when
+            available), or fill in the service record manually after creating it.
           </p>
         )}
 
