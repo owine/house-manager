@@ -30,10 +30,18 @@ export default async function InboxPage({ searchParams }: { searchParams: Search
       filters={
         <Tabs value={tab}>
           <TabsList>
-            <TabsTrigger value="untriaged" render={<Link href="/inbox?tab=untriaged" />}>
+            <TabsTrigger
+              value="untriaged"
+              nativeButton={false}
+              render={<Link href="/inbox?tab=untriaged" />}
+            >
               Untriaged
             </TabsTrigger>
-            <TabsTrigger value="archived" render={<Link href="/inbox?tab=archived" />}>
+            <TabsTrigger
+              value="archived"
+              nativeButton={false}
+              render={<Link href="/inbox?tab=archived" />}
+            >
               Archived
             </TabsTrigger>
           </TabsList>
