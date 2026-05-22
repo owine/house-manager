@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/node';
@@ -6,9 +5,8 @@ import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/cl
 import { createSuggestionLog } from '@/lib/ai/log';
 import { type IncomingEmailExtraction, incomingEmailExtractionSchema } from '@/lib/ai/schemas';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
-import { resolveStoragePath } from '@/lib/attachments/storage';
 import { prisma } from '@/lib/db';
-import { getEnv } from '@/lib/env';
+import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { getLogger } from '@/lib/logger';
 
 export type ExtractIncomingEmailJob = { id: string };
@@ -19,15 +17,6 @@ const log = getLogger('extract-incoming-email');
 // tracking footers / unsubscribe boilerplate; the relevant invoice data is
 // almost always in the first 4k characters.
 const MAX_BODY_CHARS = 4000;
-
-// Keep PDF attachment input bounded so a single email with a huge invoice
-// can't drive token usage off a cliff. Anthropic charges per-page on
-// documents (~1500-3000 tokens / page); these caps assume ~5-page PDFs.
-// Any PDF over MAX_PDF_BYTES is skipped (the model would still accept it,
-// but the input cost is hard to justify for the marginal extraction gain).
-const MAX_PDF_ATTACHMENTS = 5;
-const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB per PDF
-const MAX_TOTAL_PDF_BYTES = 25 * 1024 * 1024; // 25 MB across all attachments
 
 const SYSTEM_PROMPT =
   `You extract structured data from vendor service emails (invoices, work tickets, estimates) for a household maintenance app.
@@ -66,64 +55,6 @@ ${input.bodyText.slice(0, MAX_BODY_CHARS)}
 """
 
 Extract cost / performedOn / scope.`;
-}
-
-type LoadedPdf = { filename: string; base64: string; bytes: number };
-
-/**
- * Read up to MAX_PDF_ATTACHMENTS PDFs off disk, base64-encode each, and
- * return them ready for the messages.parse `document` content blocks. Caps
- * per-file size and aggregate size to keep token usage bounded.
- *
- * Non-PDF attachments are skipped — Anthropic supports image attachments
- * via a different content-block type, but vendor invoices in PDF form
- * cover the immediate use case. Adding image support would be a follow-up.
- */
-async function loadPdfAttachments(emailId: string): Promise<LoadedPdf[]> {
-  const env = getEnv();
-  const rows = await prisma.attachment.findMany({
-    where: { incomingEmailId: emailId, mimeType: 'application/pdf' },
-    select: { filename: true, sizeBytes: true, storagePath: true },
-    orderBy: { createdAt: 'asc' },
-  });
-
-  const out: LoadedPdf[] = [];
-  let runningBytes = 0;
-  for (const a of rows) {
-    if (out.length >= MAX_PDF_ATTACHMENTS) break;
-    if (!a.storagePath) continue;
-    const size = a.sizeBytes ?? 0;
-    if (size > MAX_PDF_BYTES) {
-      log.warn(
-        { emailId, filename: a.filename, sizeBytes: size, cap: MAX_PDF_BYTES },
-        'extract: skipping PDF over per-file cap',
-      );
-      continue;
-    }
-    if (runningBytes + size > MAX_TOTAL_PDF_BYTES) {
-      log.warn(
-        { emailId, filename: a.filename, runningBytes, cap: MAX_TOTAL_PDF_BYTES },
-        'extract: skipping PDF; aggregate cap reached',
-      );
-      continue;
-    }
-    try {
-      const abs = resolveStoragePath(env.FILES_DIR, a.storagePath);
-      const buf = await readFile(abs);
-      out.push({
-        filename: a.filename ?? 'attachment.pdf',
-        base64: buf.toString('base64'),
-        bytes: buf.byteLength,
-      });
-      runningBytes += buf.byteLength;
-    } catch (err) {
-      log.warn(
-        { err, emailId, filename: a.filename, storagePath: a.storagePath },
-        'extract: failed to read PDF attachment',
-      );
-    }
-  }
-  return out;
 }
 
 export async function handleExtractIncomingEmail(
