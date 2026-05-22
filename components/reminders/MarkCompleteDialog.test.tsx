@@ -2,8 +2,8 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import type { ActionResult } from '@/lib/result';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import {
   type CompleteReminderAction,
   MarkCompleteDialog,
@@ -104,6 +104,11 @@ describe('MarkCompleteDialog', () => {
     setup({ action });
     await user.click(screen.getByRole('button', { name: /Save completion/ }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Boom'));
+  });
+
+  it('has no axe violations', async () => {
+    setup();
+    await expectNoAxeViolations();
   });
 
   it('Cancel closes without calling the action', async () => {

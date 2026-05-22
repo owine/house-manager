@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActionResult } from '@/lib/result';
 import type { SystemCreateInput } from '@/lib/systems/schema';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { SystemForm } from './SystemForm';
 
 const pushMock = vi.fn();
@@ -37,6 +38,12 @@ describe('SystemForm', () => {
     expect((screen.getByLabelText(/^Name$/) as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText(/Kind/) as HTMLInputElement).value).toBe('');
     expect(screen.getByRole('button', { name: 'Create system' })).toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const action = makeAction({ ok: true, data: { id: 'sys-1' } });
+    render(<SystemForm action={action} submitLabel="Create system" />);
+    await expectNoAxeViolations();
   });
 
   it('renders edit-mode with provided defaults', () => {

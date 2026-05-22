@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { VendorLinksSection } from './VendorLinksSection';
 
 afterEach(() => {
@@ -11,6 +12,32 @@ describe('VendorLinksSection', () => {
   it('renders empty state when no links', () => {
     render(<VendorLinksSection items={[]} systems={[]} />);
     expect(screen.getByTestId('vendor-links-empty')).toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    render(
+      <VendorLinksSection
+        items={[
+          {
+            id: 'iv-hp',
+            itemId: 'hp',
+            freeformName: null,
+            role: 'INSTALLER',
+            item: { id: 'hp', name: 'Heat Pump', systemId: 'hvac' },
+          },
+        ]}
+        systems={[
+          {
+            id: 'sv-hvac',
+            systemId: 'hvac',
+            freeformName: null,
+            role: 'INSTALLER',
+            system: { id: 'hvac', name: 'HVAC' },
+          },
+        ]}
+      />,
+    );
+    await expectNoAxeViolations();
   });
 
   it('nests items under their parent system when both share a role', () => {

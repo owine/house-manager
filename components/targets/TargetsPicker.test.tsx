@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TargetInput } from '@/lib/targets/schema';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { type AvailableItem, type AvailableSystem, TargetsPicker } from './TargetsPicker';
 
 afterEach(() => {
@@ -226,6 +227,11 @@ describe('TargetsPicker', () => {
     );
     expect(screen.getByText('1 selected')).toBeInTheDocument(); // systems
     expect(screen.getByText('2 selected')).toBeInTheDocument(); // items
+  });
+
+  it('has no axe violations', async () => {
+    setup();
+    await expectNoAxeViolations();
   });
 
   it('expanding a collapsed section reveals its list', async () => {
