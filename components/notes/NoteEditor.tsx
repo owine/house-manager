@@ -15,9 +15,12 @@ export function NoteEditor() {
     <div className="flex flex-wrap gap-4">
       {/* Markdown pane */}
       <div className="flex flex-1 basis-72 min-w-0 flex-col gap-1.5">
-        <p className="text-sm font-medium leading-none">Body (markdown)</p>
+        <p className="text-sm font-medium leading-none" id="body-label">
+          Body (markdown)
+        </p>
         <Textarea
           id="body"
+          aria-labelledby="body-label"
           rows={16}
           className="resize-y font-mono text-sm"
           {...register('body')}

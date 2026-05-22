@@ -304,9 +304,10 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
             value={state.every}
             onChange={(e) => update({ every: clampInt(e.target.value, 1, 3650, 1) })}
             className="w-20"
+            aria-label="Interval"
           />
           <Select value={state.unit} onValueChange={(v) => update({ unit: v as State['unit'] })}>
-            <SelectTrigger className="w-28">
+            <SelectTrigger className="w-28" aria-label="Interval unit">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

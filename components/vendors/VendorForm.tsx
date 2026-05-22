@@ -182,6 +182,7 @@ export function VendorForm({ defaultValues, action, submitLabel }: Props) {
               render={({ field }) => (
                 <Input
                   id="tags"
+                  aria-label="Tags (comma-separated)"
                   defaultValue={(field.value ?? []).join(', ')}
                   onChange={(e) =>
                     field.onChange(
