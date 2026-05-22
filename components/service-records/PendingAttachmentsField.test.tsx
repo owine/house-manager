@@ -36,8 +36,9 @@ describe('PendingAttachmentsField', () => {
   it('rejects an over-size or wrong-type file', async () => {
     const user = userEvent.setup();
     render(<PendingAttachmentsField onChange={vi.fn()} />);
-    const bad = new File(['x'], 'note.txt', { type: 'text/plain' });
-    await user.upload(screen.getByLabelText(/add files/i), bad);
-    expect(screen.getByText(/unsupported file type/i)).toBeInTheDocument();
+    const big = new File(['x'], 'huge.png', { type: 'image/png' });
+    Object.defineProperty(big, 'size', { value: 25_000_001 });
+    await user.upload(screen.getByLabelText(/add files/i), big);
+    expect(screen.getByText(/file too large/i)).toBeInTheDocument();
   });
 });

@@ -106,12 +106,14 @@ export function PendingAttachmentsField({ onChange }: Props) {
     <div className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor={filesId}>Add files</Label>
-        {/* No `accept` attribute: the browser hint only filters the picker
-            and is trivially bypassed (the user can choose "All files"), so
-            it gives a false sense of safety. We validate MIME + size in JS
-            below — the authoritative gate the live uploader's server action
-            also enforces. */}
-        <Input ref={inputRef} id={filesId} type="file" multiple onChange={onFileChange} />
+        <Input
+          ref={inputRef}
+          id={filesId}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+          multiple
+          onChange={onFileChange}
+        />
         <p className="text-xs text-muted-foreground">
           PDFs and images (JPG, PNG, WebP, HEIC), max 25 MB
         </p>
