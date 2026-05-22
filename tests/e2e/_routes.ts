@@ -39,6 +39,18 @@ export type SeededUrls = {
   noteUrl: string;
 };
 
+/**
+ * Fill a native date input robustly against late hydration. A React-Hook-Form
+ * controlled date field can have a pre-hydration `fill` reset to empty; `toPass`
+ * retries the fill+assert until the value sticks.
+ */
+async function fillDate(locator: import('@playwright/test').Locator, value: string): Promise<void> {
+  await expect(async () => {
+    await locator.fill(value);
+    await expect(locator).toHaveValue(value);
+  }).toPass({ timeout: 30_000 });
+}
+
 export async function seedPopulated(
   page: Page,
   opts?: { onSuggestInterstitial?: (page: Page) => Promise<void> },
@@ -74,9 +86,9 @@ export async function seedPopulated(
   const itemId = itemUrl.match(/\/items\/(c[a-z0-9]+)/)?.[1];
 
   await page.goto(`/service/new?itemId=${itemId}`);
-  const performedOn = page.getByLabel('Performed on');
-  await performedOn.fill('2026-04-15');
-  await expect(performedOn).toHaveValue('2026-04-15'); // wait for native-date React state to commit
+  // RHF-controlled date input: on a cold-compiled route, a single fill can land
+  // before hydration completes and get reset to empty. Re-fill until it sticks.
+  await fillDate(page.getByLabel('Performed on'), '2026-04-15');
   await page.getByLabel('Summary').fill('Annual tune-up');
   await submitAndWait(/\/service\/c[a-z0-9]+$/, () =>
     page.getByRole('button', { name: 'Save record' }).click(),
@@ -85,21 +97,18 @@ export async function seedPopulated(
 
   await page.goto('/reminders/new');
   await page.getByLabel('Title').fill('Change furnace filter');
-  const dueDate = page.getByLabel('First due date');
-  await dueDate.fill('2026-06-01');
-  await expect(dueDate).toHaveValue('2026-06-01');
+  await fillDate(page.getByLabel('First due date'), '2026-06-01');
+  // Reminders require ≥1 target. The picker's Items section is collapsed by
+  // default — expand it, then check the Furnace item created above.
+  await page.getByRole('button', { name: /^Items/ }).click();
+  await page.locator(`label[for="targets-item-${itemId}"]`).click();
   await submitAndWait(/\/reminders\/c[a-z0-9]+$/, () => createBtn().click());
   const reminderUrl = page.url();
 
   await page.goto('/notes/new');
-  await page
-    .getByLabel(/Title|Subject/)
-    .first()
-    .fill('Furnace install notes');
-  const noteBody = page.getByLabel(/Body|Content/).first();
-  if (await noteBody.isVisible().catch(() => false)) {
-    await noteBody.fill('Filter size: 20x25x1. Replace quarterly.');
-  }
+  await page.getByLabel('Title').fill('Furnace install notes');
+  // The NoteEditor textarea has id="body" but no <label for>, so target by id.
+  await page.locator('#body').fill('Filter size: 20x25x1. Replace quarterly.');
   await submitAndWait(/\/notes\/c[a-z0-9]+$/, () => createBtn().click());
   const noteUrl = page.url();
 
