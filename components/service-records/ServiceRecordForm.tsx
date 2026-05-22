@@ -21,6 +21,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
@@ -28,6 +29,7 @@ import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
 import type { TargetInput } from '@/lib/targets/schema';
 
 const formSchema = z.object({
+  selfPerformed: z.boolean().default(false),
   vendorId: z.string().min(1).optional(),
   performedOn: z.coerce.date(),
   cost: z.coerce.number().nonnegative().optional(),
@@ -39,6 +41,7 @@ type ServiceRecordFormValues = z.input<typeof formSchema>;
 
 type FormDefaults = {
   id?: string;
+  selfPerformed?: boolean;
   vendorId?: string;
   performedOn?: Date | string;
   cost?: number;
@@ -82,6 +85,7 @@ export function ServiceRecordForm({
   const form = useForm<ServiceRecordFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      selfPerformed: defaultValues?.selfPerformed ?? false,
       vendorId: defaultValues?.vendorId ?? undefined,
       cost: defaultValues?.cost ?? undefined,
       summary: defaultValues?.summary ?? '',
@@ -98,14 +102,16 @@ export function ServiceRecordForm({
   } = form;
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
+  const selfPerformed = form.watch('selfPerformed');
 
   const onSubmit = handleSubmit((formData) => {
     // The Zod schema enforces "vendor OR at least one target". Pre-flight
     // here mirrors that rule so the user gets feedback without the
     // round-trip when both are empty.
     const hasVendor = Boolean((formData as { vendorId?: string }).vendorId);
-    if (!hasVendor && targets.length === 0) {
-      setTargetsError('Pick a vendor or at least one item/system');
+    const isSelf = Boolean((formData as { selfPerformed?: boolean }).selfPerformed);
+    if (!hasVendor && !isSelf && targets.length === 0) {
+      setTargetsError('Pick a vendor, a self-performed marker, or at least one item/system');
       return;
     }
     setTargetsError(null);
@@ -157,6 +163,25 @@ export function ServiceRecordForm({
           )}
         </FormItem>
 
+        <FormItem>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="self-performed"
+              checked={Boolean(selfPerformed)}
+              onCheckedChange={(v) => {
+                form.setValue('selfPerformed', v);
+                if (v) form.setValue('vendorId', undefined);
+              }}
+            />
+            <FormLabel htmlFor="self-performed" className="font-normal">
+              Self-performed
+            </FormLabel>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Logging work you did yourself? Turn this on and skip the vendor.
+          </p>
+        </FormItem>
+
         <FormField
           control={control}
           name="vendorId"
@@ -164,7 +189,12 @@ export function ServiceRecordForm({
             <FormItem>
               <FormLabel>Vendor (optional)</FormLabel>
               <FormControl>
-                <VendorAutocomplete name="vendorId" label="" options={vendors} />
+                <VendorAutocomplete
+                  name="vendorId"
+                  label=""
+                  options={vendors}
+                  disabled={Boolean(selfPerformed)}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
