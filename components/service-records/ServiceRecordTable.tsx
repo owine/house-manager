@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { type TargetSummary, TargetsChips } from '@/components/targets/TargetsChips';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -28,6 +29,7 @@ type ServiceRecordRow = {
    */
   targets: TargetSummary[];
   vendor: { id: string; name: string } | null;
+  selfPerformed: boolean;
 };
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -65,7 +67,9 @@ export function ServiceRecordTable({ records }: { records: ServiceRecordRow[] })
               <TargetsChips targets={record.targets} />
             </TableCell>
             <TableCell>
-              {record.vendor ? (
+              {record.selfPerformed ? (
+                <Badge variant="secondary">Self-performed</Badge>
+              ) : record.vendor ? (
                 <Link
                   href={`/vendors/${record.vendor.id}`}
                   className="underline underline-offset-2"

@@ -38,6 +38,7 @@ export default async function EditServiceRecordPage({ params }: { params: Params
         initialTargets={initialTargets}
         defaultValues={{
           id: record.id,
+          selfPerformed: record.selfPerformed,
           vendorId: record.vendorId ?? undefined,
           performedOn: record.performedOn,
           cost: record.cost?.toNumber() ?? undefined,

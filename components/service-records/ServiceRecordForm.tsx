@@ -5,6 +5,10 @@ import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import {
+  PendingAttachmentsField,
+  type StagedAttachments,
+} from '@/components/service-records/PendingAttachmentsField';
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
 import {
   type AvailableItem,
@@ -21,13 +25,16 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { addAttachmentLink, uploadAttachment } from '@/lib/attachments/actions';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
 import type { TargetInput } from '@/lib/targets/schema';
 
 const formSchema = z.object({
+  selfPerformed: z.boolean().default(false),
   vendorId: z.string().min(1).optional(),
   performedOn: z.coerce.date(),
   cost: z.coerce.number().nonnegative().optional(),
@@ -39,6 +46,7 @@ type ServiceRecordFormValues = z.input<typeof formSchema>;
 
 type FormDefaults = {
   id?: string;
+  selfPerformed?: boolean;
   vendorId?: string;
   performedOn?: Date | string;
   cost?: number;
@@ -72,6 +80,7 @@ export function ServiceRecordForm({
   const [pending, startTransition] = useTransition();
   const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
   const [targetsError, setTargetsError] = useState<string | null>(null);
+  const [staged, setStaged] = useState<StagedAttachments>({ files: [], links: [] });
 
   const performedOnDefault = defaultValues?.performedOn
     ? defaultValues.performedOn instanceof Date
@@ -82,6 +91,7 @@ export function ServiceRecordForm({
   const form = useForm<ServiceRecordFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      selfPerformed: defaultValues?.selfPerformed ?? false,
       vendorId: defaultValues?.vendorId ?? undefined,
       cost: defaultValues?.cost ?? undefined,
       summary: defaultValues?.summary ?? '',
@@ -98,14 +108,16 @@ export function ServiceRecordForm({
   } = form;
 
   const formError = (errors as { root?: { message?: string } }).root?.message;
+  const selfPerformed = form.watch('selfPerformed');
 
   const onSubmit = handleSubmit((formData) => {
     // The Zod schema enforces "vendor OR at least one target". Pre-flight
     // here mirrors that rule so the user gets feedback without the
     // round-trip when both are empty.
     const hasVendor = Boolean((formData as { vendorId?: string }).vendorId);
-    if (!hasVendor && targets.length === 0) {
-      setTargetsError('Pick a vendor or at least one item/system');
+    const isSelf = Boolean((formData as { selfPerformed?: boolean }).selfPerformed);
+    if (!hasVendor && !isSelf && targets.length === 0) {
+      setTargetsError('Pick a vendor, a self-performed marker, or at least one item/system');
       return;
     }
     setTargetsError(null);
@@ -122,9 +134,30 @@ export function ServiceRecordForm({
         if (!applied && !result.formError) toast.error('Failed to save service record');
         return;
       }
+      const newId = result.data.id;
+      let failures = 0;
+      for (const file of staged.files) {
+        const fd = new FormData();
+        fd.set('parentType', 'serviceRecord');
+        fd.set('parentId', newId);
+        fd.set('file', file);
+        const r = await uploadAttachment(fd);
+        if (!r.ok) failures++;
+      }
+      for (const link of staged.links) {
+        const fd = new FormData();
+        fd.set('parentType', 'serviceRecord');
+        fd.set('parentId', newId);
+        fd.set('externalUrl', link.url);
+        if (link.label) fd.set('displayLabel', link.label);
+        const r = await addAttachmentLink(fd);
+        if (!r.ok) failures++;
+      }
       const isEdit = !!defaultValues?.id;
       toast.success(isEdit ? 'Service record updated' : 'Service record created');
-      router.push(`/service/${result.data.id}`);
+      if (failures > 0)
+        toast.error(`${failures} attachment(s) failed — add them from the record page.`);
+      router.push(`/service/${newId}`);
     });
   });
 
@@ -157,6 +190,25 @@ export function ServiceRecordForm({
           )}
         </FormItem>
 
+        <FormItem>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="self-performed"
+              checked={Boolean(selfPerformed)}
+              onCheckedChange={(v) => {
+                form.setValue('selfPerformed', v);
+                if (v) form.setValue('vendorId', undefined);
+              }}
+            />
+            <FormLabel htmlFor="self-performed" className="font-normal">
+              Self-performed
+            </FormLabel>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Logging work you did yourself? Turn this on and skip the vendor.
+          </p>
+        </FormItem>
+
         <FormField
           control={control}
           name="vendorId"
@@ -164,7 +216,12 @@ export function ServiceRecordForm({
             <FormItem>
               <FormLabel>Vendor (optional)</FormLabel>
               <FormControl>
-                <VendorAutocomplete name="vendorId" label="" options={vendors} />
+                <VendorAutocomplete
+                  name="vendorId"
+                  label=""
+                  options={vendors}
+                  disabled={Boolean(selfPerformed)}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -259,6 +316,13 @@ export function ServiceRecordForm({
             </FormItem>
           )}
         />
+
+        {!defaultValues?.id && (
+          <FormItem>
+            <FormLabel>Attachments</FormLabel>
+            <PendingAttachmentsField onChange={setStaged} />
+          </FormItem>
+        )}
 
         <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}

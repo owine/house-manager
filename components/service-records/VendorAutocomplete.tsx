@@ -7,9 +7,10 @@ type Props = {
   name: 'itemId' | 'vendorId';
   label: string;
   options: { id: string; name: string }[];
+  disabled?: boolean;
 };
 
-export function VendorAutocomplete({ name, label, options }: Props) {
+export function VendorAutocomplete({ name, label, options, disabled }: Props) {
   const { control } = useFormContext();
   const {
     field,
@@ -26,6 +27,10 @@ export function VendorAutocomplete({ name, label, options }: Props) {
       if (match) setText(match.name);
     }
   }, [field.value, options]);
+
+  useEffect(() => {
+    if (disabled) setText('');
+  }, [disabled]);
 
   const listId = `${name}-options`;
 
@@ -46,7 +51,8 @@ export function VendorAutocomplete({ name, label, options }: Props) {
       <Input
         id={name}
         list={listId}
-        value={text}
+        disabled={disabled}
+        value={disabled ? '' : text}
         onChange={handleChange}
         autoComplete="off"
         placeholder={label ? `Type to search ${label.toLowerCase()}…` : 'Type to search…'}

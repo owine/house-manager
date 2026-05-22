@@ -16,6 +16,11 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/lib/attachments/actions', () => ({
+  uploadAttachment: vi.fn(async () => ({ ok: true, data: { id: 'att1' } })),
+  addAttachmentLink: vi.fn(async () => ({ ok: true, data: { id: 'att1' } })),
+}));
+
 afterEach(() => {
   cleanup();
   pushMock.mockClear();
@@ -95,7 +100,7 @@ describe('ServiceRecordForm with TargetsPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Save record' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/pick a vendor or at least one item\/system/i)).toBeInTheDocument();
+      expect(screen.getByText(/pick a vendor.*or at least one item\/system/i)).toBeInTheDocument();
     });
     expect(action).not.toHaveBeenCalled();
   });

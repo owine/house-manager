@@ -6,6 +6,7 @@ import { AttachmentList } from '@/components/attachments/AttachmentList';
 import { AttachmentUploader } from '@/components/attachments/AttachmentUploader';
 import { ServiceRecordOverflowMenu } from '@/components/service-records/ServiceRecordOverflowMenu';
 import { TargetsChips } from '@/components/targets/TargetsChips';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
@@ -48,7 +49,14 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
               <TargetsChips targets={record.targets} />
             </dd>
 
-            {record.vendor && (
+            {record.selfPerformed ? (
+              <>
+                <dt className="font-semibold">Vendor</dt>
+                <dd>
+                  <Badge variant="secondary">Self-performed</Badge>
+                </dd>
+              </>
+            ) : record.vendor ? (
               <>
                 <dt className="font-semibold">Vendor</dt>
                 <dd>
@@ -60,7 +68,7 @@ export default async function ServiceRecordDetailPage({ params }: { params: Para
                   </Link>
                 </dd>
               </>
-            )}
+            ) : null}
 
             {record.cost != null && (
               <>

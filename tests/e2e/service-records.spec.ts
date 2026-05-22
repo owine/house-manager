@@ -42,3 +42,36 @@ test('logs a service record for an item and sees it on the item', async ({ page,
   await page.goto(`/items/${itemId}?tab=service`);
   await expect(page.getByText('Annual tune-up')).toBeVisible();
 });
+
+test('self-performed record (no vendor/target) with a staged link: badge + link on detail', async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
+  await signIn(page);
+
+  await page.goto('/service/new');
+  await page.getByLabel('Summary').fill('Washed the deck');
+  const performedOn = page.getByLabel('Performed on');
+  await performedOn.fill('2026-05-01');
+  await expect(performedOn).toHaveValue('2026-05-01');
+
+  // Self-performed: satisfies the "vendor OR target OR self-performed" rule
+  // with no vendor and no target.
+  await page.getByRole('switch', { name: 'Self-performed' }).click();
+
+  // Stage a product reference link inline (associated, then created post-record).
+  await page.getByLabel(/link url/i).fill('https://example.com/deck-cleaner');
+  await page.getByLabel(/link label/i).fill('Deck cleaner');
+  await page.getByRole('button', { name: /add link/i }).click();
+  await expect(page.getByText('Deck cleaner')).toBeVisible(); // staged in the pending list
+
+  await Promise.all([
+    page.waitForURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 }),
+    page.getByRole('button', { name: 'Save record' }).click(),
+  ]);
+
+  // Detail page: Self-performed badge in the vendor slot + the associated link.
+  await expect(page.getByText('Self-performed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Deck cleaner')).toBeVisible();
+});
