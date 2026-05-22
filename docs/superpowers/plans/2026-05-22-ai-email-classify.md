@@ -193,8 +193,12 @@ git commit -m "feat(inbox): AI classify+extract orchestration with heuristic fal
 
 - [ ] **Step 1:** Delete `worker/jobs/extract-incoming-email.ts` (its PDF loader now lives in the shared module from Task 2; confirm nothing else imports it). Remove the `Queue.ExtractIncomingEmail` registration + the `boss.work(Queue.ExtractIncomingEmail, …)` + the startup-log string + the related comment in `worker/index.ts`.
 - [ ] **Step 2:** Remove the `ExtractIncomingEmail` member from `lib/queue.ts` (`QUEUES` auto-derives, so this cleanly drops it).
-- [ ] **Step 3:** In `lib/incoming-email/actions.ts`, collapse: keep `reclassifyIncomingEmail` (→ `Queue.ClassifyIncomingEmail`); remove `reextractIncomingEmail` (or repoint it to the classify queue if a caller is easier to keep). Update `ReextractButton.tsx` + its use in `ExtractedFieldsCard.tsx` to call the unified action and relabel to "Re-run AI"; reconcile so only **one** re-run control renders (drop the duplicate if a reclassify button already exists). Update `canReextract`/empty-state copy accordingly.
-- [ ] **Step 4:** Update `tests/integration/incoming-email-actions.test.ts` (the reextract→`incoming-email.extract` assertion now targets the unified classify queue / single action). Port the meaningful assertions from `tests/integration/incoming-email-extract-job.test.ts` onto the Task 3 unified-job test, then delete (or repurpose) the extract-job test file.
+- [ ] **Step 3:** In `lib/incoming-email/actions.ts`, collapse: keep `reclassifyIncomingEmail` (→ `Queue.ClassifyIncomingEmail`); **remove `reextractIncomingEmail`**. There are **two** re-run affordances today, both now hitting the same queue — keep the **Reclassify** one and drop **Re-extract**:
+  - `components/incoming-email/LinkPicker.tsx` renders the **Reclassify** button (gated on `canReclassify`) → keep (optionally relabel "Re-run AI").
+  - `components/incoming-email/ReextractButton.tsx` + its use in `components/incoming-email/ExtractedFieldsCard.tsx` (gated on `canReextract`, with "try again via Re-extract above" copy) → **delete the button**; fix the empty-state copy to point at Reclassify.
+  - Remove the now-unused `canReextract` prop threaded through `app/(app)/inbox/[id]/page.tsx` (and anywhere it's computed/passed). Keep `canReclassify`.
+  - This is fewer files churned than repointing ReextractButton, and leaves one re-run control.
+- [ ] **Step 4:** In `tests/integration/incoming-email-actions.test.ts`, **delete the entire `reextractIncomingEmail` describe block** (asserts `incoming-email.extract`, ~line 421) since the action is removed — the `reclassifyIncomingEmail` block already asserts `incoming-email.classify` and stays. Port the meaningful assertions from `tests/integration/incoming-email-extract-job.test.ts` onto the Task 3 unified-job test, then delete the extract-job test file.
 - [ ] **Step 5:** `pnpm typecheck && pnpm lint` → clean (catches any dangling import/reference). Commit:
 ```bash
 git add -A
@@ -207,7 +211,7 @@ git commit -m "refactor(inbox): fold extract job into unified classify; collapse
 
 - [ ] **Step 1:** `pnpm test:unit` and `pnpm test:integration` → green (incl. the new ai-classify unit tests + the unified-job integration test).
 - [ ] **Step 2:** `pnpm typecheck && pnpm lint` (biome + tokens + knip) → clean. Knip will flag any now-unused export from the deleted extract path — clean those up.
-- [ ] **Step 3:** Grep for stragglers: `rg "ExtractIncomingEmail|extract-incoming-email|reextract" --glob '!docs/**'` → only intended references remain (e.g. DB column `aiExtracted*` which we keep).
+- [ ] **Step 3:** Grep for stragglers: `rg "ExtractIncomingEmail|extract-incoming-email|reextract" --glob '!docs/**'` → only intended references remain (e.g. DB column `aiExtracted*` which we keep). Update the comment at `lib/incoming-email/pdf-text.ts:26` that references `worker/jobs/extract-incoming-email.ts` (the file is gone) so the sweep stays signal-only.
 - [ ] **Step 4:** Sanity-reason the flow end to end: an UNKNOWN newsletter → one AI call, kind=UNKNOWN, no stub, logged (admin shows it); a high-confidence invoice from a registered vendor → vendor/target matched, draft ServiceRecord created.
 
 ## Notes & Risks
