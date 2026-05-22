@@ -19,6 +19,15 @@ describe('buildDumpInvocation', () => {
     expect(args).toContain('--file=/backups/x.dump');
   });
 
+  it('does not throw on malformed percent-encoding in the password', () => {
+    // A literal '%' (invalid escape) would make decodeURIComponent throw.
+    const url = 'postgresql://user:ab%cd@host:5432/db';
+    expect(() => buildDumpInvocation(url, '/backups/z.dump')).not.toThrow();
+    const { args, password } = buildDumpInvocation(url, '/backups/z.dump');
+    expect(password).toBe('ab%cd'); // raw fallback
+    expect(args.join(' ')).not.toContain('ab%cd'); // still absent from argv
+  });
+
   it('returns no password when the URL has none', () => {
     const { args, password } = buildDumpInvocation(
       'postgresql://user@host:5432/db',

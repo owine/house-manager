@@ -28,7 +28,17 @@ export function buildDumpInvocation(
   filepath: string,
 ): { args: string[]; password?: string } {
   const u = new URL(databaseUrl);
-  const password = u.password ? decodeURIComponent(u.password) : undefined;
+  let password: string | undefined;
+  if (u.password) {
+    try {
+      password = decodeURIComponent(u.password);
+    } catch {
+      // Malformed percent-encoding (e.g. a literal '%' in the password) would
+      // make decodeURIComponent throw and abort the backup. Fall back to the raw
+      // value — still kept out of argv, just not URL-decoded.
+      password = u.password;
+    }
+  }
   u.password = '';
   return {
     args: ['--format=custom', `--dbname=${u.toString()}`, `--file=${filepath}`],
