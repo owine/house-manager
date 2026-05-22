@@ -11,6 +11,7 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "a11y": "on",
       "style": { "useImportType": "warn", "useNodejsImportProtocol": "warn" },
       "suspicious": { "noExplicitAny": "warn" },
       "correctness": { "noUnusedImports": "error", "noUnusedVariables": "warn" }
