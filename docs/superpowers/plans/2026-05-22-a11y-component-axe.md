@@ -58,10 +58,19 @@ const DOCUMENT_RULES_OFF: Record<string, { enabled: false }> = {
  * the RTL `container`, so scanning `container` would miss them entirely).
  */
 export async function expectNoAxeViolations(container: HTMLElement = document.body): Promise<void> {
-  const results = await axe.run(container, {
-    runOnly: { type: 'tag', values: WCAG_AA },
-    rules: DOCUMENT_RULES_OFF,
-  });
+  const results = await axe.run(
+    {
+      include: [container],
+      // Base UI Dialog/Popover render internal focus-trap sentinel spans
+      // (role="button", no name) — framework plumbing, not author markup. Exclude
+      // them rather than disable aria-command-name (which must stay on for real buttons).
+      exclude: [['[data-base-ui-focus-guard]']],
+    },
+    {
+      runOnly: { type: 'tag', values: WCAG_AA },
+      rules: DOCUMENT_RULES_OFF,
+    },
+  );
   if (results.violations.length > 0) {
     const summary = results.violations
       .map(
