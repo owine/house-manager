@@ -152,7 +152,8 @@ test('per-target reminder completion advances only the checked targets', async (
   // Create a reminder targeting both items, due in the past.
   await page.goto('/reminders/new');
   await page.getByLabel('Title').fill('Filter Replacement');
-  // Pick both items in the targets picker.
+  // Pick both items in the targets picker (Items section is collapsed by default).
+  await page.getByRole('button', { name: /^Items/ }).click();
   await page.locator(`label[for="targets-item-${itemAId}"]`).click();
   await page.locator(`label[for="targets-item-${itemBId}"]`).click();
   await page.getByLabel('First due date').fill('2026-03-01');

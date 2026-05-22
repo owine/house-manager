@@ -26,7 +26,6 @@ const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'inbox-empty', path: '/inbox' },
   { name: 'search-empty', path: '/search' },
   { name: 'ask-empty', path: '/ask' },
-  { name: 'suggest-empty', path: '/suggest' },
   { name: 'settings', path: '/settings' },
   { name: 'admin', path: '/admin' },
   { name: 'admin-ai', path: '/admin/ai' },

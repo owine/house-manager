@@ -7,7 +7,7 @@ export function Markdown({ children }: { children: string }) {
   return (
     <div className="markdown">
       <ReactMarkdown remarkPlugins={[remarkBreaks, remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-        {children}
+        {children.trim()}
       </ReactMarkdown>
     </div>
   );

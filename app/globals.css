@@ -161,6 +161,12 @@ a:not([data-slot]) {
 .markdown > * + * {
   margin-top: 0.75rem;
 }
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
 .markdown ul,
 .markdown ol {
   padding-left: 1.5rem;
