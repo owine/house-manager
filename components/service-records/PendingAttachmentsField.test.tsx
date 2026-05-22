@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { PendingAttachmentsField } from './PendingAttachmentsField';
 
 afterEach(() => cleanup());
@@ -22,6 +23,11 @@ describe('PendingAttachmentsField', () => {
     );
     await user.click(screen.getByRole('button', { name: /remove behr paint/i }));
     expect(screen.queryByText('Behr paint')).not.toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    render(<PendingAttachmentsField onChange={vi.fn()} />);
+    await expectNoAxeViolations();
   });
 
   it('rejects a non-http link', async () => {

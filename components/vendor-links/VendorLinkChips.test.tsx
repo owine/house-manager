@@ -2,6 +2,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { VendorLinkChips, type VendorLinkRow } from './VendorLinkChips';
 
 afterEach(() => {
@@ -38,6 +39,11 @@ describe('VendorLinkChips', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByTestId('vendor-link-chip-l1')).toBeInTheDocument();
     expect(screen.getByTestId('vendor-link-chip-l2')).toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    render(<VendorLinkChips links={LINKS} onEdit={() => {}} onDelete={() => {}} />);
+    await expectNoAxeViolations();
   });
 
   it('vendor-linked chip shows vendor name wrapped in a link by default', () => {

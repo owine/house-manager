@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VendorLinkInput } from '@/lib/vendor-links/schema';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { VendorLinkEditor, type VendorOption } from './VendorLinkEditor';
 
 afterEach(() => {
@@ -227,6 +228,13 @@ describe('VendorLinkEditor', () => {
     await user.click(screen.getByRole('checkbox'));
     const last = onChange.mock.calls[onChange.mock.calls.length - 1][0];
     expect(last.serviceContract).toBe(true);
+  });
+
+  it('has no axe violations', async () => {
+    renderEditor({
+      value: { vendorId: 'v2', freeformName: null, role: 'PURCHASE', notes: null, ...SC_OFF },
+    });
+    await expectNoAxeViolations();
   });
 
   it('unchecking the checkbox clears contractEndsOn and emits serviceContract: false', async () => {

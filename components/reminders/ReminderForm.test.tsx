@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CreateReminderInput } from '@/lib/reminders/schema';
 import type { ActionResult } from '@/lib/result';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { ReminderForm } from './ReminderForm';
 
 const pushMock = vi.fn();
@@ -56,6 +57,19 @@ describe('ReminderForm with TargetsPicker', () => {
       />,
     );
     expect(screen.queryByTestId('targets-picker-chips')).not.toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const action = makeAction({ ok: true, data: { id: 'r-1' } });
+    render(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Create reminder"
+      />,
+    );
+    await expectNoAxeViolations();
   });
 
   it('pre-seeds picker from initialTargets', () => {
