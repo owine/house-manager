@@ -77,6 +77,38 @@ export const incomingEmailExtractionSchema = z.object({
 });
 export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSchema>;
 
+// Unified classify + extract result for inbound vendor emails. Classification
+// fields (kind/vendor/target/confidence) join the extraction fields so a single
+// AI call seeds everything. vendorId/targetItemId/targetSystemId are chosen from
+// candidate lists passed in the prompt — the worker re-validates they exist
+// (the model can hallucinate ids).
+export const incomingEmailClassifyExtractSchema = z.object({
+  kind: z.enum(['ESTIMATE', 'INVOICE', 'TICKET', 'UNKNOWN']),
+  vendorId: z
+    .string()
+    .nullable()
+    .describe('id of the matching vendor from the candidate list, or null if none clearly matches'),
+  targetItemId: z
+    .string()
+    .nullable()
+    .describe('id of the matching item from the candidate list, or null'),
+  targetSystemId: z
+    .string()
+    .nullable()
+    .describe(
+      'id of the matching system from the candidate list, or null. Pick item OR system, not both.',
+    ),
+  confidence: z
+    .enum(['low', 'medium', 'high'])
+    .describe('overall confidence in the kind + vendor + target match'),
+  summary: incomingEmailExtractionSchema.shape.summary,
+  cost: incomingEmailExtractionSchema.shape.cost,
+  performedOn: incomingEmailExtractionSchema.shape.performedOn,
+  scope: incomingEmailExtractionSchema.shape.scope,
+  rationale: incomingEmailExtractionSchema.shape.rationale,
+});
+export type IncomingEmailClassifyExtract = z.infer<typeof incomingEmailClassifyExtractSchema>;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Plan 4c — Ask / RAG response schema.
 // The model is constrained to return { answer, citations } where each citation

@@ -4,7 +4,7 @@ import { SYSTEM_PROMPT_VERSION } from './prompts';
 
 export type CreateLogInput = {
   userId: string;
-  kind: 'reminders' | 'checklist' | 'incoming-email-extract' | 'ask';
+  kind: 'reminders' | 'checklist' | 'incoming-email-extract' | 'incoming-email-classify' | 'ask';
   userPrompt: string | null;
   inventorySnapshotIds: string[];
   response: Prisma.InputJsonValue | null;
