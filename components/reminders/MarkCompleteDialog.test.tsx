@@ -108,6 +108,7 @@ describe('MarkCompleteDialog', () => {
 
   it('has no axe violations', async () => {
     setup();
+    await screen.findByRole('dialog'); // ensure the portaled dialog content is committed before scanning
     await expectNoAxeViolations();
   });
 
