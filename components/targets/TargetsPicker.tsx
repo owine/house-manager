@@ -193,7 +193,9 @@ export function TargetsPicker({
             className="-mx-2 w-full justify-start gap-2 px-2 font-medium"
             onClick={() => setSystemsOpen((v) => !v)}
             aria-expanded={systemsOpen}
-            aria-controls="targets-picker-systems-list"
+            // Only reference the list when it's actually rendered (it's mounted
+            // conditionally) — a dangling aria-controls idref is an a11y defect.
+            aria-controls={systemsOpen ? 'targets-picker-systems-list' : undefined}
           >
             {systemsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             Systems
@@ -250,7 +252,7 @@ export function TargetsPicker({
             className="-mx-2 w-full justify-start gap-2 px-2 font-medium"
             onClick={() => setItemsOpen((v) => !v)}
             aria-expanded={itemsOpen}
-            aria-controls="targets-picker-items-list"
+            aria-controls={itemsOpen ? 'targets-picker-items-list' : undefined}
           >
             {itemsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             Items

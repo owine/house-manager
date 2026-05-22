@@ -18,7 +18,7 @@ async function scan(page: Page, label: string) {
   // pre-hydration DOM (e.g. label/aria associations not yet wired) and flag
   // spurious violations. networkidle is best-effort (the dev-server HMR socket
   // keeps the network busy), so cap it and move on.
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
   expect(page.url(), `${label}: redirected to sign-in`).not.toMatch(/\/api\/auth\/signin/);
 
   let builder = new AxeBuilder({ page }).withTags(WCAG_AA);
