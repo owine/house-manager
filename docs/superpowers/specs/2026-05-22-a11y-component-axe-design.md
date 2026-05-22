@@ -82,7 +82,7 @@ Notes:
 
 ## Measurement-driven
 
-Component a11y backlog is unknown until run. The form/picker components touched by #165 should pass; the **untouched** ones (`SystemForm`, `WarrantyForm`, `MarkCompleteDialog`, `VendorLinkEditor`, `DeleteVendorDialog`, `VendorLinksSection`, `TargetsChips`, `VendorLinkChips`) may surface new violations. Implementation order: add the helper → add one assertion → run → triage. If a real backlog appears, fix the components (same approach as Phase 2: accessible names, etc.); document any genuine component-level false positive by extending `DOCUMENT_RULES_OFF` (with a reason) rather than blanket-disabling.
+Component a11y backlog is unknown until run. The form/picker components touched by #165 should pass; the **untouched** ones (`SystemForm`, `WarrantyForm`, `MarkCompleteDialog`, `VendorLinkEditor`, `DeleteVendorDialog`, `VendorLinksSection`, `TargetsChips`, `VendorLinkChips`) may surface new violations. Implementation order: **add `axe-core` as a direct devDep first** (under pnpm's non-hoisted layout the `import axe from 'axe-core'` won't resolve from a first-party file until it's a direct dep), → add the helper → add one assertion → run → triage. If a real backlog appears, fix the components (same approach as Phase 2: accessible names, etc.); document any genuine component-level false positive by extending `DOCUMENT_RULES_OFF` (with a reason) rather than blanket-disabling.
 
 ## CI / gating
 
