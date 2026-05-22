@@ -42,6 +42,8 @@
 ```
 The system prompt = the current extract prompt (cost/performedOn/scope rules) **plus** classification guidance (what each kind means; pick vendor/target id from the candidates or null; how to judge confidence). `confidence` is an enum (not a 0–1 float) — coarse and easier for the model to calibrate; only `high` drives auto-stub.
 
+> **Two different `kind`s — don't conflate:** `IncomingEmail.kind` is the Prisma enum `IncomingEmailKind` (`ESTIMATE/INVOICE/TICKET/UNKNOWN`); the AI schema's `kind` enum uses those exact four values, so it maps straight onto the column with **no migration and no new enum value**. Separately, `CreateLogInput.kind` (the AI *log* kind) is a plain string-column union; adding `'incoming-email-classify'` there is a code-only union edit, also no migration.
+
 ### Worker orchestration — `worker/jobs/classify-incoming-email.ts`
 
 Becomes the single AI-driven job:
@@ -53,7 +55,14 @@ Becomes the single AI-driven job:
 6. **Log** every call (success and error) via `createSuggestionLog` with a new `kind: 'incoming-email-classify'` (the `CreateLogInput.kind` union gains this value — string column, no migration). This restores admin "By kind" visibility.
 7. **Auto-stub** a draft `ServiceRecord` when `kind ∈ {TICKET, INVOICE}` **and** a validated `vendorId` **and** a validated target **and** `confidence === 'high'`, reusing the existing stub transaction (vendor, `performedOn = aiExtractedPerformedOn ?? receivedAt`, `summary = aiExtractedSummary ?? subject`, `notes = aiExtractedScope ?? '[Auto-created…]'`, link via `createdServiceRecordId`, skip if already linked). Otherwise classify only — the inbox keeps its one-click promote.
 
-**Removed:** `worker/jobs/extract-incoming-email.ts` and the `Queue.ExtractIncomingEmail` enqueue/registration are folded into this job. Any inbox "re-classify"/"re-extract" action now re-runs this single job. (Audit call sites for `Queue.ExtractIncomingEmail` and the extract job registration in `worker/index.ts`.)
+**Removed / collapsed — exact call sites.** `worker/jobs/extract-incoming-email.ts`, the `Queue.ExtractIncomingEmail` member (`lib/queue.ts`; `QUEUES` auto-derives from `Object.values`, so removing the line drops its registration cleanly), and the extract job registration + startup-log string + comment block in `worker/index.ts` are removed. Because the job now classifies **and** extracts, the existing **`reclassifyIncomingEmail`** action (`lib/incoming-email/actions.ts`, → `Queue.ClassifyIncomingEmail`) and **`reextractIncomingEmail`** (same file, → `Queue.ExtractIncomingEmail`) become the **same operation** — collapse to one:
+- Keep a single re-run action on `Queue.ClassifyIncomingEmail` (repoint or remove `reextractIncomingEmail`; keep `reclassifyIncomingEmail`).
+- `components/incoming-email/ReextractButton.tsx` + its use in `components/incoming-email/ExtractedFieldsCard.tsx` (incl. the `canReextract` gate and the "try again via Re-extract above" empty-state copy) → point at the unified action and relabel to "Re-run AI" (or fold into the existing reclassify affordance if one is already rendered).
+- Update the two integration tests that assert the old behavior: `tests/integration/incoming-email-actions.test.ts` (asserts `reextract` enqueues `incoming-email.extract`) and `tests/integration/incoming-email-extract-job.test.ts` (the extract-job suite — port its meaningful cases onto the unified job or replace).
+
+> The exact button/affordance reconciliation (one re-run control, not two) is settled in the plan after eyeballing `ExtractedFieldsCard` and any reclassify button, but the decision is fixed: **one unified re-run path on `Queue.ClassifyIncomingEmail`; no `Queue.ExtractIncomingEmail`.**
+
+**System-user lookup moves into this job.** The `createSuggestionLog` call needs a `userId`; today the *extract* job does `prisma.user.findFirst({ orderBy: { createdAt: 'asc' } })` with a skip-if-none guard. The unified classify job must carry that lookup forward (the current classify job doesn't have it).
 
 ### Fallback
 
