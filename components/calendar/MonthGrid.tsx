@@ -68,7 +68,10 @@ export function MonthGrid({ monthStart, events, todayIso }: Props) {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
+      <div
+        className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border"
+        data-testid="calendar-grid"
+      >
         {cells.map((cell) => {
           if (cell.iso === null) {
             return <div key={cell.key} className="min-h-24 bg-background" />;

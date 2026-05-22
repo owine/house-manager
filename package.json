@@ -24,6 +24,8 @@
     "test:e2e:critical": "playwright test --grep @critical",
     "test:a11y": "playwright test tests/e2e/a11y.spec.ts",
     "test:a11y:local": "bash tests/e2e/run-local.sh tests/e2e/a11y.spec.ts",
+    "test:visual:local": "bash tests/e2e/run-visual.sh",
+    "test:visual:update": "bash tests/e2e/run-visual.sh --update-snapshots",
     "test:local": "pnpm test:unit && pnpm test:integration && pnpm test:e2e:local && pnpm test:coverage:check",
     "typecheck": "tsc --noEmit",
     "lint": "biome check . && pnpm lint:tokens && pnpm lint:knip",

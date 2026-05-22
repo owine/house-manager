@@ -33,7 +33,7 @@ export function RecentActivityList({ activity }: Props) {
             .
           </p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-1" data-testid="recent-activity-list">
             {activity.map((event) => {
               const hasTargets = event.targets && event.targets.length > 0;
               return (

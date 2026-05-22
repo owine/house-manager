@@ -101,6 +101,29 @@ pnpm test:e2e:local tests/e2e/signin.spec.ts     # a single spec
 
 - **Radio / RadioGroup clicks:** click the `label[for="…"]`, **not** the bare `RadioGroupItem`. Clicking the radio control itself fails in Playwright with an "outside of viewport" error (the underlying control is visually collapsed). See the targets/mark-complete pickers in `tests/e2e/systems.spec.ts` for the pattern: `page.locator('label[for="targets-item-…"]').click()`.
 
+## Visual + layout testing (local-only)
+
+A visual-regression + layout-heuristics suite (`tests/e2e/visual.spec.ts`) runs **only locally**, never in CI. It snapshots every empty + populated route at desktop + mobile viewports and asserts no layout nits (text/control/viewport overflow — see `layout-heuristics.ts`). Baselines are platform-pinned, so the runner must always be the same linux Playwright image — that's what the dockerized harness guarantees.
+
+```bash
+# one-time: pull the image (~1 GB, cached across runs)
+docker pull mcr.microsoft.com/playwright:v1.60.0-noble
+
+# bring up host infra (db + meili) — same prereq as test:e2e:local
+docker compose up -d db meilisearch
+
+pnpm test:visual:local        # check against committed baselines
+pnpm test:visual:update       # regenerate baselines (do this after intentional UI changes)
+```
+
+`tests/e2e/run-visual.sh` starts mock-OIDC + the pg-boss worker + `pnpm dev` on the host (replicating `global-setup.ts` since the dockerized run skips `globalSetup` — see `playwright.config.ts`), then `docker build`s the derived image (`tests/e2e/visual.Dockerfile`) and runs Playwright inside it against `http://host.docker.internal:3000`. The derived image bakes linux-native `node_modules` + the generated Prisma client; a `-v /work/node_modules` anonymous volume masks the host darwin `node_modules` so the linux modules win at runtime.
+
+**Rebuild trigger** for the derived image: `pnpm-lock.yaml` change OR `prisma/schema.prisma` change. Otherwise the docker layer cache serves the prior build instantly.
+
+**Prereqs:** `.env` with `DATABASE_URL`/`MEILI_HOST`/`MEILI_KEY`/`AUTH_SECRET`; ports 3000 / 9999 / 5432 / 7700 free on the host; Docker Desktop running.
+
+**Platform pinning, important:** baselines must be regenerated only via this docker harness — never with macOS-native Playwright (font rendering + sub-pixel layout differ enough that darwin baselines would diff against the committed linux baselines on every CI-ish run). If you accidentally generate baselines on darwin, delete them and re-run `pnpm test:visual:update`.
+
 ### Not yet e2e-covered (Phase 2)
 
 The gated features — **Ask/RAG**, **OCR**, **email** (outbound/inbound), and **web push** — are **not** yet e2e-covered. They're feature-flagged off in both CI and `run-local.sh` (`ASK_ENABLED=false`, `OCR_BACKEND=none`), and push/email delivery uses fixture credentials. E2E coverage for these is deferred to Phase 2.
