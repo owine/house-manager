@@ -222,3 +222,37 @@ describe('updateServiceRecordSchema', () => {
     expect(result.success).toBe(true);
   });
 });
+
+const base = { performedOn: '2026-05-01', summary: 'Washed deck' };
+
+describe('createServiceRecordSchema — self-performed', () => {
+  it.each([
+    [{ ...base, targets: [], vendorId: 'v1' }, true],
+    [{ ...base, targets: [{ itemId: 'i1' }] }, true],
+    [{ ...base, targets: [], selfPerformed: true }, true],
+    [{ ...base, targets: [] }, false],
+    [{ ...base, targets: [], selfPerformed: false }, false],
+    [{ ...base, targets: [], selfPerformed: true, vendorId: 'v1' }, false],
+    [{ ...base, targets: [{ itemId: 'i1' }], selfPerformed: true }, true],
+  ])('parses %j → success=%s', (input, ok) => {
+    expect(createServiceRecordSchema.safeParse(input).success).toBe(ok);
+  });
+  it('defaults selfPerformed to false', () => {
+    const r = createServiceRecordSchema.parse({ ...base, targets: [], vendorId: 'v1' });
+    expect(r.selfPerformed).toBe(false);
+  });
+});
+
+describe('updateServiceRecordSchema — partial tolerates omitted fields', () => {
+  it('accepts a partial update that omits selfPerformed and vendor', () => {
+    expect(updateServiceRecordSchema.safeParse({ id: 'sr1', summary: 'Edited' }).success).toBe(
+      true,
+    );
+  });
+  it('rejects self-performed + vendor when both present in an update', () => {
+    expect(
+      updateServiceRecordSchema.safeParse({ id: 'sr1', selfPerformed: true, vendorId: 'v1' })
+        .success,
+    ).toBe(false);
+  });
+});

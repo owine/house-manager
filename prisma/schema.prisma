@@ -277,6 +277,7 @@ model ServiceRecord {
   vendor          Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   performedOn     DateTime
   cost            Decimal?   @db.Decimal(10, 2)
+  selfPerformed   Boolean   @default(false)
   summary         String
   notes           String?    @db.Text
   createdAt       DateTime   @default(now())
