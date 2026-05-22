@@ -21,7 +21,6 @@ export const Queue = {
   NotifyLogSweep: 'notify-log.sweep', // NEW
   DigestTick: 'digest.tick',
   ClassifyIncomingEmail: 'incoming-email.classify',
-  ExtractIncomingEmail: 'incoming-email.extract',
   EmbedContent: 'embed.content',
   EmbedBackfill: 'embed.backfill',
   ExtractAttachmentText: 'attachment.extract-text',

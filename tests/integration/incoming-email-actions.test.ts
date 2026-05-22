@@ -413,21 +413,6 @@ describe('reclassifyIncomingEmail', () => {
   });
 });
 
-describe('reextractIncomingEmail', () => {
-  it('enqueues an extract job for an existing email', async () => {
-    const e = await makeEmail();
-    const r = await actions.reextractIncomingEmail({ id: e.id });
-    expect(r.ok).toBe(true);
-    expect(enqueued).toEqual([{ queue: 'incoming-email.extract', data: { id: e.id } }]);
-  });
-
-  it('rejects when the email does not exist', async () => {
-    const r = await actions.reextractIncomingEmail({ id: 'nope' });
-    expect(r.ok).toBe(false);
-    expect(enqueued).toHaveLength(0);
-  });
-});
-
 describe('queries', () => {
   it('listInboxEmails(untriaged) excludes archived rows', async () => {
     const queries = await import('@/lib/incoming-email/queries');

@@ -11,9 +11,9 @@ const log = getLogger('incoming-email-pdf-attachments');
 // documents (~1500-3000 tokens / page); these caps assume ~5-page PDFs.
 // Any PDF over MAX_PDF_BYTES is skipped (the model would still accept it,
 // but the input cost is hard to justify for the marginal extraction gain).
-export const MAX_PDF_ATTACHMENTS = 5;
-export const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB per PDF
-export const MAX_TOTAL_PDF_BYTES = 25 * 1024 * 1024; // 25 MB across all attachments
+const MAX_PDF_ATTACHMENTS = 5;
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB per PDF
+const MAX_TOTAL_PDF_BYTES = 25 * 1024 * 1024; // 25 MB across all attachments
 
 export type LoadedPdf = { filename: string; base64: string; bytes: number };
 

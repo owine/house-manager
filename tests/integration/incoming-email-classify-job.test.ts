@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -346,5 +346,92 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     // Already linked → no second ServiceRecord.
     const srCount = await ctx.prisma.serviceRecord.count();
     expect(srCount).toBe(1);
+  });
+});
+
+// PDF attachments are loaded by loadPdfAttachments() and forwarded to the
+// (mocked) Anthropic call as `document` content blocks ahead of the user-text
+// block. These cases (ported from the now-removed extract-job test) verify
+// the size caps and mime gating that bound token usage.
+describe('handleClassifyIncomingEmail — PDF attachments', () => {
+  it('attaches PDF documents as content blocks when present', async () => {
+    const e = await makeEmail({ messageId: '<pdf1@a>', subject: 'Invoice #4827' });
+    const pdfDir = join(filesDir, 'pdfs', e.id);
+    mkdirSync(pdfDir, { recursive: true });
+    const pdfPath = join('pdfs', e.id, 'invoice.pdf');
+    writeFileSync(join(filesDir, pdfPath), Buffer.from('%PDF-1.4 fake'));
+    await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 13,
+        storagePath: pdfPath,
+        uploadedById: 'u1',
+      },
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    expect(sentMessages).toHaveLength(1);
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{
+      type: string;
+      source?: { media_type: string };
+    }>;
+    // Documents come first (Anthropic recommends docs before instruction text),
+    // then the user-text block.
+    expect(content[0].type).toBe('document');
+    expect(content[0].source?.media_type).toBe('application/pdf');
+    expect(content.at(-1)?.type).toBe('text');
+  });
+
+  it('skips non-PDF attachments (images etc.)', async () => {
+    const e = await makeEmail({ messageId: '<img@a>', subject: 'Invoice #4827' });
+    const dir = join(filesDir, 'imgs', e.id);
+    mkdirSync(dir, { recursive: true });
+    const path = join('imgs', e.id, 'photo.jpg');
+    writeFileSync(join(filesDir, path), Buffer.from([0xff, 0xd8, 0xff]));
+    await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 3,
+        storagePath: path,
+        uploadedById: 'u1',
+      },
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{ type: string }>;
+    expect(content.filter((c) => c.type === 'document')).toHaveLength(0);
+    expect(content.some((c) => c.type === 'text')).toBe(true);
+  });
+
+  it('skips PDFs over the 10MB per-file cap', async () => {
+    const e = await makeEmail({ messageId: '<huge@a>', subject: 'Invoice #4827' });
+    const dir = join(filesDir, 'pdfs', e.id);
+    mkdirSync(dir, { recursive: true });
+    const path = join('pdfs', e.id, 'huge.pdf');
+    writeFileSync(join(filesDir, path), Buffer.from('%PDF-1.4'));
+    await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'huge.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 11 * 1024 * 1024, // > MAX_PDF_BYTES; sizeBytes drives the gate
+        storagePath: path,
+        uploadedById: 'u1',
+      },
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{ type: string }>;
+    expect(content.filter((c) => c.type === 'document')).toHaveLength(0);
   });
 });

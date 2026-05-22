@@ -360,8 +360,8 @@ model IncomingEmail {
   createdServiceRecordId String?         @unique
   createdServiceRecord   ServiceRecord? @relation("IncomingEmailServiceRecord", fields: [createdServiceRecordId], references: [id], onDelete: SetNull)
 
-  // AI-extracted fields. Populated by worker/jobs/extract-incoming-email
-  // after classify runs on TICKET/INVOICE/ESTIMATE kinds. All nullable —
+  // AI-extracted fields. Populated by worker/jobs/classify-incoming-email
+  // (unified classify+extract) on TICKET/INVOICE/ESTIMATE kinds. All nullable —
   // extraction may fail, partial-extract, or be skipped (e.g. UNKNOWN
   // kind). When createServiceRecordFromEmail runs, these values seed the
   // new record's summary / cost / performedOn / notes.

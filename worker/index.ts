@@ -18,10 +18,6 @@ import {
   type ExtractAttachmentTextJob,
   handleExtractAttachmentText,
 } from './jobs/extract-attachment-text';
-import {
-  type ExtractIncomingEmailJob,
-  handleExtractIncomingEmail,
-} from './jobs/extract-incoming-email';
 import { handleNotify, type NotifyJob } from './jobs/notify';
 import { handleNotifyLogSweep } from './jobs/notify-log-sweep';
 import { handlePgDump } from './jobs/pg-dump';
@@ -129,17 +125,6 @@ async function main() {
     handleClassifyIncomingEmail,
   );
 
-  // Inbound-email extractor — pulls cost / date of service / scope from
-  // the body via the AI client. Chained from the classify worker (only fires
-  // for kinds that benefit: TICKET / INVOICE / ESTIMATE) and re-runnable
-  // on demand from the inbox UI. batchSize: 1 because each call is an
-  // Anthropic round-trip ~1-3s.
-  await boss.work<ExtractIncomingEmailJob>(
-    Queue.ExtractIncomingEmail,
-    { batchSize: 1 },
-    handleExtractIncomingEmail,
-  );
-
   // Ask/RAG vector indexer (Plan 4c) — fired by every entity create / update
   // / archive that produces embeddable content, and by the admin Rebuild +
   // startup backfill paths. `batchSize: 1` so we don't fan out parallel
@@ -184,7 +169,7 @@ async function main() {
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, incoming-email.classify, incoming-email.extract, embed.content, embed.backfill, attachment.extract-text jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, incoming-email.classify, embed.content, embed.backfill, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {

@@ -3,19 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
 import type { ExtractionView } from '@/lib/incoming-email/queries';
 import { Markdown } from '@/lib/markdown';
-import { ReextractButton } from './ReextractButton';
 
 type Props = {
-  emailId: string;
   extraction: ExtractionView;
-  /**
-   * True when the row is in a state where re-extracting makes sense
-   * (UNTRIAGED / AUTO_LINKED, not archived). Re-extract on a LINKED row
-   * still works but typically the user has already created a service
-   * record from it, so refreshing extraction won't change anything
-   * downstream.
-   */
-  canReextract: boolean;
 };
 
 function formatCurrency(n: number | null): string {
@@ -27,12 +17,12 @@ function formatCurrency(n: number | null): string {
  * Read-only view of the AI-extracted invoice/ticket fields. The user can't
  * edit these here — the canonical place to edit is on the resulting
  * ServiceRecord after clicking Create. If the AI got it wrong, the user can
- * re-extract (e.g. after a vendor sends a corrected invoice into the same
- * Message-ID, or after we tune the prompt). Empty state when none of the
- * fields extracted: still show the card with a single "no fields extracted"
- * line + the re-extract button, so the user knows extraction was attempted.
+ * re-run the AI via Reclassify (e.g. after a vendor sends a corrected invoice
+ * into the same Message-ID, or after we tune the prompt). Empty state when
+ * none of the fields extracted: still show the card with a single "no fields
+ * extracted" line, so the user knows extraction was attempted.
  */
-export function ExtractedFieldsCard({ emailId, extraction, canReextract }: Props) {
+export function ExtractedFieldsCard({ extraction }: Props) {
   const hasAny =
     extraction.summary !== null ||
     extraction.cost !== null ||
@@ -47,7 +37,6 @@ export function ExtractedFieldsCard({ emailId, extraction, canReextract }: Props
             <Sparkles className="h-4 w-4 text-muted-foreground" />
             Extracted from email
           </span>
-          {canReextract && <ReextractButton emailId={emailId} />}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -58,8 +47,8 @@ export function ExtractedFieldsCard({ emailId, extraction, canReextract }: Props
         )}
         {!hasAny && extraction.extractedAt !== null && (
           <p className="italic text-muted-foreground">
-            Extraction returned no usable fields for this email. You can try again via Re-extract
-            above, or fill in the service record manually after creating it.
+            Extraction returned no usable fields for this email. You can try again via Reclassify
+            below, or fill in the service record manually after creating it.
           </p>
         )}
 

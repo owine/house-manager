@@ -41,8 +41,10 @@ export const proposeChecklistResponseSchema = z.object({
 // email body. All fields nullable — the model returns null when a field
 // can't be confidently extracted, instead of guessing. The worker uses
 // these to seed a new ServiceRecord when the user clicks
-// "Create service record" from the inbox detail page.
-export const incomingEmailExtractionSchema = z.object({
+// "Create service record" from the inbox detail page. Not exported — only
+// reused below to compose `incomingEmailClassifyExtractSchema`'s shape; the
+// unified classify+extract schema is the public surface.
+const incomingEmailExtractionSchema = z.object({
   summary: z
     .string()
     .max(120)
@@ -75,7 +77,6 @@ export const incomingEmailExtractionSchema = z.object({
     .max(1000)
     .describe('One or two sentences explaining how confident the extraction is and any caveats.'),
 });
-export type IncomingEmailExtraction = z.infer<typeof incomingEmailExtractionSchema>;
 
 // Unified classify + extract result for inbound vendor emails. Classification
 // fields (kind/vendor/target/confidence) join the extraction fields so a single
