@@ -119,8 +119,15 @@ export async function updateServiceRecord(input: unknown): Promise<ActionResult<
     if (!exists) return { ok: false, formError: 'Vendor not found' };
   }
 
+  // Self-performed records must not retain a vendor. The form sends vendorId:
+  // undefined when flipping to self-performed, which Prisma's update would
+  // ignore — leaving the prior vendorId in place. Explicitly null it out, but
+  // only when this update actually sets selfPerformed (partial updates that
+  // omit selfPerformed must not touch vendorId).
+  const updateData = data.selfPerformed === true ? { ...data, vendorId: null } : data;
+
   await prisma.$transaction(async (tx) => {
-    await tx.serviceRecord.update({ where: { id }, data });
+    await tx.serviceRecord.update({ where: { id }, data: updateData });
     if (targets !== undefined) {
       const existing = await tx.serviceRecordTarget.findMany({
         where: { serviceRecordId: id },

@@ -1,5 +1,19 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+
+vi.mock('@/lib/auth', () => ({
+  auth: vi.fn(async () => ({ user: { id: 'u1', name: 'Test' } })),
+}));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/queue', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/lib/queue')>();
+  return {
+    ...orig,
+    getBoss: vi.fn(async () => ({
+      send: vi.fn(async () => 'fake-job-id'),
+    })),
+  };
+});
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -150,6 +164,56 @@ describe('ServiceRecord CRUD', () => {
 
     const read = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });
     expect(read?.vendorId).toBeNull();
+  });
+});
+
+describe('updateServiceRecord action', () => {
+  it('clears vendorId when an edit flips a record to self-performed', async () => {
+    const { updateServiceRecord } = await import('@/lib/service-records/actions');
+
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: {
+        vendorId,
+        performedOn: new Date('2024-09-01'),
+        summary: 'Vendor-performed visit',
+        targets: { create: [{ itemId }] },
+      },
+    });
+    expect(sr.vendorId).toBe(vendorId);
+
+    const result = await updateServiceRecord({
+      id: sr.id,
+      selfPerformed: true,
+      performedOn: new Date('2024-09-01'),
+      summary: 'Now self-performed',
+    });
+    expect(result.ok).toBe(true);
+
+    const updated = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });
+    expect(updated?.selfPerformed).toBe(true);
+    expect(updated?.vendorId).toBeNull();
+  });
+
+  it('does not touch vendorId on a partial update that omits selfPerformed', async () => {
+    const { updateServiceRecord } = await import('@/lib/service-records/actions');
+
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: {
+        vendorId,
+        performedOn: new Date('2024-09-02'),
+        summary: 'Vendor visit to be lightly edited',
+      },
+    });
+
+    const result = await updateServiceRecord({
+      id: sr.id,
+      summary: 'Edited summary only',
+    });
+    expect(result.ok).toBe(true);
+
+    const updated = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });
+    expect(updated?.vendorId).toBe(vendorId);
+    expect(updated?.summary).toBe('Edited summary only');
   });
 });
 
