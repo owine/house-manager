@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 
 const proposeChecklist = vi.fn();
 vi.mock('@/lib/ai/suggest/checklist', () => ({
@@ -31,6 +32,11 @@ describe('ChecklistAiSection', () => {
     await user.click(screen.getByRole('button', { name: /Generate seasonal/i }));
     expect(proposeChecklist).toHaveBeenCalledWith(expect.objectContaining({ mode: 'seasonal' }));
     expect((await screen.findAllByText('Fall 2026 Maintenance')).length).toBeGreaterThan(0);
+  });
+
+  it('has no axe violations', async () => {
+    render(<ChecklistAiSection />);
+    await expectNoAxeViolations();
   });
 
   it('prompt dialog submits freeform mode with the typed prompt', async () => {

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import {
   type ConvertVendorLinksAction,
   type DeleteVendorAndLinksAction,
@@ -114,6 +115,12 @@ describe('DeleteVendorDialog', () => {
     await user.click(cascade);
     await waitFor(() => expect(deleteWithLinksAction).toHaveBeenCalledWith('v1'));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+  });
+
+  it('has no axe violations', async () => {
+    setup();
+    await screen.findByRole('dialog'); // ensure the portaled dialog content is committed before scanning
+    await expectNoAxeViolations();
   });
 
   it('shows formError from a failed action', async () => {

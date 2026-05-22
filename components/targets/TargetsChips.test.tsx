@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { type TargetSummary, TargetsChips } from './TargetsChips';
 
 afterEach(() => {
@@ -29,6 +30,11 @@ describe('TargetsChips', () => {
     render(<TargetsChips targets={TARGETS} />);
     const list = screen.getByTestId('targets-chips');
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('has no axe violations', async () => {
+    render(<TargetsChips targets={TARGETS} />);
+    await expectNoAxeViolations();
   });
 
   it('item chip links to /items/<id> with Item badge', () => {

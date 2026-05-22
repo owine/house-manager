@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActionResult } from '@/lib/result';
 import type { CreateWarrantyInput } from '@/lib/warranties/schema';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { WarrantyForm } from './WarrantyForm';
 
 const pushMock = vi.fn();
@@ -57,6 +58,19 @@ describe('WarrantyForm with TargetsPicker', () => {
       />,
     );
     expect(screen.queryByTestId('targets-picker-chips')).not.toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const action = makeAction({ ok: true, data: { id: 'w-1' } });
+    render(
+      <WarrantyForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Add warranty"
+      />,
+    );
+    await expectNoAxeViolations();
   });
 
   it('pre-seeds picker from initialTargets', () => {

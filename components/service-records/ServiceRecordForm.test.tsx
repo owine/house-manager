@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActionResult } from '@/lib/result';
 import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
+import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { ServiceRecordForm } from './ServiceRecordForm';
 
 const pushMock = vi.fn();
@@ -66,6 +67,20 @@ describe('ServiceRecordForm with TargetsPicker', () => {
     );
     // No selected chips visible
     expect(screen.queryByTestId('targets-picker-chips')).not.toBeInTheDocument();
+  });
+
+  it('has no axe violations', async () => {
+    const action = makeAction({ ok: true, data: { id: 'sr-1' } });
+    render(
+      <ServiceRecordForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        vendors={[{ id: 'v1', name: 'GreenLawn LLC' }]}
+        action={action}
+        submitLabel="Save record"
+      />,
+    );
+    await expectNoAxeViolations();
   });
 
   it('pre-seeds the picker from initialTargets', () => {
