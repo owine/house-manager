@@ -24,16 +24,23 @@ Nothing currently catches layout breakage: text overflowing its button, truncati
 
 The Playwright image runs the browser + the visual spec; the **app + Postgres + Meilisearch + mock-OIDC run on the host** (the container has Node but not the app/DB). The container reaches host services via Docker Desktop's `host.docker.internal`.
 
-A new `tests/e2e/run-visual.sh` (sibling to `run-local.sh`) orchestrates:
-1. Seed categories + ensure the host has the dev server reachable (reuse `run-local.sh`'s `.env` extraction + seeding).
-2. Start the app stack on the host with **docker-aware auth env**: `AUTH_URL` / `AUTH_OIDC_ISSUER` set to `http://host.docker.internal:3000` / `:9999` so the URLs the in-container browser is redirected to are reachable from the container (this is the **#1 implementation risk** — the OIDC issuer the dev server emits must be the same host the container's browser can resolve; the mock-OIDC server must bind on the host, not inside the container).
-3. `docker run --rm` the pinned Playwright image with the repo mounted (`-v $PWD:/work -w /work`), `--add-host=host.docker.internal:host-gateway` (Linux parity; Docker Desktop provides it automatically), running `playwright test tests/e2e/visual.spec.ts` with `PLAYWRIGHT_BASE_URL=http://host.docker.internal:3000` and `reuseExistingServer`.
+Everything addressable from the container uses the hostname **`hm.local`** — a single name that resolves to the host from *both* the host and the container, eliminating the `localhost`-means-different-things problem. `run-visual.sh` adds `--add-host=hm.local:host-gateway` to the `docker run`, and the host stack is started with all URLs using `hm.local` (the host resolves `hm.local` via the same `host-gateway`/`/etc/hosts` entry, or we use `host.docker.internal` consistently — pick one name and use it for every URL and every hop). For concreteness below, call it `$HOSTREF` (= `host.docker.internal`, which Docker Desktop resolves from the container; the host resolves it too once added to the run, or the host simply uses `localhost` for its own server-to-server calls **as long as the emitted issuer matches what the browser uses** — see the issuer fix).
 
-`playwright.config.ts` gains a `visual` project (or the spec reads `PLAYWRIGHT_BASE_URL`) that, when set, **disables the `webServer`** (the dev server is on the host, not started by Playwright) and points `baseURL` at the host. The existing e2e/a11y projects are unchanged.
+**The make-or-break fix — parameterize the mock-OIDC issuer.** `tests/e2e/mock-oidc.ts` hardcodes `const issuer = `http://localhost:${port}`` and bakes it into the discovery document (`issuer`/`authorization_endpoint`/`token_endpoint`/`jwks_uri`) and the `/auth` redirect `Location`. The in-container browser cannot reach `localhost:9999` (that's the container), and Auth.js validates the `iss` claim + discovery `issuer` against the configured `AUTH_OIDC_ISSUER` (`auth.config.ts`), so merely setting the env var fails with an `iss` mismatch. **Required change:** parameterize `startMockOidc(port, issuerBase?)` (and the issuer/endpoint/redirect construction) to read an issuer base from an env var (e.g. `MOCK_OIDC_ISSUER`), **defaulting to `http://localhost:${port}`** so the existing host-only `run-local.sh` e2e suite is unchanged. The visual run sets it to `http://host.docker.internal:9999`. The server still binds `0.0.0.0` (it already does — `server.listen(port)` with no host), reachable from both sides.
 
-Scripts: `pnpm test:visual:local` (run + assert) and `pnpm test:visual:update` (regenerate baselines: same docker run with `--update-snapshots`). Documented in `TESTING.md`, including the one-time `docker pull` and the host-stack prerequisite.
+`tests/e2e/run-visual.sh` (sibling to `run-local.sh`) orchestrates:
+1. Seed categories (reuse `run-local.sh`'s `.env` extraction + seeding).
+2. Start the app stack **on the host** with docker-aware env so all three OIDC hops resolve from the container:
+   - `AUTH_URL=http://host.docker.internal:3000` (callback hop: `…/api/auth/callback/authelia`; `trustHost: true` is already set).
+   - `AUTH_OIDC_ISSUER=http://host.docker.internal:9999` **and** `MOCK_OIDC_ISSUER=http://host.docker.internal:9999` (discovery + authorization-redirect hops — both the app's config and the mock's emitted strings now agree).
+   - The dev server's own server-to-server discovery/token/jwks fetches go to `host.docker.internal:9999`, which Docker Desktop maps back to the host — works.
+3. `docker run --rm` the pinned Playwright image with the repo mounted (`-v "$PWD":/work -w /work`), `--add-host=host.docker.internal:host-gateway`, env `PLAYWRIGHT_BASE_URL=http://host.docker.internal:3000` **and `MEILI_HOST=http://host.docker.internal:7700`** (`resetAuth()` recreates the Meili index from inside the container, so it needs the reachable host), running `playwright test tests/e2e/visual.spec.ts`.
 
-> If the host-stack-in-container-reach proves too fragile in implementation, the fallback (decided in the plan, not now) is to also run the dev server + mock-OIDC inside a compose stack alongside the Playwright container — but the host.docker.internal approach is tried first as it reuses the existing run-local harness.
+**`playwright.config.ts` — gate the top-level `webServer`** (it's a top-level key, not per-project, so it can't be disabled from a `projects[]` entry): `webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : { …existing… }` and `use.baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000'`. When `PLAYWRIGHT_BASE_URL` is set (the docker run), Playwright skips spawning/probing a server and targets the host. Existing e2e/a11y runs (no env var) are unchanged.
+
+Scripts: `pnpm test:visual:local` (run + assert) and `pnpm test:visual:update` (same docker run with `--update-snapshots`). Documented in `TESTING.md`: the one-time `docker pull mcr.microsoft.com/playwright:v1.60.0-noble`, the host-stack prerequisite, and that `test:visual:update` must run on a frozen date (see stability).
+
+> Fallback if host-reachability proves too fragile (decided in the plan, not now): run the dev server + mock-OIDC inside a compose stack alongside the Playwright container. The `host.docker.internal` approach is tried first as it reuses the run-local harness.
 
 ### Check 1: layout heuristics — `tests/e2e/layout-heuristics.ts`
 
@@ -46,7 +53,13 @@ Tolerances configurable; a small per-call `exclude` selector list for known-OK c
 
 ### Check 2: pixel visual-regression
 
-Per route × viewport: freeze the clock, navigate, mask volatile regions, `await expect(page).toHaveScreenshot('<route>-<vp>.png', { maxDiffPixelRatio: <small>, mask: [...] })`. Baselines live under `tests/e2e/visual.spec.ts-snapshots/` (Playwright convention), generated in the docker image. The `mask` list + a `freezeClock(page)` helper (Playwright clock API set to a fixed instant, plus `seedPopulated`'s already-fixed dates) keep them stable.
+Per route × viewport: navigate, mask volatile regions, `await expect(page).toHaveScreenshot('<route>-<vp>.png', { maxDiffPixelRatio: <small>, mask: [...] })`. Baselines live under `tests/e2e/visual.spec.ts-snapshots/` (Playwright convention), generated in the docker image.
+
+**Stability — masking is PRIMARY, not the clock.** The volatile content is rendered **server-side** (Server Components calling `new Date()`/`Date.now()` in Node), which Playwright's `page.clock` **cannot** touch — it only overrides the browser's clock. So `toHaveScreenshot({ mask: [...] })` is the main mechanism. The spec must mask every server-time-driven region; the known offenders (enumerate + add `data-testid` mask anchors where selectors are fragile):
+- `/reminders/calendar` — the month grid + the highlighted "today" cell (`app/(app)/reminders/calendar/page.tsx` computes `today`/`monthStart` server-side).
+- `/dashboard` — `RecentActivityList` relative timestamps ("X minutes ago", server-computed).
+- `/reminders` (+ any list with overdue/“in N days” badges) — relative-due rendering against `now`.
+Audit during implementation for any other `new Date()`/`Date.now()`/`formatDistance`-style rendering on the scanned routes and mask it. A `freezeClock(page)` helper (Playwright clock) is **secondary** — apply it only if a route renders relative time **client-side** (verify any exist; the two found are both server-side). `seedPopulated`'s stored dates are already fixed, but that doesn't help the *relative* computations against `now` — hence masking. (Deferred option, not in v1: an env-gated fixed server `Date` so the regions could be asserted instead of masked.)
 
 ## Reuse
 
