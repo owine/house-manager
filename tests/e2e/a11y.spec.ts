@@ -28,7 +28,9 @@ async function scan(page: Page, label: string) {
           .join('\n    ')}`,
     )
     .join('\n');
-  expect(violations, `${label} a11y violations:\n${summary}`).toEqual([]);
+  // Soft so a single run reports EVERY route's violations (not just the first),
+  // while still failing the test. Better for both measurement and gate triage.
+  expect.soft(violations, `${label} a11y violations:\n${summary}`).toEqual([]);
 }
 
 test.describe('accessibility (WCAG 2.1 AA)', () => {

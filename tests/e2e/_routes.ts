@@ -43,49 +43,52 @@ export async function seedPopulated(
   page: Page,
   opts?: { onSuggestInterstitial?: (page: Page) => Promise<void> },
 ): Promise<SeededUrls> {
+  // Submit helper: arm the navigation wait BEFORE the click (race-safe — a fast
+  // server-action response can complete before a post-click waitForURL starts
+  // listening, hanging forever; this is the pattern the CI-gated specs use).
+  const submitAndWait = async (url: RegExp, click: () => Promise<void>) => {
+    await Promise.all([page.waitForURL(url, { timeout: 60_000 }), click()]);
+  };
+  const createBtn = () => page.getByRole('button', { name: /^(Create|Save)/ }).first();
+
   await page.goto('/vendors/new');
   await page.getByLabel('Name').fill('Acme HVAC Services');
-  await page
-    .getByRole('button', { name: /^(Create|Save)/ })
-    .first()
-    .click();
-  await page.waitForURL(/\/vendors\/c[a-z0-9]+$/);
+  await submitAndWait(/\/vendors\/c[a-z0-9]+$/, () => createBtn().click());
 
   await page.goto('/systems/new');
   await page.getByLabel('Name').fill('Heating');
-  await page
-    .getByRole('button', { name: /^(Create|Save)/ })
-    .first()
-    .click();
-  await page.waitForURL(/\/systems\/c[a-z0-9]+$/);
+  await submitAndWait(/\/systems\/c[a-z0-9]+$/, () => createBtn().click());
 
   await page.goto('/items/new');
   await page.getByLabel('Name').fill('Furnace');
   await page.getByRole('combobox', { name: 'Category' }).click();
   await page.getByRole('option', { name: /HVAC/i }).click();
-  await page.getByRole('button', { name: 'Create item' }).click();
-  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+\/suggest-after-create$/);
+  await submitAndWait(/\/items\/c[a-z0-9]+\/suggest-after-create$/, () =>
+    page.getByRole('button', { name: 'Create item' }).click(),
+  );
   if (opts?.onSuggestInterstitial) await opts.onSuggestInterstitial(page);
-  await page.getByRole('button', { name: 'Skip' }).click();
-  await page.waitForURL(/\/items\/c[a-z0-9]+$/);
+  await submitAndWait(/\/items\/c[a-z0-9]+$/, () =>
+    page.getByRole('button', { name: 'Skip' }).click(),
+  );
   const itemUrl = page.url();
   const itemId = itemUrl.match(/\/items\/(c[a-z0-9]+)/)?.[1];
 
   await page.goto(`/service/new?itemId=${itemId}`);
-  await page.getByLabel('Performed on').fill('2026-04-15');
+  const performedOn = page.getByLabel('Performed on');
+  await performedOn.fill('2026-04-15');
+  await expect(performedOn).toHaveValue('2026-04-15'); // wait for native-date React state to commit
   await page.getByLabel('Summary').fill('Annual tune-up');
-  await page.getByRole('button', { name: 'Save record' }).click();
-  await page.waitForURL(/\/service\/c[a-z0-9]+$/);
+  await submitAndWait(/\/service\/c[a-z0-9]+$/, () =>
+    page.getByRole('button', { name: 'Save record' }).click(),
+  );
   const serviceUrl = page.url();
 
   await page.goto('/reminders/new');
   await page.getByLabel('Title').fill('Change furnace filter');
-  await page.getByLabel(/Due/).first().fill('2026-06-01');
-  await page
-    .getByRole('button', { name: /^(Create|Save)/ })
-    .first()
-    .click();
-  await page.waitForURL(/\/reminders\/c[a-z0-9]+$/);
+  const dueDate = page.getByLabel('First due date');
+  await dueDate.fill('2026-06-01');
+  await expect(dueDate).toHaveValue('2026-06-01');
+  await submitAndWait(/\/reminders\/c[a-z0-9]+$/, () => createBtn().click());
   const reminderUrl = page.url();
 
   await page.goto('/notes/new');
@@ -97,11 +100,7 @@ export async function seedPopulated(
   if (await noteBody.isVisible().catch(() => false)) {
     await noteBody.fill('Filter size: 20x25x1. Replace quarterly.');
   }
-  await page
-    .getByRole('button', { name: /^(Create|Save)/ })
-    .first()
-    .click();
-  await page.waitForURL(/\/notes\/c[a-z0-9]+$/);
+  await submitAndWait(/\/notes\/c[a-z0-9]+$/, () => createBtn().click());
   const noteUrl = page.url();
 
   return { itemUrl, serviceUrl, reminderUrl, noteUrl };
