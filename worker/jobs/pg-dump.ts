@@ -17,6 +17,36 @@ export const RETENTION_COUNT = 7;
 export type FileEntry = { name: string; mtimeMs: number };
 
 /**
+ * Split the DB password out of the connection string so it never lands in
+ * `pg_dump`'s argv (which would otherwise be logged on error / sent to Sentry
+ * via the Error's `cmd`/`spawnargs`). The password is passed to pg_dump through
+ * the `PGPASSWORD` env var instead; the `--dbname` URL keeps host/user/db/params
+ * but not the password. Pure + exported for testing.
+ */
+export function buildDumpInvocation(
+  databaseUrl: string,
+  filepath: string,
+): { args: string[]; password?: string } {
+  const u = new URL(databaseUrl);
+  let password: string | undefined;
+  if (u.password) {
+    try {
+      password = decodeURIComponent(u.password);
+    } catch {
+      // Malformed percent-encoding (e.g. a literal '%' in the password) would
+      // make decodeURIComponent throw and abort the backup. Fall back to the raw
+      // value — still kept out of argv, just not URL-decoded.
+      password = u.password;
+    }
+  }
+  u.password = '';
+  return {
+    args: ['--format=custom', `--dbname=${u.toString()}`, `--file=${filepath}`],
+    password,
+  };
+}
+
+/**
  * Given a list of dump files in the backup directory, returns the subset that
  * should be deleted to enforce RETENTION_COUNT. The newest RETENTION_COUNT
  * files are kept; the rest are pruned. Pure function — exported for testing.
@@ -43,11 +73,16 @@ export async function handlePgDump(): Promise<{ file: string; pruned: number }> 
   const filename = `${FILENAME_PREFIX}${stamp}${FILENAME_SUFFIX}`;
   const filepath = path.join(BACKUP_DIR, filename);
 
+  const { args, password } = buildDumpInvocation(DATABASE_URL, filepath);
   try {
-    await runDump('pg_dump', ['--format=custom', `--dbname=${DATABASE_URL}`, `--file=${filepath}`]);
+    await runDump('pg_dump', args, {
+      env: password ? { ...process.env, PGPASSWORD: password } : process.env,
+    });
   } catch (e) {
-    const err = e as Error & { code?: number; stderr?: string };
-    logger.error({ err, exitCode: err.code, stderr: err.stderr }, 'pg_dump failed');
+    const err = e as Error & { code?: number | string; stderr?: string };
+    // Log only safe fields — the raw Error carries `cmd`/`spawnargs`. Those no
+    // longer contain the password (it's in PGPASSWORD), but keep the log narrow.
+    logger.error({ message: err.message, code: err.code, stderr: err.stderr }, 'pg_dump failed');
     Sentry.captureException(err);
     throw err;
   }
