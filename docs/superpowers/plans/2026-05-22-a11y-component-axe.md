@@ -51,8 +51,13 @@ const DOCUMENT_RULES_OFF: Record<string, { enabled: false }> = {
   bypass: { enabled: false },
 };
 
-/** Assert the rendered component fragment has no WCAG 2.1 AA axe violations. */
-export async function expectNoAxeViolations(container: HTMLElement): Promise<void> {
+/**
+ * Assert the rendered component has no WCAG 2.1 AA axe violations. Defaults to
+ * scanning `document.body` — which is where Testing Library mounts everything,
+ * INCLUDING portaled content (Base UI dialogs/popovers render into a portal, not
+ * the RTL `container`, so scanning `container` would miss them entirely).
+ */
+export async function expectNoAxeViolations(container: HTMLElement = document.body): Promise<void> {
   const results = await axe.run(container, {
     runOnly: { type: 'tag', values: WCAG_AA },
     rules: DOCUMENT_RULES_OFF,
@@ -73,13 +78,13 @@ export async function expectNoAxeViolations(container: HTMLElement): Promise<voi
 
 - [ ] **Step 3: Prove it on one component (TargetsPicker) + verify the gate bites**
 
-In `components/targets/TargetsPicker.test.tsx`, add (reusing the file's existing `setup()` which renders the picker):
+In `components/targets/TargetsPicker.test.tsx`, add (reusing the file's existing `setup()` to render, then scan — note we call `expectNoAxeViolations()` with **no argument**, so it scans `document.body`):
 ```ts
 import { expectNoAxeViolations } from '@/tests/a11y/axe';
 
 it('has no axe violations', async () => {
-  const { container } = setup();
-  await expectNoAxeViolations(container);
+  setup(); // renders the picker into document.body
+  await expectNoAxeViolations();
 });
 ```
 Run: `pnpm vitest run components/targets/TargetsPicker.test.tsx` → expect PASS (TargetsPicker got a11y fixes in #165, and the spec confirms it's clean).
@@ -87,9 +92,13 @@ Run: `pnpm vitest run components/targets/TargetsPicker.test.tsx` → expect PASS
 
 - [ ] **Step 4: Add the assertion to the remaining 12 test files**
 
-For each, add an `it('has no axe violations', async () => { const { container } = <existing render>; await expectNoAxeViolations(container); })`, **reusing that file's existing render/setup** (read each file; don't invent new props). The 12:
-`checklists/ChecklistAiSection`, `reminders/MarkCompleteDialog`, `reminders/ReminderForm`, `service-records/PendingAttachmentsField`, `service-records/ServiceRecordForm`, `systems/SystemForm`, `targets/TargetsChips`, `vendor-links/VendorLinkChips`, `vendor-links/VendorLinkEditor`, `vendors/DeleteVendorDialog`, `vendors/VendorLinksSection`, `warranties/WarrantyForm`.
-- **Dialogs** (`MarkCompleteDialog`, `DeleteVendorDialog`): render in the **open** state (their tests already do — reuse that), or axe sees an empty trigger.
+For each, add `it('has no axe violations', async () => { <render the component its existing way>; await expectNoAxeViolations(); })`, **reusing that file's existing render/setup** (read each file; don't invent new props). The render pattern differs by file:
+- **4 files have a `setup()` helper** (`TargetsPicker`, `MarkCompleteDialog`, `DeleteVendorDialog`, `VendorLinkEditor`) → call `setup()`.
+- **The other 9 call `render(<Component …/>)` inline** per-`it` (`ChecklistAiSection`, `ReminderForm`, `PendingAttachmentsField`, `ServiceRecordForm`, `SystemForm`, `TargetsChips`, `VendorLinkChips`, `VendorLinksSection`, `WarrantyForm`) → do the same `render(...)` with that file's representative props.
+- Either way the new test ends with bare `await expectNoAxeViolations()` (scans `document.body`). **Do NOT destructure/scan `container`** — it misses portaled content.
+
+The 12 files: `checklists/ChecklistAiSection`, `reminders/MarkCompleteDialog`, `reminders/ReminderForm`, `service-records/PendingAttachmentsField`, `service-records/ServiceRecordForm`, `systems/SystemForm`, `targets/TargetsChips`, `vendor-links/VendorLinkChips`, `vendor-links/VendorLinkEditor`, `vendors/DeleteVendorDialog`, `vendors/VendorLinksSection`, `warranties/WarrantyForm`.
+- **Dialogs** (`MarkCompleteDialog`, `DeleteVendorDialog`): render **open** (their tests already do — reuse that). Because `expectNoAxeViolations()` scans `document.body`, the **portaled** dialog content is included. Sanity-check one dialog test actually scans non-empty content (e.g. confirm it fails if you remove a known label) so it's not a silent empty pass.
 - If a test renders multiple variants, scan the primary/representative one (one assertion per file is enough).
 - Mocks: reuse each file's existing `vi.mock`s (e.g. server actions) so rendering works under jsdom.
 
