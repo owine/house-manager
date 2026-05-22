@@ -32,6 +32,8 @@ Biome's static a11y lint (Phase 1) catches JSX-level issues but **cannot** see r
 
 Refactor `screenshots.spec.ts` to import from `_routes.ts` (no behavior change — verify it still captures the same images). The new a11y spec imports the same module, so the two never drift.
 
+> **Refactor seam:** the seeding block in screenshots.spec is *interleaved* with a screenshot call (the `suggest-after-create` interstitial shot mid-seed). `seedPopulated(page)` must be pure data-creation with **no screenshot side-effects**; keep that one interstitial `shoot()` inside screenshots.spec (or gate it on `CAPTURE_SCREENSHOTS`). There are **24 empty + 13 populated** routes (one populated route is `/search?q=furnace` — the only query-string path; carry it through).
+
 ### The a11y spec
 
 `tests/e2e/a11y.spec.ts`:
@@ -47,6 +49,8 @@ Refactor `screenshots.spec.ts` to import from `_routes.ts` (no behavior change �
   expect(results.violations, formatViolations(route, vp, results.violations)).toEqual([]);
   ```
 - `formatViolations` produces a readable failure message (rule id, impact, help URL, offending selectors) so CI failures are actionable.
+- **Guard against silent redirects:** before running axe, assert the page actually loaded the intended route (e.g. expected URL pattern or a known heading), so a route that redirects/404s on an empty state can't produce a misleading "0 violations" pass.
+- **Mobile nav:** axe won't scan `display:none`/collapsed content, so a closed mobile menu isn't falsely flagged. If we want to cover the *expanded* mobile nav (a real a11y surface), add an explicit open-the-menu step on at least one mobile route — decide during planning (default: scan as-rendered, don't force-open, to keep the spec simple).
 - Structure as a `test` per route (or per route×viewport) via `test.describe` + a loop, so Playwright reports which route failed rather than one giant test. (Keeps the report legible and lets retries target a single route.)
 
 ### Documented exclusions
