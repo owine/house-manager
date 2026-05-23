@@ -17,4 +17,13 @@ describe('Markdown', () => {
     render(<Markdown>{'Hello **world**'}</Markdown>);
     expect(screen.getByText('world').tagName).toBe('STRONG');
   });
+
+  it('strips leading Unicode invisibles (NBSP, zero-width, BOM) so the first paragraph is the first child', () => {
+    // Body that ASCII .trim() would NOT clean: NBSP + ZWSP + BOM, then content.
+    const { container } = render(<Markdown>{` ​﻿**Master** - 091017\n\nUser`}</Markdown>);
+    const root = container.querySelector('.markdown');
+    expect(root?.firstElementChild?.tagName).toBe('P');
+    // No leading paragraph containing only invisibles
+    expect(root?.firstElementChild?.textContent?.startsWith('Master')).toBe(true);
+  });
 });

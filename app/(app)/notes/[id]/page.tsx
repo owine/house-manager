@@ -55,7 +55,9 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
 
       {/* Body */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
+        {/* pt-3 (12px) instead of pt-6 (24px): a full p-6 top read as an
+            "extra blank line" above the rendered markdown. */}
+        <CardContent className="pt-3">
           <Markdown>{note.body}</Markdown>
         </CardContent>
       </Card>
