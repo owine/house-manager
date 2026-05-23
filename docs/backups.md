@@ -77,7 +77,7 @@ Expected: a list of database objects (tables, indexes, etc.). If `pg_restore --l
 
 ## Postgres major version dependency
 
-The Dockerfile installs `postgresql16-client` to provide `pg_dump` / `pg_restore`. **When you upgrade Postgres major** (16 → 17), bump the Dockerfile package name in lockstep — `pg_dump` from a different major won't dump from a newer database.
+The Dockerfile installs `postgresql18-client` to provide `pg_dump` / `pg_restore`. **When you upgrade Postgres major** (18 → 19), bump the Dockerfile package name in lockstep — `pg_dump` from an older major can't dump from a newer server.
 
 ## Risks
 

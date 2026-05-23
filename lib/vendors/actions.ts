@@ -93,7 +93,15 @@ export async function tryDeleteVendor(vendorId: string): Promise<TryDeleteVendor
     revalidatePath('/systems');
     return { ok: true };
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+    // pg18 emits SQLSTATE 23001 (restrict_violation) for RESTRICT-mode FK
+    // violations instead of 23503; @prisma/adapter-pg <=7.8.0 only maps 23503
+    // to P2003, so 23001 leaks through as a raw DriverAdapterError.
+    const causeCode = (err as { cause?: { code?: string } })?.cause?.code;
+    const isFkRestrict =
+      (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') ||
+      causeCode === '23001' ||
+      causeCode === '23503';
+    if (isFkRestrict) {
       const [itemCount, systemCount] = await Promise.all([
         prisma.itemVendor.count({ where: { vendorId } }),
         prisma.systemVendor.count({ where: { vendorId } }),
