@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
 import { createWarrantySchema } from './schema';
 
@@ -76,7 +77,7 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
   await enqueueEmbed('WARRANTY', warranty.id);
 
   if (createExpiryReminder) {
-    await prisma.reminder.create({
+    const reminder = await prisma.reminder.create({
       data: {
         title: `${warranty.provider} warranty expires`,
         description: warranty.policyNumber
@@ -93,7 +94,9 @@ export async function createWarranty(input: unknown): Promise<ActionResult<{ id:
           })),
         },
       },
+      select: { id: true },
     });
+    await enqueueSearchIndex('reminder', reminder.id, 'upsert');
   }
 
   revalidatePath('/dashboard');

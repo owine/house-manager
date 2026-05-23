@@ -3,9 +3,11 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { targetSchema } from '@/lib/targets/schema';
 
 const log = getLogger('incoming-email.actions');
@@ -282,6 +284,8 @@ export async function createServiceRecordFromEmail(
     });
     return { sr, attachmentsLinked: attachLink.count };
   });
+  await enqueueSearchIndex('service', created.sr.id, 'upsert');
+  await enqueueEmbed('SERVICE_RECORD', created.sr.id);
   log.info(
     {
       incomingEmailId: email.id,

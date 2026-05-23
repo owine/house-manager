@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
 import { createSystemSchema, updateSystemWithIdSchema } from './schema';
@@ -108,6 +109,8 @@ export async function assignItemToSystem(input: {
     where: { id: parsed.data.itemId },
     data: { systemId: parsed.data.systemId },
   });
+  // system.name is part of the Item embed; reassignment must trigger re-embed.
+  await enqueueEmbed('ITEM', parsed.data.itemId);
   revalidateSystemPaths(parsed.data.systemId);
   revalidatePath('/items');
   revalidatePath(`/items/${parsed.data.itemId}`);
@@ -138,6 +141,7 @@ export async function unassignItemFromSystem(input: {
     where: { id: parsed.data.itemId },
     data: { systemId: null },
   });
+  await enqueueEmbed('ITEM', parsed.data.itemId);
   revalidatePath('/systems');
   if (before?.systemId) revalidatePath(`/systems/${before.systemId}`);
   revalidatePath('/items');

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -247,6 +248,7 @@ export async function saveAcceptedChecklist(input: {
       'enqueueSearchIndex failed',
     );
   }
+  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
 
   try {
     await markAccepted(input.logId, [checklistId]);

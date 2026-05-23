@@ -4,6 +4,7 @@ import { atomicWrite } from '@/lib/attachments/storage';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import type { ForwardEmailWebhookBody } from './schema';
 
 const log = getLogger('incoming-email.actions');
@@ -104,7 +105,9 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
         },
         select: { id: true },
       });
+      const attachmentIds: string[] = [];
       if (attachmentWrites.length > 0) {
+        // createMany doesn't return rows; re-select by the unique parent edge.
         await tx.attachment.createMany({
           data: attachmentWrites.map((a) => ({
             incomingEmailId: email.id,
@@ -112,10 +115,18 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
             ...a,
           })),
         });
+        const rows = await tx.attachment.findMany({
+          where: { incomingEmailId: email.id },
+          select: { id: true },
+        });
+        attachmentIds.push(...rows.map((r) => r.id));
       }
-      return email;
+      return { email, attachmentIds };
     });
-    return { id: created.id, duplicate: false };
+    for (const id of created.attachmentIds) {
+      await enqueueSearchIndex('attachment', id, 'upsert');
+    }
+    return { id: created.email.id, duplicate: false };
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       // TOCTOU: a concurrent retry of the same Message-ID committed first.

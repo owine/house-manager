@@ -8,6 +8,7 @@ import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
 import { ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
 import { extractPdfText } from '@/lib/pdf/text';
+import { enqueueSearchIndex } from '@/lib/search/client';
 
 const log = getLogger('worker.extract-attachment-text');
 
@@ -186,4 +187,5 @@ async function mark(
       ocrUsed: data.ocrUsed,
     },
   });
+  await enqueueSearchIndex('attachment', attachmentId, 'upsert');
 }
