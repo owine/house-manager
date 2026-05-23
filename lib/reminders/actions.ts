@@ -3,6 +3,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
@@ -346,6 +347,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
 
   for (const srId of completionToServiceRecord.values()) {
     await enqueueSearchIndex('service', srId, 'upsert');
+    await enqueueEmbed('SERVICE_RECORD', srId);
   }
   await enqueueSearchIndex('reminder', id, 'upsert');
 

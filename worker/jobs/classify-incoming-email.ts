@@ -4,6 +4,7 @@ import { ANTHROPIC_MODEL } from '@/lib/ai/client';
 import { createSuggestionLog } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import {
   aiClassifyExtract,
   shouldAutoStub,
@@ -276,6 +277,7 @@ async function autoStub(input: {
       return sr;
     });
     await enqueueSearchIndex('service', created.id, 'upsert');
+    await enqueueEmbed('SERVICE_RECORD', created.id);
     log.info(
       { id: input.rowId, serviceRecordId: created.id },
       'classify-incoming-email: auto-stubbed service record',
