@@ -8,6 +8,11 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Playwright's default testMatch includes BOTH `*.spec.ts` and `*.test.ts`,
+  // so `tests/e2e/mock-oidc.test.ts` (a vitest unit test) gets loaded by
+  // Playwright and crashes on vitest's `describe`. Scope Playwright to
+  // `*.spec.ts` only so both test runners can coexist in this directory.
+  testMatch: ['**/*.spec.ts'],
   timeout: 60_000,
   // Default expect timeout is 5s. On CI's first hit to each route, dev-server
   // JIT compile can take 5–10s, which makes post-form-submit URL assertions
