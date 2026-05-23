@@ -3,12 +3,13 @@ import rehypeSanitize from 'rehype-sanitize';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 
-// Strip ASCII whitespace AND common Unicode invisibles from both ends. Plain
-// `.trim()` only handles ASCII, so a body starting with NBSP (e.g. from a
-// paste) or a BOM would render as a visible empty-looking leading <p>. Escape
-// sequences (not literal chars) so formatters can't mangle the regex.
-// Covers: U+00A0 NBSP, U+200B–D zero-width space/joiner, U+FEFF BOM, U+3000
-// ideographic space, U+2028/2029 line/paragraph separators.
+// Explicit extended set of invisibles to strip from both ends. `.trim()` per
+// ECMA-262 already handles Unicode WhiteSpace (incl. NBSP, BOM, U+2028/2029,
+// U+3000), but NOT the zero-width format chars U+200B/200C/200D — those are
+// category Cf, not WhiteSpace — so a body starting with a zero-width space
+// (e.g. from a paste) would render as a visible empty-looking leading <p>.
+// Listed exhaustively here for explicit control. Escape sequences (not literal
+// chars) so formatters can't mangle the regex.
 const INVISIBLE = '\\s\\u00A0\\u200B\\u200C\\u200D\\u2028\\u2029\\u3000\\uFEFF';
 const INVISIBLE_EDGES = new RegExp(`^[${INVISIBLE}]+|[${INVISIBLE}]+$`, 'g');
 
