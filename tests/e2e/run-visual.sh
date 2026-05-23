@@ -32,7 +32,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-export E2E_AUTH_HOST="host.docker.internal"
+# Why the LAN IP (not host.docker.internal): the host dev server's Auth.js
+# fetches discovery server-to-server against AUTH_OIDC_ISSUER. macOS resolves
+# `host.docker.internal` ONLY from inside containers — from the host it ENOTFOUND-s,
+# so the dev server's discovery fetch fails and every sign-in lands on
+# /api/auth/error?error=Configuration. A LAN IP works from BOTH ends: the host
+# uses its own IP, and the container reaches it via Docker Desktop's host-gateway
+# (LAN routing). No /etc/hosts edit required.
+LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+if [ -z "$LAN_IP" ]; then
+  echo "error: could not detect a LAN IP (en0/en1). Run with an active network interface." >&2
+  exit 1
+fi
+echo "using LAN IP: $LAN_IP (so dev server + container browser see the same URLs)"
+
+export E2E_AUTH_HOST="$LAN_IP"
 # shellcheck disable=SC1091
 source tests/e2e/_env-local.sh
 
@@ -87,18 +101,16 @@ done
 docker build -f tests/e2e/visual.Dockerfile -t hm-visual .
 
 # 6) Run Playwright inside the container against the host stack.
-# The container sees the host DB / Meili via host.docker.internal — the
-# container's DATABASE_URL must be rewritten from the host .env value (which
-# typically uses "localhost" or a docker-network name) to the gateway host.
-# We use a sed shim that swaps the host portion only when present.
-CONTAINER_DB_URL="$(echo "$DATABASE_URL" | sed -E 's#@([^:/]+)#@host.docker.internal#')"
-CONTAINER_MEILI_HOST="$(echo "$MEILI_HOST" | sed -E 's#//([^:/]+)#//host.docker.internal#')"
+# Same LAN-IP rationale as above: the container reaches the host's Postgres/
+# Meili/dev-server at $LAN_IP, which the host ALSO recognizes as itself, so
+# AUTH_OIDC_ISSUER/AUTH_URL match exactly across both ends (no `iss` mismatch).
+CONTAINER_DB_URL="$(echo "$DATABASE_URL" | sed -E "s#@([^:/]+)#@${LAN_IP}#")"
+CONTAINER_MEILI_HOST="$(echo "$MEILI_HOST" | sed -E "s#//([^:/]+)#//${LAN_IP}#")"
 
 docker run --rm \
-  --add-host=host.docker.internal:host-gateway \
   -v "$PWD":/work \
   -v /work/node_modules \
-  -e PLAYWRIGHT_BASE_URL="http://host.docker.internal:3000" \
+  -e PLAYWRIGHT_BASE_URL="http://${LAN_IP}:3000" \
   -e DATABASE_URL="$CONTAINER_DB_URL" \
   -e MEILI_HOST="$CONTAINER_MEILI_HOST" \
   -e MEILI_KEY="$MEILI_KEY" \

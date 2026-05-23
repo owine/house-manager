@@ -48,6 +48,14 @@ test.describe('visual regression + layout heuristics', () => {
         await page.goto(route.path);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        // Hard-fail if sign-in silently failed — otherwise every route would
+        // redirect to /api/auth/signin, heuristics would find nothing on it,
+        // and toHaveScreenshot would record the signin page 48× under route
+        // names. (Asked us once already; never again.)
+        expect(
+          page.url(),
+          `${route.name} [${vp.name}]: redirected to sign-in (auth failed)`,
+        ).not.toMatch(/\/api\/auth\/signin/);
         const offenders = await assertNoLayoutNits(page);
         expect
           .soft(offenders, `${route.name} [${vp.name}] layout nits:\n${formatOffenders(offenders)}`)
@@ -72,6 +80,14 @@ test.describe('visual regression + layout heuristics', () => {
         await page.goto(route.path);
         await page.waitForLoadState('domcontentloaded');
         await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        // Hard-fail if sign-in silently failed — otherwise every route would
+        // redirect to /api/auth/signin, heuristics would find nothing on it,
+        // and toHaveScreenshot would record the signin page 48× under route
+        // names. (Asked us once already; never again.)
+        expect(
+          page.url(),
+          `${route.name} [${vp.name}]: redirected to sign-in (auth failed)`,
+        ).not.toMatch(/\/api\/auth\/signin/);
 
         // /search?q=furnace: the worker indexes the freshly-seeded item into
         // Meili asynchronously after seedPopulated returns. Wait for the
