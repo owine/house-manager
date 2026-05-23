@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
+import { enqueueItemRenameCascade } from '@/lib/embedding/cascade';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -98,6 +99,7 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
   await prisma.item.update({ where: { id }, data });
   await enqueueSearchIndex('item', id, 'upsert');
   await enqueueEmbed('ITEM', id);
+  await enqueueItemRenameCascade(id);
 
   revalidatePath('/items');
   revalidatePath(`/items/${id}`);
