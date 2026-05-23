@@ -65,9 +65,8 @@ ARG PNPM_VERSION=11.1.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 # apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
 # postgresql18-client provides pg_dump for the worker's nightly DB backup job
-# (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; the server is
-# pgvector:pg16 today and a newer client dumps an older server fine, so 18 also
-# future-proofs a later Postgres upgrade.
+# (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
+# pgvector:pg18, matched.
 RUN apk add --no-cache \
   curl=8.19.0-r0 \
   postgresql18-client=18.4-r0 \

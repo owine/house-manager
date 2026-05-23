@@ -9,7 +9,7 @@ export type TestStack = {
 };
 
 export async function startStack(): Promise<TestStack> {
-  const postgres = await new PostgreSqlContainer('pgvector/pgvector:pg16')
+  const postgres = await new PostgreSqlContainer('pgvector/pgvector:pg18')
     .withDatabase('housemanager')
     .withUsername('housemanager')
     .withPassword('test')
