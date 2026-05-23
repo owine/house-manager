@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueVendorRenameCascade } from '@/lib/embedding/cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { createVendorSchema, updateVendorSchema } from './schema';
@@ -60,6 +61,7 @@ export async function updateVendor(input: unknown): Promise<ActionResult<{ id: s
   const { id, ...rest } = parsed.data;
   await prisma.vendor.update({ where: { id }, data: emptyToUndefined(rest) });
   await enqueueSearchIndex('vendor', id, 'upsert');
+  await enqueueVendorRenameCascade(id);
 
   revalidatePath('/vendors');
   revalidatePath(`/vendors/${id}`);

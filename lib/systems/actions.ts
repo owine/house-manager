@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueSystemRenameCascade } from '@/lib/embedding/cascade';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
@@ -51,6 +52,7 @@ export async function updateSystem(input: unknown): Promise<ActionResult<{ id: s
 
   const { id, ...rest } = parsed.data;
   await prisma.system.update({ where: { id }, data: emptyToUndefined(rest) });
+  await enqueueSystemRenameCascade(id);
   revalidateSystemPaths(id);
   return { ok: true, data: { id } };
 }
