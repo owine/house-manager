@@ -14,6 +14,9 @@ export default defineConfig({
     include: [
       'tests/unit/**/*.test.ts',
       'tests/integration/**/*.test.ts',
+      // e2e helpers (e.g. mock-oidc) get pure-unit coverage here. Playwright
+      // specs use `.spec.ts`, so this `.test.ts` glob never collides with them.
+      'tests/e2e/**/*.test.ts',
       'lib/**/*.test.ts',
       'lib/**/*.test.tsx',
       'worker/**/*.test.ts',

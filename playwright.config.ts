@@ -1,5 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
+// When PLAYWRIGHT_BASE_URL is set (the dockerized visual run), the container
+// reuses a host-provided dev server + host-launched mock-OIDC, so Playwright
+// must NOT spawn its own webServer or run globalSetup/teardown. Unset (the
+// existing host-based e2e suite), everything behaves exactly as before.
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
@@ -11,10 +17,10 @@ export default defineConfig({
   // Serialize specs: they share auth tables in one DB, so concurrent OAuth
   // callbacks race on the User row's unique email constraint.
   workers: 1,
-  globalSetup: './tests/e2e/global-setup.ts',
-  globalTeardown: './tests/e2e/global-teardown.ts',
+  globalSetup: process.env.PLAYWRIGHT_BASE_URL ? undefined : './tests/e2e/global-setup.ts',
+  globalTeardown: process.env.PLAYWRIGHT_BASE_URL ? undefined : './tests/e2e/global-teardown.ts',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     headless: true,
     // Capture on first failure (and the retry) so CI artifacts have something
     // useful when a test misbehaves only on the runner.
@@ -22,14 +28,16 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    // The webServer inherits env vars from the process that spawns Playwright,
-    // so AUTH_OIDC_ISSUER=http://localhost:9999 must be set when invoking pnpm test:e2e.
-  },
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: 'pnpm dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+        // The webServer inherits env vars from the process that spawns Playwright,
+        // so AUTH_OIDC_ISSUER=http://localhost:9999 must be set when invoking pnpm test:e2e.
+      },
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });

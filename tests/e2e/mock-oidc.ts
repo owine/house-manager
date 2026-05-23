@@ -1,11 +1,21 @@
 import { createSign, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 
+/**
+ * The issuer the mock-OIDC server advertises. Defaults to
+ * `http://localhost:<port>` (what the host-based e2e suite expects), but can be
+ * overridden via MOCK_OIDC_ISSUER so a dockerized browser can reach the
+ * host-bound server at a host-resolvable URL (e.g. http://host.docker.internal:9999).
+ */
+export function resolveIssuer(port: number): string {
+  return process.env.MOCK_OIDC_ISSUER ?? `http://localhost:${port}`;
+}
+
 export async function startMockOidc(port: number): Promise<{ server: Server; issuer: string }> {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = publicKey.export({ format: 'jwk' });
   const kid = 'test-kid';
-  const issuer = `http://localhost:${port}`;
+  const issuer = resolveIssuer(port);
   const sub = 'test-user-sub';
   const code = randomBytes(16).toString('hex');
 

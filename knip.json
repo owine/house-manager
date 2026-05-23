@@ -18,6 +18,7 @@
   },
   "workspaces": {
     ".": {
+      "entry": ["tests/e2e/start-mock-oidc.ts"],
       "ignore": ["components/ui/**"]
     }
   }

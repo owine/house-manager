@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '25mb',
     },
   },
+  // Allow the local visual-test harness (tests/e2e/run-visual.sh) to access the
+  // dev server via the host's LAN IP. Without this, Next 16 blocks cross-origin
+  // /_next/* asset requests in dev → JS bundle doesn't load → React doesn't
+  // hydrate → forms fall back to plain HTML GET (RHF/server actions broken).
+  // Unset in normal `pnpm dev`, so this is a no-op for everyone else.
+  allowedDevOrigins: process.env.NEXT_ALLOWED_DEV_ORIGIN
+    ? [process.env.NEXT_ALLOWED_DEV_ORIGIN]
+    : undefined,
 };
 
 export default withSentryConfig(nextConfig, {
