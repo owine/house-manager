@@ -13,6 +13,7 @@ import { classifyEmail } from '@/lib/incoming-email/classify';
 import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
+import { enqueueSearchIndex } from '@/lib/search/client';
 
 export type ClassifyIncomingEmailJob = { id: string };
 
@@ -274,6 +275,7 @@ async function autoStub(input: {
       });
       return sr;
     });
+    await enqueueSearchIndex('service', created.id, 'upsert');
     log.info(
       { id: input.rowId, serviceRecordId: created.id },
       'classify-incoming-email: auto-stubbed service record',
