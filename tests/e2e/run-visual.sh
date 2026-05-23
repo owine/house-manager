@@ -47,6 +47,10 @@ fi
 echo "using LAN IP: $LAN_IP (so dev server + container browser see the same URLs)"
 
 export E2E_AUTH_HOST="$LAN_IP"
+# Tell Next 16 dev mode to accept /_next/* requests from the LAN-IP origin.
+# Without this, JS bundles + HMR are blocked → React doesn't hydrate → forms
+# fall back to plain HTML GET (RHF/server-action submits silently broken).
+export NEXT_ALLOWED_DEV_ORIGIN="$LAN_IP"
 # shellcheck disable=SC1091
 source tests/e2e/_env-local.sh
 

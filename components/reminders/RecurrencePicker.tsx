@@ -292,7 +292,7 @@ export function RecurrencePicker({ defaultValue, onChange }: Props) {
 
       <RadioGroup value={state.kind} onValueChange={onKindChange} className="gap-2.5">
         {/* interval */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <RadioGroupItem
             id="recur-interval"
             value="interval"
