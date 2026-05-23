@@ -3,13 +3,14 @@ import rehypeSanitize from 'rehype-sanitize';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 
-// Explicit extended set of invisibles to strip from both ends. `.trim()` per
-// ECMA-262 already handles Unicode WhiteSpace (incl. NBSP, BOM, U+2028/2029,
-// U+3000), but NOT the zero-width format chars U+200B/200C/200D — those are
-// category Cf, not WhiteSpace — so a body starting with a zero-width space
-// (e.g. from a paste) would render as a visible empty-looking leading <p>.
-// Listed exhaustively here for explicit control. Escape sequences (not literal
-// chars) so formatters can't mangle the regex.
+// Strip invisibles from both ends. `\s` covers Unicode WhiteSpace per ECMA-262
+// (incl. NBSP, BOM, U+2028/2029, U+3000) — same set `.trim()` handles — so the
+// load-bearing additions here are the zero-width format chars U+200B/200C/200D
+// (Unicode category Cf, not WhiteSpace), which `.trim()` leaves in place; a
+// body starting with one would render as a visible empty-looking leading <p>.
+// The other explicit code points are belt-and-braces in case a future runtime
+// narrows `\s`. Escape sequences (not literal chars) so formatters can't
+// mangle the regex.
 const INVISIBLE = '\\s\\u00A0\\u200B\\u200C\\u200D\\u2028\\u2029\\u3000\\uFEFF';
 const INVISIBLE_EDGES = new RegExp(`^[${INVISIBLE}]+|[${INVISIBLE}]+$`, 'g');
 
