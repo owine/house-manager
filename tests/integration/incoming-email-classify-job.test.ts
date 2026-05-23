@@ -1,5 +1,52 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+
+let filesDir = '';
+vi.mock('@/lib/env', () => ({
+  getEnv: vi.fn(() => ({ FILES_DIR: filesDir })),
+}));
+
+// Mock the Anthropic client at the boundary so the tests run offline. The
+// mock response is swappable per-test (a parsed_output object, or a function
+// that throws to exercise the heuristic fallback).
+const sentMessages: Array<{ system: unknown; messages: unknown }> = [];
+type MockResp = { parsed_output: unknown; usage?: Record<string, number> } | (() => never);
+let mockResponse: MockResp;
+
+function happyPath(): MockResp {
+  return {
+    parsed_output: {
+      kind: 'INVOICE',
+      vendorId: null,
+      targetItemId: null,
+      targetSystemId: null,
+      confidence: 'high',
+      summary: 'Spring HVAC tune-up',
+      cost: 185.0,
+      performedOn: '2026-04-15',
+      scope: 'Replaced air filter on heat pump. Cleaned condenser coils.',
+      rationale: 'Subject + body clearly identify vendor and kind.',
+    },
+    usage: { input_tokens: 100, output_tokens: 50 },
+  };
+}
+
+vi.mock('@/lib/ai/client', () => ({
+  ANTHROPIC_MODEL: 'claude-haiku-4-5',
+  ANTHROPIC_MAX_TOKENS: 2048,
+  getAnthropic: () => ({
+    messages: {
+      parse: vi.fn(async (input: { system: unknown; messages: unknown }) => {
+        sentMessages.push(input);
+        if (typeof mockResponse === 'function') return (mockResponse as () => never)();
+        return mockResponse;
+      }),
+    },
+  }),
+}));
 
 const sentryCaptured: unknown[] = [];
 vi.mock('@sentry/node', () => ({
@@ -14,14 +61,16 @@ let categoryId: string;
 
 async function makeEmail(args: {
   messageId: string;
-  fromAddress: string;
+  fromAddress?: string;
+  fromName?: string;
   subject: string;
   bodyText?: string;
 }) {
   return ctx.prisma.incomingEmail.create({
     data: {
       messageId: args.messageId,
-      fromAddress: args.fromAddress,
+      fromAddress: args.fromAddress ?? 'billing@acme.example',
+      fromName: args.fromName ?? 'Acme HVAC',
       subject: args.subject,
       bodyText: args.bodyText ?? null,
       receivedAt: new Date('2026-05-08T12:00:00Z'),
@@ -32,6 +81,7 @@ async function makeEmail(args: {
 
 beforeAll(async () => {
   ctx = await setupIntegration();
+  filesDir = mkdtempSync(join(tmpdir(), 'classify-test-'));
   const mod = await import('@/worker/jobs/classify-incoming-email');
   handle = mod.handleClassifyIncomingEmail;
   const cat = await ctx.prisma.category.upsert({
@@ -47,174 +97,234 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  sentMessages.length = 0;
   sentryCaptured.length = 0;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmailTarget.deleteMany();
+  await ctx.prisma.attachment.deleteMany();
   await ctx.prisma.incomingEmail.deleteMany();
+  await ctx.prisma.aISuggestionLog.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.system.deleteMany();
   await ctx.prisma.vendor.deleteMany();
   await ctx.prisma.user.deleteMany();
   await ctx.prisma.user.create({ data: { id: 'u1', email: 'u1@example.com', name: 'U1' } });
+  mockResponse = happyPath();
 });
 
-describe('handleClassifyIncomingEmail', () => {
-  it('auto-stubs a ServiceRecord when kind=TICKET and vendor+item match', async () => {
+describe('handleClassifyIncomingEmail (AI-driven)', () => {
+  it('high-confidence INVOICE w/ vendor+item match → classify, log, auto-stub', async () => {
     const v = await ctx.prisma.vendor.create({
-      data: { name: 'Acme HVAC', email: 'dispatch@acme.example' },
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
     });
-    const item = await ctx.prisma.item.create({
-      data: { name: 'Heat Pump', categoryId },
-    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 'Heat pump spring tune-up',
+        cost: 185.0,
+        performedOn: '2026-04-15',
+        scope: 'Replaced air filter; cleaned coils.',
+        rationale: 'Clear invoice from known vendor.',
+      },
+      usage: { input_tokens: 100, output_tokens: 50 },
+    };
     const e = await makeEmail({
-      messageId: '<auto1@a>',
-      fromAddress: 'dispatch@acme.example',
-      subject: 'Service report — Heat Pump tune-up complete',
-      bodyText: 'All readings normal.',
+      messageId: '<inv1@a>',
+      subject: 'Invoice #5512 for Heat Pump service',
+      bodyText: 'Amount due $185.',
     });
 
     await handle([{ data: { id: e.id } }]);
 
     const after = await ctx.prisma.incomingEmail.findUnique({
       where: { id: e.id },
-      include: {
-        targets: true,
-        createdServiceRecord: { include: { targets: true } },
-      },
+      include: { targets: true, createdServiceRecord: { include: { targets: true } } },
     });
-    expect(after?.kind).toBe('TICKET');
+    expect(after?.kind).toBe('INVOICE');
     expect(after?.vendorId).toBe(v.id);
     expect(after?.targets).toHaveLength(1);
     expect(after?.targets[0].itemId).toBe(item.id);
     expect(after?.state).toBe('AUTO_LINKED');
+    expect(after?.aiExtractedSummary).toBe('Heat pump spring tune-up');
+    expect(after?.aiExtractedCost?.toString()).toBe('185');
+    expect(after?.aiExtractedPerformedOn?.toISOString()).toBe('2026-04-15T00:00:00.000Z');
+    expect(after?.aiExtractedScope).toContain('air filter');
+    expect(after?.aiExtractedAt).not.toBeNull();
+
     expect(after?.createdServiceRecord).not.toBeNull();
-    expect(after?.createdServiceRecord?.summary).toBe(
-      'Service report — Heat Pump tune-up complete',
-    );
+    expect(after?.createdServiceRecord?.summary).toBe('Heat pump spring tune-up');
+    expect(after?.createdServiceRecord?.notes).toBe('Replaced air filter; cleaned coils.');
+    expect(after?.createdServiceRecord?.vendorId).toBe(v.id);
+    expect(after?.createdServiceRecord?.performedOn.toISOString()).toBe('2026-04-15T00:00:00.000Z');
     expect(after?.createdServiceRecord?.targets).toHaveLength(1);
     expect(after?.createdServiceRecord?.targets[0].itemId).toBe(item.id);
+
+    const logs = await ctx.prisma.aISuggestionLog.findMany({
+      where: { kind: 'incoming-email-classify' },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].errorReason).toBeNull();
+    expect(logs[0].inputTokens).toBe(100);
   });
 
-  it('auto-stubs against system target when only system matches', async () => {
-    await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
+  it('medium confidence → classify + aiExtracted set, but NO auto-stub', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
     });
-    const sys = await ctx.prisma.system.create({ data: { name: 'HVAC' } });
-    const e = await makeEmail({
-      messageId: '<auto2@a>',
-      fromAddress: 'dispatch@acme.example',
-      subject: 'Service ticket — HVAC annual visit',
-    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'medium',
+        summary: 'Heat pump service',
+        cost: 185.0,
+        performedOn: '2026-04-15',
+        scope: 'Some work.',
+        rationale: 'Vendor inferred.',
+      },
+      usage: { input_tokens: 10, output_tokens: 5 },
+    };
+    const e = await makeEmail({ messageId: '<med@a>', subject: 'Invoice for Heat Pump' });
+
     await handle([{ data: { id: e.id } }]);
+
     const after = await ctx.prisma.incomingEmail.findUnique({
       where: { id: e.id },
-      include: {
-        targets: true,
-        createdServiceRecord: { include: { targets: true } },
-      },
+      include: { targets: true },
     });
-    expect(after?.targets[0].systemId).toBe(sys.id);
-    expect(after?.targets[0].itemId).toBeNull();
-    expect(after?.createdServiceRecord?.targets[0].systemId).toBe(sys.id);
-    expect(after?.createdServiceRecord?.targets[0].itemId).toBeNull();
-  });
-
-  it('classifies as INVOICE without auto-stubbing (only TICKET stubs)', async () => {
-    const v = await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'billing@acme.example' },
-    });
-    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
-    const e = await makeEmail({
-      messageId: '<inv@a>',
-      fromAddress: 'billing@acme.example',
-      subject: 'Invoice #5512 for Heat Pump service',
-    });
-    await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
     expect(after?.kind).toBe('INVOICE');
     expect(after?.vendorId).toBe(v.id);
-    expect(after?.state).toBe('AUTO_LINKED');
+    expect(after?.targets[0].itemId).toBe(item.id);
+    expect(after?.aiExtractedSummary).toBe('Heat pump service');
+    expect(after?.aiExtractedAt).not.toBeNull();
     expect(after?.createdServiceRecordId).toBeNull();
+    const srCount = await ctx.prisma.serviceRecord.count();
+    expect(srCount).toBe(0);
   });
 
-  it('leaves UNTRIAGED with no FKs when nothing matches', async () => {
-    const e = await makeEmail({
-      messageId: '<un@a>',
-      fromAddress: 'spam@unknown.example',
-      subject: 'Hello there',
-    });
-    await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
-    expect(after?.kind).toBe('UNKNOWN');
-    expect(after?.vendorId).toBeNull();
-    expect(after?.state).toBe('UNTRIAGED');
-    expect(after?.createdServiceRecordId).toBeNull();
-  });
+  it('hallucinated vendorId → persisted null, no auto-stub', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'TICKET',
+        vendorId: 'vendor-that-does-not-exist',
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 'work',
+        cost: null,
+        performedOn: null,
+        scope: 'did work',
+        rationale: 'hallucinated vendor',
+      },
+      usage: { input_tokens: 10, output_tokens: 5 },
+    };
+    const e = await makeEmail({ messageId: '<hall@a>', subject: 'Service report — Heat Pump' });
 
-  it('handles a vendor match without item/system match (kind=TICKET, no auto-stub)', async () => {
-    const v = await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
-    });
-    const e = await makeEmail({
-      messageId: '<vonly@a>',
-      fromAddress: 'dispatch@acme.example',
-      subject: 'Service report — annual visit',
-    });
     await handle([{ data: { id: e.id } }]);
+
     const after = await ctx.prisma.incomingEmail.findUnique({
       where: { id: e.id },
       include: { targets: true },
     });
     expect(after?.kind).toBe('TICKET');
-    expect(after?.vendorId).toBe(v.id);
-    expect(after?.targets).toHaveLength(0);
+    expect(after?.vendorId).toBeNull();
+    expect(after?.targets[0].itemId).toBe(item.id);
+    // No vendor → shouldAutoStub false.
     expect(after?.createdServiceRecordId).toBeNull();
+    const srCount = await ctx.prisma.serviceRecord.count();
+    expect(srCount).toBe(0);
   });
 
-  it('does not double-stub when re-run on an already-stubbed row', async () => {
-    await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
+  it('AI throws → heuristic fallback runs + error log written + no crash', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'dispatch@acme.example' },
     });
-    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = () => {
+      throw Object.assign(new Error('rate limited'), { status: 429 });
+    };
+    // Seed so the heuristic CAN match: vendor email = sender, subject has
+    // "service ticket" + item name in body.
     const e = await makeEmail({
-      messageId: '<rerun@a>',
+      messageId: '<fallback@a>',
       fromAddress: 'dispatch@acme.example',
-      subject: 'Service report — Heat Pump',
+      subject: 'Service ticket — visit complete',
+      bodyText: 'Performed maintenance on the Heat Pump today.',
     });
-    // First run creates a draft.
-    await handle([{ data: { id: e.id } }]);
-    const after1 = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
-    const firstSrId = after1?.createdServiceRecordId;
-    expect(firstSrId).not.toBeNull();
-    // Second run must not create a second one.
-    await handle([{ data: { id: e.id } }]);
-    const after2 = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
-    expect(after2?.createdServiceRecordId).toBe(firstSrId);
-    const srCount = await ctx.prisma.serviceRecord.count();
-    expect(srCount).toBe(1);
+
+    await expect(handle([{ data: { id: e.id } }])).resolves.toBeUndefined();
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true, createdServiceRecord: { include: { targets: true } } },
+    });
+    // Heuristic result.
+    expect(after?.kind).toBe('TICKET');
+    expect(after?.vendorId).toBe(v.id);
+    expect(after?.targets[0].itemId).toBe(item.id);
+    expect(after?.state).toBe('AUTO_LINKED');
+    // No AI extraction on the fallback path.
+    expect(after?.aiExtractedAt).toBeNull();
+    expect(after?.aiExtractedSummary).toBeNull();
+    // Heuristic TICKET + vendor + target → auto-stub.
+    expect(after?.createdServiceRecord).not.toBeNull();
+    expect(after?.createdServiceRecord?.targets[0].itemId).toBe(item.id);
+
+    // An error AISuggestionLog row with errorReason set.
+    const logs = await ctx.prisma.aISuggestionLog.findMany({
+      where: { kind: 'incoming-email-classify' },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].errorReason).toBe('rate_limited');
+    expect(logs[0].response).toBeNull();
+    expect(sentryCaptured).toHaveLength(1);
   });
 
   it('skips a missing row without throwing', async () => {
     await expect(handle([{ data: { id: 'does-not-exist' } }])).resolves.toBeUndefined();
+    expect(sentMessages).toHaveLength(0);
   });
 
   it('preserves user-set LINKED state instead of downgrading on re-run', async () => {
     const v = await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
     });
     const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'TICKET',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 's',
+        cost: null,
+        performedOn: null,
+        scope: 's',
+        rationale: 'r',
+      },
+      usage: {},
+    };
     const sr = await ctx.prisma.serviceRecord.create({
       data: { performedOn: new Date(), summary: 'manual draft' },
     });
     const e = await ctx.prisma.incomingEmail.create({
       data: {
         messageId: '<linked@a>',
-        fromAddress: 'dispatch@acme.example',
+        fromAddress: 'billing@acme.example',
         subject: 'Service report — Heat Pump',
         receivedAt: new Date(),
         headersJson: {},
-        // User already triaged manually; classifier re-run must not reset.
         state: 'LINKED',
         vendorId: v.id,
         createdServiceRecordId: sr.id,
@@ -229,78 +339,99 @@ describe('handleClassifyIncomingEmail', () => {
       include: { targets: true },
     });
     expect(after?.state).toBe('LINKED');
-    // Metadata still refreshes on re-run; only state and user-set targets are preserved.
+    // Metadata still refreshes; only state + user-set targets preserved.
     expect(after?.kind).toBe('TICKET');
     expect(after?.targets).toHaveLength(1);
     expect(after?.targets[0].itemId).toBe(item.id);
+    // Already linked → no second ServiceRecord.
+    const srCount = await ctx.prisma.serviceRecord.count();
+    expect(srCount).toBe(1);
   });
+});
 
-  it('preserves ARCHIVED state on re-run', async () => {
-    const e = await ctx.prisma.incomingEmail.create({
+// PDF attachments are loaded by loadPdfAttachments() and forwarded to the
+// (mocked) Anthropic call as `document` content blocks ahead of the user-text
+// block. These cases (ported from the now-removed extract-job test) verify
+// the size caps and mime gating that bound token usage.
+describe('handleClassifyIncomingEmail — PDF attachments', () => {
+  it('attaches PDF documents as content blocks when present', async () => {
+    const e = await makeEmail({ messageId: '<pdf1@a>', subject: 'Invoice #4827' });
+    const pdfDir = join(filesDir, 'pdfs', e.id);
+    mkdirSync(pdfDir, { recursive: true });
+    const pdfPath = join('pdfs', e.id, 'invoice.pdf');
+    writeFileSync(join(filesDir, pdfPath), Buffer.from('%PDF-1.4 fake'));
+    await ctx.prisma.attachment.create({
       data: {
-        messageId: '<archived@a>',
-        fromAddress: 'spam@unknown.example',
-        subject: 'Hello',
-        receivedAt: new Date(),
-        headersJson: {},
-        state: 'ARCHIVED',
-        archivedAt: new Date(),
+        incomingEmailId: e.id,
+        filename: 'invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 13,
+        storagePath: pdfPath,
+        uploadedById: 'u1',
       },
     });
+
     await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
-    expect(after?.state).toBe('ARCHIVED');
+
+    expect(sentMessages).toHaveLength(1);
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{
+      type: string;
+      source?: { media_type: string };
+    }>;
+    // Documents come first (Anthropic recommends docs before instruction text),
+    // then the user-text block.
+    expect(content[0].type).toBe('document');
+    expect(content[0].source?.media_type).toBe('application/pdf');
+    expect(content.at(-1)?.type).toBe('text');
   });
 
-  it('truncates summary to 200 chars when subject is very long', async () => {
-    await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
+  it('skips non-PDF attachments (images etc.)', async () => {
+    const e = await makeEmail({ messageId: '<img@a>', subject: 'Invoice #4827' });
+    const dir = join(filesDir, 'imgs', e.id);
+    mkdirSync(dir, { recursive: true });
+    const path = join('imgs', e.id, 'photo.jpg');
+    writeFileSync(join(filesDir, path), Buffer.from([0xff, 0xd8, 0xff]));
+    await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 3,
+        storagePath: path,
+        uploadedById: 'u1',
+      },
     });
-    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
-    const longSubject = `Service report — Heat Pump tune-up complete: ${'x'.repeat(500)}`;
-    const e = await makeEmail({
-      messageId: '<long@a>',
-      fromAddress: 'dispatch@acme.example',
-      subject: longSubject,
-    });
+
     await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({
-      where: { id: e.id },
-      include: { createdServiceRecord: true },
-    });
-    expect(after?.createdServiceRecord?.summary.length).toBe(200);
-    expect(after?.createdServiceRecord?.summary).toBe(longSubject.slice(0, 200));
+
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{ type: string }>;
+    expect(content.filter((c) => c.type === 'document')).toHaveLength(0);
+    expect(content.some((c) => c.type === 'text')).toBe(true);
   });
 
-  it('uses "(no subject)" placeholder when subject is empty/whitespace', async () => {
-    await ctx.prisma.vendor.create({
-      data: { name: 'Acme', email: 'dispatch@acme.example' },
+  it('skips PDFs over the 10MB per-file cap', async () => {
+    const e = await makeEmail({ messageId: '<huge@a>', subject: 'Invoice #4827' });
+    const dir = join(filesDir, 'pdfs', e.id);
+    mkdirSync(dir, { recursive: true });
+    const path = join('pdfs', e.id, 'huge.pdf');
+    writeFileSync(join(filesDir, path), Buffer.from('%PDF-1.4'));
+    await ctx.prisma.attachment.create({
+      data: {
+        incomingEmailId: e.id,
+        filename: 'huge.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 11 * 1024 * 1024, // > MAX_PDF_BYTES; sizeBytes drives the gate
+        storagePath: path,
+        uploadedById: 'u1',
+      },
     });
-    await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
-    // Empty subject won't trigger TICKET kind, so put the trigger in body.
-    const e = await makeEmail({
-      messageId: '<empty@a>',
-      fromAddress: 'dispatch@acme.example',
-      subject: '   ',
-      bodyText: 'Service report from today: replaced filter on Heat Pump.',
-    });
-    await handle([{ data: { id: e.id } }]);
-    const after = await ctx.prisma.incomingEmail.findUnique({
-      where: { id: e.id },
-      include: { createdServiceRecord: true },
-    });
-    expect(after?.createdServiceRecord?.summary).toBe('(no subject)');
-  });
 
-  // NOTE: The Sentry-on-failure path (try/catch around the $transaction in
-  // worker/jobs/classify-incoming-email.ts) is intentionally not covered by an
-  // integration test here. The integration helper uses its own PrismaClient
-  // (ctx.prisma) while the worker imports its own from @/lib/db, so spies on
-  // ctx.prisma don't intercept the worker's queries. Forcing a real DB-level
-  // failure mid-transaction would require either coordinated FK manipulation
-  // or a vi.mock('@/lib/db') stub mirroring the worker's full client usage —
-  // both add more infrastructure than the small try/catch block deserves.
-  // The behavior is unit-trivial (catch → Sentry.captureException → don't
-  // rethrow) and the surrounding tests confirm classification metadata
-  // persists before the auto-stub attempt.
+    await handle([{ data: { id: e.id } }]);
+
+    const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
+    const content = sent.messages[0].content as Array<{ type: string }>;
+    expect(content.filter((c) => c.type === 'document')).toHaveLength(0);
+  });
 });

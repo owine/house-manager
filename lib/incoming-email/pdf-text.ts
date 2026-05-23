@@ -23,9 +23,10 @@ const MAX_CONCAT_CHARS = 5000; // hard cap on returned text length
  * for any reason — callers always have the original `bodyText` to fall
  * back on.
  *
- * Intentionally separate from `worker/jobs/extract-incoming-email.ts`'s
- * `loadPdfAttachments` helper: that one base64-encodes for Anthropic, this
- * one decodes to text via `unpdf` for cheap regex matching. No network calls.
+ * Intentionally separate from `lib/incoming-email/pdf-attachments.ts`'s
+ * `loadPdfAttachments` helper (used by the classify job): that one
+ * base64-encodes for Anthropic, this one decodes to text via `unpdf` for
+ * cheap regex matching. No network calls.
  */
 export async function loadPdfTextForEmail(emailId: string): Promise<string> {
   const rows = await prisma.attachment.findMany({

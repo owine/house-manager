@@ -55,21 +55,10 @@ export default async function InboxDetailPage({ params }: { params: Promise<{ id
       </Card>
 
       {/* AI-extracted summary / cost / date / scope, populated by the
-          extract worker for TICKET / INVOICE / ESTIMATE kinds. Used to
+          classify worker for TICKET / INVOICE / ESTIMATE kinds. Used to
           seed the new ServiceRecord on Create. */}
       {(email.kind === 'TICKET' || email.kind === 'INVOICE' || email.kind === 'ESTIMATE') &&
-        email.archivedAt === null && (
-          <ExtractedFieldsCard
-            emailId={email.id}
-            extraction={selectExtraction(email)}
-            canReextract={
-              email.archivedAt === null &&
-              (email.state === 'UNTRIAGED' ||
-                email.state === 'AUTO_LINKED' ||
-                email.state === 'LINKED')
-            }
-          />
-        )}
+        email.archivedAt === null && <ExtractedFieldsCard extraction={selectExtraction(email)} />}
 
       <Card>
         <CardHeader>

@@ -187,29 +187,6 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
 }
 
 /**
- * Re-enqueues the extract job for one email. Useful when the user adjusts
- * the body or wants to retry after an extraction failure. The worker is
- * idempotent — overwrites existing aiExtracted* fields with fresh values.
- */
-export async function reextractIncomingEmail(input: unknown): Promise<ActionResult<void>> {
-  const u = await requireUser();
-  if (!u) return { ok: false, formError: 'Unauthorized' };
-  const parsed = reclassifySchema.safeParse(input);
-  if (!parsed.success) return { ok: false, formError: 'Invalid input' };
-
-  const exists = await prisma.incomingEmail.findUnique({
-    where: { id: parsed.data.id },
-    select: { id: true },
-  });
-  if (!exists) return { ok: false, formError: 'Not found' };
-
-  const boss = await getBoss();
-  await boss.send(Queue.ExtractIncomingEmail, { id: parsed.data.id });
-  log.info({ id: parsed.data.id, by: u.id }, 'incoming-email: re-extract enqueued');
-  return { ok: true, data: undefined };
-}
-
-/**
  * Creates a draft `ServiceRecord` from an incoming email and links it back via
  * `IncomingEmail.createdServiceRecordId`. Only fires when no draft already
  * exists for this email; the caller (UI) gates the button on the same.
