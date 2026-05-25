@@ -97,7 +97,7 @@ export function ReminderForm({
   const formError = (errors as { root?: { message?: string } }).root?.message;
 
   const onSubmit = handleSubmit((data) => {
-    if (targets.length === 0) {
+    if (!isChore && targets.length === 0) {
       setTargetsError('Select at least one item or system');
       return;
     }
@@ -165,7 +165,7 @@ export function ReminderForm({
         />
 
         <FormItem>
-          <FormLabel>Targets</FormLabel>
+          <FormLabel>{isChore ? 'Linked items / systems (optional)' : 'Targets'}</FormLabel>
           <TargetsPicker
             value={targets}
             onChange={handleTargetsChange}

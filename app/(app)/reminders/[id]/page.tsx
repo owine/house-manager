@@ -40,7 +40,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
         <span className="text-muted-foreground">{describeRecurrence(recurrence)}</span>
-        {r.targets.length > 0 && (
+        {r.targets.some((t) => t.item !== null || t.system !== null) && (
           <span className="flex items-center gap-2 text-muted-foreground">
             for <TargetsChips targets={r.targets} />
           </span>

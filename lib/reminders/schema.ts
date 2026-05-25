@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { targetsArraySchema } from '@/lib/targets/schema';
+import { targetSchema } from '@/lib/targets/schema';
+
+function partialOf<T extends Record<string, z.ZodTypeAny>>(shape: T) {
+  return Object.fromEntries(Object.entries(shape).map(([k, v]) => [k, v.optional()])) as {
+    [K in keyof T]: z.ZodOptional<T[K]>;
+  };
+}
 
 const weekdaysSchema = z
   .array(z.number().int().min(0).max(6))
@@ -135,30 +141,70 @@ export function parseRecurrence(json: unknown): Recurrence {
 // same table with the same recurrence + targets shape).
 //
 // Values match the Prisma `ReminderKind` enum verbatim so passthrough
-// to the DB needs no remapping.
-const reminderKindSchema = z.enum(['REMINDER', 'CHORE']);
+// to the DB needs no remapping. The literals are inlined directly into
+// each discriminated-union arm below.
 
-export const createReminderSchema = z.object({
+// Reminder-specific cardinality. Reminders require ≥1 item/system link
+// (asset-centric, notify). Chores may have 0..N links (task-centric;
+// a linkless chore gets a "standalone" ReminderTarget row created
+// server-side — see lib/reminders/actions.ts reconciliation).
+const remindersTargetsSchema = z.array(targetSchema).min(1);
+const choresTargetsSchema = z.array(targetSchema);
+
+const baseReminderShape = {
   title: z.string().min(1).max(200),
   description: z.string().max(20_000).optional().or(z.literal('')),
-  targets: targetsArraySchema,
   recurrence: recurrenceSchema,
   nextDueOn: z.coerce.date(),
   leadTimeDays: z.number().int().min(0).max(365).default(3),
   autoCreateServiceRecord: z.boolean().default(false),
   notifyUserIds: z.array(z.string().min(1)).optional(),
-  kind: reminderKindSchema.default('REMINDER'),
-});
+} as const;
+
+// Discriminated union on `kind`. The discriminator can't carry a default,
+// so callers MUST pass `kind` explicitly (was: `.default('REMINDER')`).
+export const createReminderSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...baseReminderShape,
+    kind: z.literal('REMINDER'),
+    targets: remindersTargetsSchema,
+  }),
+  z.object({
+    ...baseReminderShape,
+    kind: z.literal('CHORE'),
+    targets: choresTargetsSchema,
+  }),
+]);
 
 export type CreateReminderInput = z.infer<typeof createReminderSchema>;
 
-export const updateReminderSchema = createReminderSchema.partial().extend({
-  id: z.string().min(1),
-  active: z.boolean().optional(),
-  // Override the `.default('REMINDER')` from createReminderSchema so an
-  // update that omits `kind` doesn't silently flip a CHORE back to REMINDER.
-  kind: reminderKindSchema.optional(),
-});
+// 3-variant union for updates: explicit REMINDER, explicit CHORE, or
+// kind-omitted (no kind change, no targets-cardinality opinion). The
+// `kind: undefined` arm keeps existing callers working that patch
+// fields without touching kind.
+export const updateReminderSchema = z.discriminatedUnion('kind', [
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal('REMINDER'),
+    targets: remindersTargetsSchema.optional(),
+    active: z.boolean().optional(),
+    ...partialOf(baseReminderShape),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal('CHORE'),
+    targets: choresTargetsSchema.optional(),
+    active: z.boolean().optional(),
+    ...partialOf(baseReminderShape),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.undefined().optional(),
+    targets: z.undefined().optional(),
+    active: z.boolean().optional(),
+    ...partialOf(baseReminderShape),
+  }),
+]);
 
 // Per-target completion. `targetIds` selects which targets to mark complete;
 // each one becomes its own ReminderCompletion row and advances its target's
