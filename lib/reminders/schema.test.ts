@@ -28,6 +28,7 @@ describe('createReminderSchema', () => {
       nextDueOn: new Date(),
       leadTimeDays: 3,
       autoCreateServiceRecord: false,
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(true);
   });
@@ -38,6 +39,7 @@ describe('createReminderSchema', () => {
       targets: [{ itemId: 'cuid-1' }, { systemId: 'cuid-sys-1' }],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(true);
   });
@@ -47,6 +49,7 @@ describe('createReminderSchema', () => {
       targets: [{ itemId: 'cuid-1' }],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(false);
   });
@@ -57,6 +60,7 @@ describe('createReminderSchema', () => {
       targets: [],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(false);
   });
@@ -67,6 +71,7 @@ describe('createReminderSchema', () => {
       targets: [{ itemId: 'i', systemId: 's' }],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(false);
   });
@@ -77,6 +82,7 @@ describe('createReminderSchema', () => {
       targets: [{}],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(false);
   });
@@ -88,19 +94,21 @@ describe('createReminderSchema', () => {
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
       leadTimeDays: -1,
+      kind: 'REMINDER',
     });
     expect(r.success).toBe(false);
   });
 
-  it('defaults kind to REMINDER when omitted', () => {
+  // Was: "defaults kind to REMINDER when omitted". After the discriminated-union
+  // split, kind is required on create — callers must pass it explicitly.
+  it('rejects create when kind is omitted (discriminator is required)', () => {
     const r = createReminderSchema.safeParse({
       title: 'X',
       targets: [{ itemId: 'cuid-1' }],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       nextDueOn: new Date(),
     });
-    expect(r.success).toBe(true);
-    if (r.success) expect(r.data.kind).toBe('REMINDER');
+    expect(r.success).toBe(false);
   });
 
   it('accepts kind=CHORE', () => {
@@ -125,6 +133,49 @@ describe('createReminderSchema', () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it('accepts a chore with zero targets', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'Take out the trash',
+      targets: [],
+      recurrence: { kind: 'weekly', weekdays: [1], interval: 1 },
+      nextDueOn: new Date(),
+      kind: 'CHORE',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a chore with one item target', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'Run dishwasher cleaner',
+      targets: [{ itemId: 'cuid-1' }],
+      recurrence: { kind: 'interval', every: 30, unit: 'day' },
+      nextDueOn: new Date(),
+      kind: 'CHORE',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a reminder with zero targets (existing rule preserved)', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'HVAC filter',
+      targets: [],
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
+      nextDueOn: new Date(),
+      kind: 'REMINDER',
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects when kind is omitted and targets are empty (kind required, no chore loophole)', () => {
+    const r = createReminderSchema.safeParse({
+      title: 'HVAC filter',
+      targets: [],
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
+      nextDueOn: new Date(),
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe('updateReminderSchema', () => {
@@ -138,6 +189,21 @@ describe('updateReminderSchema', () => {
     const r = updateReminderSchema.safeParse({ id: 'cuid-1', kind: 'CHORE' });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.kind).toBe('CHORE');
+  });
+
+  it('accepts a chore update with empty targets', () => {
+    const r = updateReminderSchema.safeParse({ id: 'cuid-r', targets: [], kind: 'CHORE' });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a reminder update that supplies empty targets', () => {
+    const r = updateReminderSchema.safeParse({ id: 'cuid-r', targets: [], kind: 'REMINDER' });
+    expect(r.success).toBe(false);
+  });
+
+  it('still allows an update that omits targets entirely (no targets change)', () => {
+    const r = updateReminderSchema.safeParse({ id: 'cuid-r', title: 'Renamed' });
+    expect(r.success).toBe(true);
   });
 });
 
