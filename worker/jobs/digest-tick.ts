@@ -29,26 +29,22 @@ async function maybeSend(
   appUrl: string,
   timezone: string,
 ): Promise<void> {
-  // Write-log-first-then-catch: the unique constraint is the dedup primitive.
+  // Write-log-first via INSERT ... ON CONFLICT DO NOTHING: the unique
+  // constraint is the dedup primitive. createMany+skipDuplicates compiles to
+  // ON CONFLICT DO NOTHING, so the no-op case doesn't emit a unique-violation
+  // error to Postgres or Prisma logs (unlike a plain create+catch-P2002).
   // Initial status 'queued' (mirrors notify.ts) so a crash between create and
   // update doesn't leave a misleading 'sent' row.
-  let logId: string;
-  try {
-    const log = await prisma.digestLog.create({
-      data: { userId, kind, cycle, status: 'queued' },
-      select: { id: true },
-    });
-    logId = log.id;
-  } catch (err) {
-    // P2002 = unique-constraint violation = already handled this (userId, kind,
-    // cycle) — the normal dedup path. Anything else is an unexpected DB error:
-    // log it (don't silently drop the digest) and skip this one.
-    if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
-      return;
-    }
-    console.error(`digest-tick: failed to create DigestLog for ${userId}/${kind}/${cycle}:`, err);
-    return;
-  }
+  const created = await prisma.digestLog.createMany({
+    data: [{ userId, kind, cycle, status: 'queued' }],
+    skipDuplicates: true,
+  });
+  if (created.count === 0) return; // already handled this (userId, kind, cycle)
+  const log = await prisma.digestLog.findUniqueOrThrow({
+    where: { userId_kind_cycle: { userId, kind, cycle } },
+    select: { id: true },
+  });
+  const logId = log.id;
   const items =
     kind === 'overdue'
       ? await getOverdueForUser(userId, timezone)
@@ -94,30 +90,19 @@ export async function handleDigestTick(): Promise<void> {
         const skips: Array<[DigestKind, string]> = [];
         if (overdueDue) skips.push(['overdue', local.date]);
         if (weeklyDue) skips.push(['weekly', local.week]);
-        for (const [kind, cycle] of skips) {
-          try {
-            await prisma.digestLog.create({
-              data: {
-                userId: u.id,
-                kind,
-                cycle,
-                status: 'skipped',
-                errorReason: 'APP_URL not configured',
-              },
-            });
-          } catch (err) {
-            // P2002 = already logged this (userId, kind, cycle) — expected.
-            // Surface anything else so a real DB problem isn't hidden in the
-            // audit table (matches the dedup catch in maybeSend).
-            if (!(err && typeof err === 'object' && 'code' in err && err.code === 'P2002')) {
-              console.error(
-                `digest-tick: failed to log APP_URL skip for ${u.id}/${kind}/${cycle}:`,
-                err,
-              );
-            }
-          }
-        }
         if (skips.length > 0) {
+          // ON CONFLICT DO NOTHING — silent no-op when the row already exists,
+          // so we don't emit a unique-violation error per skipped hour.
+          await prisma.digestLog.createMany({
+            data: skips.map(([kind, cycle]) => ({
+              userId: u.id,
+              kind,
+              cycle,
+              status: 'skipped' as const,
+              errorReason: 'APP_URL not configured',
+            })),
+            skipDuplicates: true,
+          });
           console.warn(
             `digest-tick: APP_URL not configured; skipped ${skips.length} digest(s) for user ${u.id}`,
           );
