@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.24.0@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 
-FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS base
+FROM node:24.16.0-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14 AS base
 # renovate: datasource=npm depName=pnpm
 # Must match package.json "packageManager" exactly — otherwise corepack will
 # auto-fetch the package.json-pinned version at container start (which fails
@@ -62,7 +62,7 @@ RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
 RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
-FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS runtime
+FROM node:24.16.0-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14 AS runtime
 # renovate: datasource=npm depName=pnpm
 # Keep in sync with the base stage and package.json "packageManager" — see
 # comment on the base stage's PNPM_VERSION arg.
