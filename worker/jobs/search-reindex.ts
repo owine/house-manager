@@ -19,9 +19,26 @@ export async function handleSearchReindex(): Promise<{
   const idx = searchIndex();
   let lastTaskUid: number | null = null;
 
-  // deleteIndex may 404 if the index was never created; ignore.
-  await meili.deleteIndex(SEARCH_INDEX_NAME).catch(() => {});
-  lastTaskUid = (await meili.createIndex(SEARCH_INDEX_NAME, { primaryKey: 'id' })).taskUid;
+  // Rebuild in place rather than drop+recreate: createIndex/deleteIndex are
+  // async Meili tasks, and enqueuing them back-to-back without awaiting the
+  // delete races the create against the not-yet-deleted index, producing
+  // "Index `house` already exists." in Meili's scheduler log. deleteAllDocuments
+  // gives the same end state and leaves settings (which we re-assert below)
+  // untouched in between.
+  let exists = true;
+  try {
+    await meili.getIndex(SEARCH_INDEX_NAME);
+  } catch (e) {
+    if ((e as { cause?: { code?: string } }).cause?.code === 'index_not_found') exists = false;
+    else throw e;
+  }
+  if (exists) {
+    lastTaskUid = (await idx.deleteAllDocuments()).taskUid;
+  } else {
+    const t = await meili.createIndex(SEARCH_INDEX_NAME, { primaryKey: 'id' });
+    await meili.tasks.waitForTask(t.taskUid);
+    lastTaskUid = t.taskUid;
+  }
   lastTaskUid = (
     await idx.updateSettings(INDEX_SETTINGS as unknown as Parameters<typeof idx.updateSettings>[0])
   ).taskUid;
