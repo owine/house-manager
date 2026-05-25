@@ -54,14 +54,18 @@ No data backfill — existing chores keep their links. The new shape is only ava
 
 The Prisma schema needs no model change; `itemId` / `systemId` are already `String?`. Per the [Prisma migration drift](memory:feedback_prisma_migration_drift) note, the migration is hand-written to swap the CHECK constraint without dropping the surrounding pgvector indexes.
 
-### `lib/targets/schema.ts`
+### Reminder-specific target validators
 
-Split the validator:
+Keep `lib/targets/schema.ts` (`targetSchema`, `targetsArraySchema`) untouched — it's shared with service records, warranties, and incoming-email link picking, all of which still want the strict "exactly one of itemId/systemId, ≥1 row" rules. The per-row `.refine` on `targetSchema` also stays as-is.
 
-- `remindersTargetsSchema = z.array(targetInputSchema).min(1, …)` — current behavior.
-- `choresTargetsSchema = z.array(targetInputSchema).min(0)` — new.
+Define the reminders split in `lib/reminders/schema.ts` (next to the existing `createReminderSchema`):
 
-Call sites pick the right one based on `kind`.
+- `remindersTargetsSchema = z.array(targetSchema).min(1, …)` — current behavior.
+- `choresTargetsSchema = z.array(targetSchema).min(0)` — new.
+
+Both build on the unchanged shared `targetSchema`, so the per-row "exactly one of itemId/systemId" refine still applies to every row submitted by the form. The standalone (both-NULL) row is **never produced by zod** — it's injected server-side after parse (see next section), bypassing the per-row refine by construction.
+
+Call sites pick the right array schema based on `kind` via the discriminated union below.
 
 ### `lib/reminders/schema.ts`
 
@@ -83,7 +87,12 @@ const reconciledTargets =
     : parsedTargets;
 ```
 
-On update, if transitioning chore from "links" → "no links", delete the link rows and create a single standalone row; if "no links" → "links", delete the standalone row before inserting the new link rows. Preserve `lastCompletedOn` / `nextDueOn` from whichever row existed if there's only one (best-effort continuity for the chore's schedule).
+On update, transitions between linked and standalone shapes follow these rules:
+
+- **Links → standalone** (any N>0 link rows → 0 user-submitted targets): delete all link rows, create one standalone row. The standalone row inherits `lastCompletedOn` / `nextDueOn` from the **most recently completed** link row (max `lastCompletedOn`, NULLs last); if no link row was ever completed, inherit from the row with the **earliest `nextDueOn`** (preserves the "next thing due" semantic). If neither is defined, the standalone row starts fresh from the reminder's recurrence anchor.
+- **Standalone → links** (1 standalone row → N>0 user-submitted targets): the standalone row's `lastCompletedOn` / `nextDueOn` seed **every** newly-inserted link row (each link row inherits the same schedule snapshot), then the standalone row is deleted. This avoids resetting the chore's schedule when the user belatedly tags it with assets.
+- **Standalone → standalone** (no link rows submitted, standalone already exists): no-op on the target table; only the reminder row's metadata (title, recurrence, etc.) updates.
+- **Links → links**: existing behavior, unchanged.
 
 ### `components/reminders/ReminderForm.tsx`
 
