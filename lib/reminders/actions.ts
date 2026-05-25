@@ -196,6 +196,12 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
       const existingLinks = existing.targets.filter(
         (t) => t.itemId !== null || t.systemId !== null,
       );
+      // Invariant: a standalone (both-NULL) row only exists under a CHORE
+      // parent — server reconciliation never mints one alongside link rows,
+      // and the NULLS NOT DISTINCT unique caps them at 1/reminder. The three
+      // branches below rely on this; the schema's REMINDER+empty rejection
+      // keeps a CHORE→REMINDER kind flip with empty targets from sneaking
+      // into the standalone branch.
       const existingStandalone = existing.targets.find(
         (t) => t.itemId === null && t.systemId === null,
       );

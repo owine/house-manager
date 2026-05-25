@@ -153,4 +153,31 @@ describe('chore reconciliation', () => {
     });
     expect(r.ok).toBe(false);
   });
+
+  it('transitions REMINDER → CHORE with empty targets (cross-kind flip mints standalone)', async () => {
+    const item = await seedItem('crosskind-item');
+    const r = await actions.createReminder({
+      title: 'Was a reminder',
+      kind: 'REMINDER',
+      targets: [{ itemId: item.id }],
+      recurrence: { kind: 'interval', every: 60, unit: 'day' },
+      nextDueOn: new Date('2026-06-01'),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const u = await actions.updateReminder({
+      id: r.data.id,
+      kind: 'CHORE',
+      targets: [],
+    });
+    expect(u.ok).toBe(true);
+
+    const targets = await ctx.prisma.reminderTarget.findMany({
+      where: { reminderId: r.data.id },
+    });
+    expect(targets).toHaveLength(1);
+    expect(targets[0].itemId).toBeNull();
+    expect(targets[0].systemId).toBeNull();
+  });
 });
