@@ -127,6 +127,32 @@ describe('ReminderForm with TargetsPicker', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/reminders/r-new'));
   });
 
+  it('allows chore submission with zero targets and shows optional label', async () => {
+    const action = makeAction({ ok: true, data: { id: 'c-new' } });
+    const user = userEvent.setup();
+    render(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Create chore"
+        kind="CHORE"
+      />,
+    );
+    // Label reads as optional for chores.
+    expect(screen.getByText(/Linked items \/ systems \(optional\)/i)).toBeInTheDocument();
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: 'Create chore' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Replace filter',
+      kind: 'CHORE',
+      targets: [],
+    });
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/reminders/c-new'));
+    expect(screen.queryByText(/at least one item or system/i)).not.toBeInTheDocument();
+  });
+
   it('submits with targets: [{ systemId }] for a system-only reminder', async () => {
     const action = makeAction({ ok: true, data: { id: 'r-new' } });
     const user = userEvent.setup();
