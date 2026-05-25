@@ -40,10 +40,13 @@ describe('migration invariants', () => {
   });
 
   describe('XOR CHECK constraints exist', () => {
+    // reminder_targets uses the relaxed `at_most_one` variant (chores may
+    // own a single both-NULL standalone row); the other three still
+    // enforce strict XOR.
     const constraints = [
       'service_record_targets_parent_xor',
       'warranty_targets_parent_xor',
-      'reminder_targets_parent_xor',
+      'reminder_targets_parent_at_most_one',
       'item_vendors_link_xor',
       'system_vendors_link_xor',
     ];

@@ -81,10 +81,16 @@ describe('ReminderTarget multi-target', () => {
     ).rejects.toThrow();
   });
 
-  it('rejects a target row with neither itemId nor systemId set (XOR CHECK)', async () => {
+  it('allows a target row with neither itemId nor systemId set (chore standalone row)', async () => {
+    // The relaxed `reminder_targets_parent_at_most_one` constraint permits
+    // both-NULL rows so chores can carry their schedule + completion
+    // history without a linked item/system. The "only CHORE parents may
+    // own a both-NULL row" rule is enforced in the server reconciliation,
+    // not at the DB level.
     const r = await ctx.prisma.reminder.create({
       data: {
-        title: 'XOR violation parent (none)',
+        title: 'Standalone-allowed parent',
+        kind: 'CHORE',
         recurrence: { kind: 'interval', days: 60 },
         notifyUserIds: [],
       },
@@ -92,9 +98,9 @@ describe('ReminderTarget multi-target', () => {
     await expect(
       ctx.prisma.$executeRaw`
         INSERT INTO reminder_targets (id, "reminderId", "itemId", "systemId", "nextDueOn")
-        VALUES ('rt_xor_none', ${r.id}, NULL, NULL, NOW())
+        VALUES ('rt_standalone_ok', ${r.id}, NULL, NULL, NOW())
       `,
-    ).rejects.toThrow();
+    ).resolves.toBe(1);
   });
 
   it('rejects duplicate (reminderId, itemId, systemId) (unique constraint)', async () => {

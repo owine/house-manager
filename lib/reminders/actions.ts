@@ -37,7 +37,16 @@ function revalidateReminderPaths(
   }
 }
 
-async function validateTargets(targets: TargetInput[]): Promise<string | null> {
+async function validateTargets(
+  targets: TargetInput[],
+  kind: 'REMINDER' | 'CHORE',
+): Promise<string | null> {
+  // Cardinality: REMINDER requires ≥1 link (asset-centric). CHORE allows
+  // 0..N — a linkless chore is reconciled into a single standalone
+  // (both-NULL) ReminderTarget by the create/update paths below.
+  if (kind === 'REMINDER' && targets.length === 0) {
+    return 'Select at least one item or system';
+  }
   const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
   const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
 
@@ -71,8 +80,17 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
   }
   const { targets, description, notifyUserIds, nextDueOn, recurrence, ...rest } = parsed.data;
 
-  const targetErr = await validateTargets(targets);
+  const targetErr = await validateTargets(targets, parsed.data.kind);
   if (targetErr) return { ok: false, formError: targetErr };
+
+  // CHORE with 0 user-submitted links → reconcile to a single "standalone"
+  // ReminderTarget row (both itemId and systemId NULL) that carries
+  // nextDueOn / lastCompletedOn / completions. REMINDER never hits this
+  // branch (validateTargets already rejected length === 0).
+  const reconciledTargets =
+    parsed.data.kind === 'CHORE' && targets.length === 0
+      ? [{ itemId: null, systemId: null } as TargetInput]
+      : targets;
 
   const reminder = await prisma.reminder.create({
     data: {
@@ -83,7 +101,7 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
       description: description || null,
       notifyUserIds: notifyUserIds && notifyUserIds.length > 0 ? notifyUserIds : [session.user.id],
       targets: {
-        create: targets.map((t) => ({
+        create: reconciledTargets.map((t) => ({
           itemId: t.itemId ?? null,
           systemId: t.systemId ?? null,
           nextDueOn,
@@ -123,13 +141,26 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
     where: ownedReminderWhere(id, session.user.id),
     select: {
       id: true,
-      targets: { select: { id: true, itemId: true, systemId: true } },
+      kind: true,
+      targets: {
+        select: {
+          id: true,
+          itemId: true,
+          systemId: true,
+          lastCompletedOn: true,
+          nextDueOn: true,
+        },
+      },
     },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
   if (targets !== undefined) {
-    const targetErr = await validateTargets(targets);
+    // updateReminderSchema's third (kind-omitted) arm forces targets to
+    // be undefined, so any defined `targets` here is paired with a defined
+    // `parsed.data.kind`. The fallback to existing.kind is belt-and-braces.
+    const effectiveKind = parsed.data.kind ?? existing.kind;
+    const targetErr = await validateTargets(targets, effectiveKind);
     if (targetErr) return { ok: false, formError: targetErr };
   }
 
@@ -157,37 +188,101 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
     await tx.reminder.update({ where: { id }, data });
 
     if (targets !== undefined) {
-      const key = (t: { itemId?: string | null; systemId?: string | null }) =>
-        `${t.itemId ?? ''}|${t.systemId ?? ''}`;
-      const wantSet = new Set(targets.map(key));
-      const haveSet = new Set(existing.targets.map(key));
+      const isChore = (parsed.data.kind ?? existing.kind) === 'CHORE';
+      // Schema guarantees user-submitted rows are link-only (XOR per targetSchema),
+      // so we never see a both-NULL from `targets`. Split existing target rows
+      // into the two shapes — at most one standalone, the rest links.
+      const submittedLinks = targets;
+      const existingLinks = existing.targets.filter(
+        (t) => t.itemId !== null || t.systemId !== null,
+      );
+      const existingStandalone = existing.targets.find(
+        (t) => t.itemId === null && t.systemId === null,
+      );
 
-      const toDelete = existing.targets.filter((e) => !wantSet.has(key(e))).map((e) => e.id);
-      const toAdd = targets.filter((t) => !haveSet.has(key(t)));
-
-      if (toDelete.length > 0) {
-        await tx.reminderTarget.deleteMany({ where: { id: { in: toDelete } } });
-      }
-      if (toAdd.length > 0) {
-        // For new targets, seed nextDueOn from the request value, or — if not
-        // provided — fall back to the earliest existing target's nextDueOn.
-        let seedNextDueOn = nextDueOn;
-        if (!seedNextDueOn) {
-          const anyExisting = await tx.reminderTarget.findFirst({
-            where: { reminderId: id },
-            orderBy: { nextDueOn: 'asc' },
-            select: { nextDueOn: true },
+      if (isChore && submittedLinks.length === 0) {
+        // Reconcile to standalone shape. If there isn't one already, mint it
+        // and inherit schedule from the most-recently-completed existing link
+        // (tie-break by earliest nextDueOn) so cadence carries over.
+        if (!existingStandalone) {
+          const seed = existingLinks.slice().sort((a, b) => {
+            const ac = a.lastCompletedOn?.getTime() ?? Number.NEGATIVE_INFINITY;
+            const bc = b.lastCompletedOn?.getTime() ?? Number.NEGATIVE_INFINITY;
+            if (ac !== bc) return bc - ac;
+            return a.nextDueOn.getTime() - b.nextDueOn.getTime();
+          })[0];
+          await tx.reminderTarget.create({
+            data: {
+              reminderId: id,
+              itemId: null,
+              systemId: null,
+              lastCompletedOn: seed?.lastCompletedOn ?? null,
+              nextDueOn: seed?.nextDueOn ?? nextDueOn ?? new Date(),
+            },
           });
-          seedNextDueOn = anyExisting?.nextDueOn ?? new Date();
         }
-        await tx.reminderTarget.createMany({
-          data: toAdd.map((t) => ({
-            reminderId: id,
-            itemId: t.itemId ?? null,
-            systemId: t.systemId ?? null,
-            nextDueOn: seedNextDueOn,
-          })),
-        });
+        if (existingLinks.length > 0) {
+          await tx.reminderTarget.deleteMany({
+            where: { id: { in: existingLinks.map((l) => l.id) } },
+          });
+        }
+      } else if (existingStandalone) {
+        // standalone → links: seed every newly-inserted link with the
+        // standalone's schedule (carry cadence forward), then drop the
+        // standalone. existingLinks should be empty in practice but we
+        // still respect dedup against it for safety.
+        const seedNext = existingStandalone.nextDueOn;
+        const seedLast = existingStandalone.lastCompletedOn;
+        const haveKey = new Set(existingLinks.map((t) => `${t.itemId ?? ''}|${t.systemId ?? ''}`));
+        const toAdd = submittedLinks.filter(
+          (t) => !haveKey.has(`${t.itemId ?? ''}|${t.systemId ?? ''}`),
+        );
+        if (toAdd.length > 0) {
+          await tx.reminderTarget.createMany({
+            data: toAdd.map((t) => ({
+              reminderId: id,
+              itemId: t.itemId ?? null,
+              systemId: t.systemId ?? null,
+              nextDueOn: seedNext,
+              lastCompletedOn: seedLast,
+            })),
+          });
+        }
+        await tx.reminderTarget.delete({ where: { id: existingStandalone.id } });
+      } else {
+        // links → links: original diff behavior, scoped to link rows only.
+        const key = (t: { itemId?: string | null; systemId?: string | null }) =>
+          `${t.itemId ?? ''}|${t.systemId ?? ''}`;
+        const wantSet = new Set(submittedLinks.map(key));
+        const haveSet = new Set(existingLinks.map(key));
+
+        const toDelete = existingLinks.filter((e) => !wantSet.has(key(e))).map((e) => e.id);
+        const toAdd = submittedLinks.filter((t) => !haveSet.has(key(t)));
+
+        if (toDelete.length > 0) {
+          await tx.reminderTarget.deleteMany({ where: { id: { in: toDelete } } });
+        }
+        if (toAdd.length > 0) {
+          // For new targets, seed nextDueOn from the request value, or — if not
+          // provided — fall back to the earliest existing target's nextDueOn.
+          let seedNextDueOn = nextDueOn;
+          if (!seedNextDueOn) {
+            const anyExisting = await tx.reminderTarget.findFirst({
+              where: { reminderId: id },
+              orderBy: { nextDueOn: 'asc' },
+              select: { nextDueOn: true },
+            });
+            seedNextDueOn = anyExisting?.nextDueOn ?? new Date();
+          }
+          await tx.reminderTarget.createMany({
+            data: toAdd.map((t) => ({
+              reminderId: id,
+              itemId: t.itemId ?? null,
+              systemId: t.systemId ?? null,
+              nextDueOn: seedNextDueOn,
+            })),
+          });
+        }
       }
     }
 
