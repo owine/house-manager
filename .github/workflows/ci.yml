@@ -15,9 +15,9 @@ env:
   # and Dockerfile via Renovate (see renovate.json customManagers + the
   # toolchain-versions packageRule).
   # renovate: datasource=npm depName=pnpm
-  PNPM_VERSION: 11.1.2
+  PNPM_VERSION: 11.2.2
   # renovate: datasource=node-version depName=node
-  NODE_VERSION: 24.15.0
+  NODE_VERSION: 24.16.0
 
 jobs:
   # Detect whether any image-affecting paths changed. Used to gate the
