@@ -7,7 +7,6 @@ import { CompletionRow } from './CompletionRow';
 afterEach(cleanup);
 
 const baseProps = {
-  id: 'comp-1',
   completedOn: new Date('2026-05-27T00:00:00Z'),
   completedBy: { name: 'Alice' },
   notes: null,

@@ -3,7 +3,6 @@ import { formatCalendarDate } from '@/lib/format/date';
 import { SYSTEM_AUTO_COMPLETE_USER_ID } from '@/lib/reminders/system-user';
 
 export interface CompletionRowProps {
-  id: string;
   completedOn: Date;
   completedById: string;
   completedBy: { name: string | null };

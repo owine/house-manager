@@ -80,7 +80,6 @@ export default async function ReminderDetailPage({ params }: { params: Params })
                 {r.completions.map((c) => (
                   <li key={c.id}>
                     <CompletionRow
-                      id={c.id}
                       completedOn={c.completedOn}
                       completedById={c.completedById}
                       completedBy={c.completedBy}
