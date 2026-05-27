@@ -509,3 +509,26 @@ jobs:
         run: |
           docker buildx imagetools inspect \
             ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+
+  # Single aggregator gate for branch protection. Path-filtered jobs
+  # (unit/integration/e2e/a11y/coverage/build-image) skip on docs-only PRs,
+  # but their matrix-named contexts are still listed as required in the
+  # ruleset — which leaves docs-only PRs permanently BLOCKED with "expected
+  # check not reported". Requiring only this aggregator (instead of each
+  # underlying matrix child) lets a SKIP count as passing while a real
+  # failure still fails. Mirrors the `always() && !failure() && !cancelled()`
+  # idiom already used by `build-image` above.
+  ci-pass:
+    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage, build-image]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: All required jobs passed or were appropriately skipped
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS_JSON" | jq .
+          if echo "$NEEDS_JSON" | jq -e 'any(.[].result; . == "failure" or . == "cancelled")' >/dev/null; then
+            echo "::error::One or more required jobs failed or were cancelled."
+            exit 1
+          fi
