@@ -6,6 +6,7 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { ReminderTable } from '@/components/reminders/ReminderTable';
 import { Button } from '@/components/ui/button';
+import { getHouseProfile } from '@/lib/house-profile/queries';
 import { listReminders } from '@/lib/reminders/queries';
 import { parseListParams } from '@/lib/url-params';
 
@@ -21,6 +22,7 @@ export default async function ChoresPage({ searchParams }: { searchParams: Searc
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) if (typeof v === 'string') sp.set(k, v);
   const params = parseListParams(sp);
+  const houseTimezone = (await getHouseProfile())?.timezone ?? 'UTC';
   const { reminders, total } = await listReminders(params, 'CHORE');
 
   return (
@@ -45,7 +47,7 @@ export default async function ChoresPage({ searchParams }: { searchParams: Searc
         />
       }
     >
-      <ReminderTable reminders={reminders} />
+      <ReminderTable reminders={reminders} tz={houseTimezone} />
     </ListPageShell>
   );
 }

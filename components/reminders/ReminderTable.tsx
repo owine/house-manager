@@ -24,7 +24,7 @@ type Row = {
   targets: TargetSummary[];
 };
 
-export function ReminderTable({ reminders }: { reminders: Row[] }) {
+export function ReminderTable({ reminders, tz }: { reminders: Row[]; tz: string }) {
   return (
     <Table>
       <TableHeader>
@@ -49,7 +49,7 @@ export function ReminderTable({ reminders }: { reminders: Row[] }) {
             <TableCell>{r.nextDueOn ? formatCalendarDate(r.nextDueOn) : '—'}</TableCell>
             <TableCell>
               {r.nextDueOn ? (
-                <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />
+                <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} tz={tz} />
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
