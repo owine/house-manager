@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfDayInTz, isOverdue, isoWeek, tzOffsetMinutes, tzParts } from './tz';
+import { endOfDayInTz, isOverdue, isoWeek, startOfDayInTz, tzOffsetMinutes, tzParts } from './tz';
 
 describe('tzParts', () => {
   it('decomposes a UTC instant into EDT wall-clock parts (America/New_York, summer)', () => {
@@ -126,6 +126,20 @@ describe('isOverdue', () => {
     const due = new Date('2026-11-01T04:00:00Z'); // 00:00 EDT
     const now = new Date('2026-11-01T22:00:00Z'); // 17:00 EST post fall-back
     expect(isOverdue(due, now, NY)).toBe(false);
+  });
+});
+
+describe('startOfDayInTz', () => {
+  it('returns 00:00 wall-clock of the input date in tz, as UTC instant', () => {
+    const d = new Date('2026-05-27T10:00:00Z'); // 06:00 EDT on the 27th
+    const start = startOfDayInTz(d, 'America/New_York');
+    // 00:00 EDT on 2026-05-27 = 04:00 UTC on 2026-05-27.
+    expect(start.toISOString()).toBe('2026-05-27T04:00:00.000Z');
+  });
+
+  it('UTC returns 00:00:00.000Z of the same UTC date', () => {
+    const d = new Date('2026-05-27T15:00:00Z');
+    expect(startOfDayInTz(d, 'UTC').toISOString()).toBe('2026-05-27T00:00:00.000Z');
   });
 });
 
