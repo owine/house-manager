@@ -15,7 +15,14 @@ let workerPromise: Promise<unknown> | null = null;
 async function getWorker(): Promise<unknown> {
   if (workerPromise) return workerPromise;
   workerPromise = (async () => {
-    const { createWorker } = await import('tesseract.js');
+    // tesseract.js@7 has no `exports` field in package.json, so under Node
+    // ESM a destructured named import depends on `cjs-module-lexer` parsing
+    // its CJS dist correctly. Today it works, but if the upstream ever ships
+    // a webpacked/minified bundle the named extraction can fail (same shape
+    // as the rrule bug fixed in PR #195). Use `default ?? namespace` so we
+    // get whatever the runtime hands us. See feedback_esm_cjs_interop.
+    const mod = await import('tesseract.js');
+    const { createWorker } = (mod.default ?? mod) as { createWorker: typeof mod.createWorker };
     const worker = await createWorker('eng');
     log.info('tesseract: worker initialized (lang=eng)');
     return worker;
