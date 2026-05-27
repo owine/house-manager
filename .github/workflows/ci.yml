@@ -527,7 +527,11 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          echo "$NEEDS_JSON" | jq .
+          # Log only the per-job `result` field, never the full `needs` blob.
+          # `outputs` declared by upstream jobs could carry sensitive values
+          # if anyone adds one in the future; restricting the dump to results
+          # keeps the diagnostic ("which job failed?") without the leak risk.
+          echo "$NEEDS_JSON" | jq 'map_values({result})'
           if echo "$NEEDS_JSON" | jq -e 'any(.[].result; . == "failure" or . == "cancelled")' >/dev/null; then
             echo "::error::One or more required jobs failed or were cancelled."
             exit 1
