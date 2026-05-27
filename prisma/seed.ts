@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { SYSTEM_AUTO_COMPLETE_USER_ID } from '../lib/reminders/system-user';
 
 function createPrismaClient() {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -29,6 +30,17 @@ async function main() {
     });
   }
   console.log(`Seeded ${CATEGORIES.length} categories.`);
+
+  await prisma.user.upsert({
+    where: { id: SYSTEM_AUTO_COMPLETE_USER_ID },
+    update: {},
+    create: {
+      id: SYSTEM_AUTO_COMPLETE_USER_ID,
+      email: 'system+auto-complete@house-manager.local',
+      name: 'System (Auto-complete)',
+    },
+  });
+  console.log(`Seeded ${SYSTEM_AUTO_COMPLETE_USER_ID} user.`);
 }
 
 main()

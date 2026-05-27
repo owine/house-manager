@@ -25,6 +25,7 @@ describe('assembleReminderEvents', () => {
         completions: [new Date('2026-04-04T09:00:00Z'), new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
+      'UTC',
     );
     expect(events.filter((e) => e.kind === 'completed')).toHaveLength(2);
     expect(events.filter((e) => e.kind === 'due')).toHaveLength(1);
@@ -39,6 +40,7 @@ describe('assembleReminderEvents', () => {
         completions: [new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
+      'UTC',
     );
     const done = events.find((e) => e.kind === 'completed');
     expect(done).toBeDefined();
@@ -56,6 +58,7 @@ describe('assembleReminderEvents', () => {
         completions: [new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
+      'UTC',
     );
     expect(events.filter((e) => e.kind === 'due')).toHaveLength(0);
     expect(events.filter((e) => e.kind === 'projected')).toHaveLength(0);
@@ -66,6 +69,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-06-01T00:00:00Z') }),
       NOW,
+      'UTC',
     );
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('due');
@@ -76,6 +80,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-05-10T00:00:00Z') }),
       NOW,
+      'UTC',
     );
     const due = events.find((e) => e.kind === 'due');
     expect(due).toBeDefined();
@@ -87,6 +92,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-06-01T00:00:00Z') }),
       NOW,
+      'UTC',
     );
     expect(events.find((e) => e.kind === 'due')?.alarmSecondsBefore).toBe(3 * 86_400);
   });
@@ -99,6 +105,7 @@ describe('assembleReminderEvents', () => {
         completions: [new Date('2026-05-04T10:00:00Z'), new Date('2026-05-04T14:00:00Z')],
       }),
       NOW,
+      'UTC',
     );
     const completed = events.filter((e) => e.kind === 'completed');
     expect(completed).toHaveLength(1);
@@ -115,6 +122,7 @@ describe('assembleReminderEvents', () => {
         completions: [new Date('2026-04-04T09:00:00Z'), new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
+      'UTC',
     );
     const completed = events.filter((e) => e.kind === 'completed');
     expect(completed).toHaveLength(2);
@@ -127,6 +135,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-05-21T00:00:00Z') }),
       midDayNow,
+      'UTC',
     );
     const due = events.find((e) => e.kind === 'due');
     expect(due).toBeDefined();
@@ -140,6 +149,7 @@ describe('assembleReminderEvents', () => {
         nextDueOn: new Date('2026-06-30T00:00:00Z'),
       }),
       NOW,
+      'UTC',
     );
     const due = events.find((e) => e.kind === 'due');
     expect(due).toBeDefined();
@@ -157,7 +167,68 @@ describe('assembleReminderEvents', () => {
         nextDueOn: new Date('2026-06-01T00:00:00Z'),
       }),
       NOW,
+      'UTC',
     );
     expect(events.every((e) => e.description === '')).toBe(true);
+  });
+
+  it('due-today in NY tz keeps lead-time alarm when UTC midnight has already passed', () => {
+    // nextDueOn = 2026-05-27T04:00:00Z = 2026-05-27 00:00 EDT (midnight New York)
+    // now       = 2026-05-27T20:00:00Z = 2026-05-27 16:00 EDT (afternoon New York)
+    // In NY both dates are on the 27th → NOT overdue → alarm should fire
+    const nyNow = new Date('2026-05-27T20:00:00Z');
+    const events = assembleReminderEvents(
+      base({
+        leadTimeDays: 3,
+        recurrence: { kind: 'once' },
+        nextDueOn: new Date('2026-05-27T04:00:00Z'),
+      }),
+      nyNow,
+      'America/New_York',
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.alarmSecondsBefore).toBe(259200); // 3 * 86400
+  });
+
+  it('due-yesterday in NY tz has no alarm', () => {
+    // nextDueOn = 2026-05-26T04:00:00Z = 2026-05-26 00:00 EDT (yesterday in NY)
+    // now       = 2026-05-27T20:00:00Z = 2026-05-27 16:00 EDT (today in NY)
+    // In NY the due date is the 26th, now is the 27th → overdue → no alarm
+    const nyNow = new Date('2026-05-27T20:00:00Z');
+    const events = assembleReminderEvents(
+      base({
+        leadTimeDays: 3,
+        recurrence: { kind: 'once' },
+        nextDueOn: new Date('2026-05-26T04:00:00Z'),
+      }),
+      nyNow,
+      'America/New_York',
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.alarmSecondsBefore).toBeNull();
+  });
+
+  it('UTC+ tz diverges from the old UTC-midnight check (Auckland regression guard)', () => {
+    // The realistic stored shape: nextDueOn is at 00:00:00Z.
+    // nextDueOn = 2026-05-26T00:00:00Z → Auckland (UTC+12) = May 26 12:00 local
+    // now       = 2026-05-26T15:00:00Z → Auckland (UTC+12) = May 27 03:00 local
+    // Auckland calendar day for due is May 26; for now is May 27 → OVERDUE → no alarm.
+    // Under the old `utcMidnight(due) >= utcMidnight(now)` check both UTC dates are
+    // May 26 → alarm would fire incorrectly. This test fails on the old code path.
+    const aklNow = new Date('2026-05-26T15:00:00Z');
+    const events = assembleReminderEvents(
+      base({
+        leadTimeDays: 3,
+        recurrence: { kind: 'once' },
+        nextDueOn: new Date('2026-05-26T00:00:00Z'),
+      }),
+      aklNow,
+      'Pacific/Auckland',
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.alarmSecondsBefore).toBeNull();
   });
 });

@@ -67,6 +67,45 @@ export function tzOffsetMinutes(date: Date, timeZone: string): number {
   return m ? sign * (Number(m[2]) * 60 + Number(m[3])) : 0;
 }
 
+/**
+ * True iff `nextDueOn`'s calendar date in `tz` is strictly before `now`'s
+ * calendar date in `tz`. Due-today (any wall-clock time) returns false.
+ */
+export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
+  const a = tzParts(nextDueOn, tz);
+  const b = tzParts(now, tz);
+  // Lex compare (year, month, day).
+  if (a.year !== b.year) return a.year < b.year;
+  if (a.month !== b.month) return a.month < b.month;
+  return a.day < b.day;
+}
+
+/**
+ * The UTC instant of 00:00 wall-clock on the calendar day that contains `d`
+ * in `tz`. Use this as the cutoff for "is this date before today in tz?".
+ */
+export function startOfDayInTz(d: Date, tz: string): Date {
+  const { year, month, day } = tzParts(d, tz);
+  const offsetMinutes = tzOffsetMinutes(d, tz);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60_000);
+}
+
+/**
+ * The UTC instant of 23:59:59.999 wall-clock on the calendar day that contains
+ * `d` in `tz`. Used to stamp `completedOn` when a chore auto-completes at
+ * end-of-due-day.
+ *
+ * NOTE: the timezone offset is evaluated at `d`, not at 23:59:59. On a DST
+ * transition day where the active offset at 23:59 differs from the offset at
+ * `d`, the result may be off by ≤1h. For stamping `completedOn` on chore
+ * auto-completion, exact ms precision around DST jumps is not required.
+ */
+export function endOfDayInTz(d: Date, tz: string): Date {
+  const { year, month, day } = tzParts(d, tz);
+  const offsetMinutes = tzOffsetMinutes(d, tz);
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetMinutes * 60_000);
+}
+
 /** ISO-8601 week key 'YYYY-Www' for the given wall-clock parts (Thursday-based). */
 export function isoWeek(parts: Pick<TzParts, 'year' | 'month' | 'day'>): string {
   const { year: y, month: m, day: d } = parts;

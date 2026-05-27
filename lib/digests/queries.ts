@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { tzOffsetMinutes, tzParts } from '@/lib/time/tz';
+import { startOfDayInTz } from '@/lib/time/tz';
 
 export type DigestItem = {
   reminderId: string;
@@ -8,18 +8,6 @@ export type DigestItem = {
   daysOverdue: number; // 0 if not yet overdue
   targets: Array<{ kind: 'item' | 'system'; id: string; name: string }>;
 };
-
-/**
- * Compute the start of "today" in the given IANA timezone, returned as a UTC
- * Date suitable for Prisma comparison. Example: timezone='America/New_York'
- * at 2026-05-20T15:00Z returns 2026-05-20T04:00Z (00:00 EDT).
- */
-function startOfTodayInTz(timezone: string, now: Date): Date {
-  const { year, month, day } = tzParts(now, timezone);
-  const offsetMinutes = tzOffsetMinutes(now, timezone);
-  // Midnight wall-clock in tz, expressed as the equivalent UTC instant.
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60_000);
-}
 
 function daysBetween(later: Date, earlier: Date): number {
   return Math.floor((later.getTime() - earlier.getTime()) / (24 * 60 * 60 * 1000));
@@ -65,7 +53,7 @@ export async function getOverdueForUser(
   timezone: string,
   now: Date = new Date(),
 ): Promise<DigestItem[]> {
-  const start = startOfTodayInTz(timezone, now);
+  const start = startOfDayInTz(now, timezone);
   return findAndProject(userId, { lt: start }, 'asc', now);
 }
 

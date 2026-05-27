@@ -153,6 +153,31 @@ describe('ReminderForm with TargetsPicker', () => {
     expect(screen.queryByText(/at least one item or system/i)).not.toBeInTheDocument();
   });
 
+  it('shows the autoComplete checkbox only when kind=CHORE', () => {
+    const action = makeAction({ ok: true, data: { id: 'r-1' } });
+    const { rerender } = render(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Create chore"
+        kind="CHORE"
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: /auto-complete/i })).toBeInTheDocument();
+
+    rerender(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Create reminder"
+        kind="REMINDER"
+      />,
+    );
+    expect(screen.queryByRole('checkbox', { name: /auto-complete/i })).not.toBeInTheDocument();
+  });
+
   it('submits with targets: [{ systemId }] for a system-only reminder', async () => {
     const action = makeAction({ ok: true, data: { id: 'r-new' } });
     const user = userEvent.setup();

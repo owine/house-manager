@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
+import { CompletionRow } from '@/components/reminders/CompletionRow';
 import { MarkCompleteButton } from '@/components/reminders/MarkCompleteButton';
 import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteDialog';
 import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMenu';
@@ -9,6 +10,7 @@ import { ReminderStatusBadge } from '@/components/reminders/ReminderStatusBadge'
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
+import { getHouseProfile } from '@/lib/house-profile/queries';
 import { Markdown } from '@/lib/markdown';
 import { describeRecurrence } from '@/lib/reminders/describe';
 import { getReminder } from '@/lib/reminders/queries';
@@ -27,6 +29,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   const { id } = await params;
   const r = await getReminder(id);
   if (!r) notFound();
+  const houseTimezone = (await getHouseProfile())?.timezone ?? 'UTC';
 
   const recurrence = parseRecurrence(r.recurrence);
   const occurrences = r.nextDueOn
@@ -38,7 +41,9 @@ export default async function ReminderDetailPage({ params }: { params: Params })
       <PageHeader title={r.title} actions={<ReminderOverflowMenu reminderId={r.id} />} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
-        {r.nextDueOn && <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} />}
+        {r.nextDueOn && (
+          <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} tz={houseTimezone} />
+        )}
         <span className="text-muted-foreground">{describeRecurrence(recurrence)}</span>
         {r.targets.some((t) => t.item !== null || t.system !== null) && (
           <span className="flex items-center gap-2 text-muted-foreground">
@@ -74,8 +79,12 @@ export default async function ReminderDetailPage({ params }: { params: Params })
               <ul className="space-y-1 text-sm">
                 {r.completions.map((c) => (
                   <li key={c.id}>
-                    {formatCalendarDate(c.completedOn)} — completed by {c.completedBy.name}
-                    {c.notes && <span className="text-muted-foreground">: {c.notes}</span>}
+                    <CompletionRow
+                      completedOn={c.completedOn}
+                      completedById={c.completedById}
+                      completedBy={c.completedBy}
+                      notes={c.notes}
+                    />
                   </li>
                 ))}
               </ul>
