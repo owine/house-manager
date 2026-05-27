@@ -39,6 +39,7 @@ const reminderFormSchema = z.object({
   nextDueOn: z.coerce.date(),
   leadTimeDays: z.number().int().min(0).max(365).default(3),
   autoCreateServiceRecord: z.boolean().default(false),
+  autoComplete: z.boolean().default(false),
 });
 
 type FormValues = z.input<typeof reminderFormSchema>;
@@ -81,6 +82,7 @@ export function ReminderForm({
     resolver: zodResolver(reminderFormSchema),
     defaultValues: {
       autoCreateServiceRecord: false,
+      autoComplete: false,
       leadTimeDays: 3,
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
       ...defaultValues,
@@ -275,6 +277,30 @@ export function ReminderForm({
             </FormItem>
           )}
         />
+
+        {isChore && (
+          <FormField
+            control={control}
+            name="autoComplete"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2">
+                <FormControl>
+                  <Checkbox
+                    checked={!!field.value}
+                    onCheckedChange={field.onChange}
+                    ref={field.ref}
+                    name={field.name}
+                    disabled={field.disabled}
+                  />
+                </FormControl>
+                <FormLabel className="!mt-0 cursor-pointer">
+                  Auto-complete at end of due day
+                </FormLabel>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
