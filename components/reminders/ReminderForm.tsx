@@ -286,6 +286,7 @@ export function ReminderForm({
               <FormItem className="flex items-center gap-2">
                 <FormControl>
                   <Checkbox
+                    id="autoComplete"
                     checked={!!field.value}
                     onCheckedChange={field.onChange}
                     ref={field.ref}
@@ -293,7 +294,7 @@ export function ReminderForm({
                     disabled={field.disabled}
                   />
                 </FormControl>
-                <FormLabel className="!mt-0 cursor-pointer">
+                <FormLabel htmlFor="autoComplete" className="!mt-0 cursor-pointer">
                   Auto-complete at end of due day
                 </FormLabel>
                 <FormMessage />
