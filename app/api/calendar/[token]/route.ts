@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
+import { getHouseProfile } from '@/lib/house-profile/queries';
 import { assembleReminderEvents } from '@/lib/ical/assemble';
 import { buildIcal } from '@/lib/ical/build';
 import { parseRecurrence } from '@/lib/reminders/schema';
@@ -36,6 +37,8 @@ export async function GET(_req: Request, { params }: { params: Params }) {
   });
 
   const env = getEnv();
+  const houseTimezone = (await getHouseProfile())?.timezone ?? 'UTC';
+  const now = new Date();
   const events = reminders
     .filter((r) => r.targets.length > 0)
     .flatMap((r) =>
@@ -49,7 +52,8 @@ export async function GET(_req: Request, { params }: { params: Params }) {
           leadTimeDays: r.leadTimeDays,
           completions: r.completions.map((c) => c.completedOn),
         },
-        new Date(),
+        now,
+        houseTimezone,
       ),
     );
   const body = buildIcal(events, env.APP_URL ?? '');

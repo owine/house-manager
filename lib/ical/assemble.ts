@@ -1,5 +1,6 @@
 import { isSentinelDate, previewOccurrences } from '@/lib/reminders/recurrence';
 import type { Recurrence } from '@/lib/reminders/schema';
+import { isOverdue } from '@/lib/time/tz';
 
 type CalendarEventKind = 'completed' | 'due' | 'projected';
 
@@ -34,9 +35,15 @@ const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
  * Turn one reminder's state into the flat list of calendar events the feed should show:
  * a ✅ event per completion (on its completedOn date), the current due event (unless it is
  * the year-9999 sentinel a completed one-shot carries), and future projections.
- * `now` decides whether the due event is overdue (no alarm) or upcoming (lead-time alarm).
+ * `now` and `tz` together decide whether the due event is overdue (no alarm) or upcoming
+ * (lead-time alarm). The calendar-day boundary is evaluated in `tz` so that a due-today
+ * entry that crossed UTC midnight remains alarmed until end-of-day in the house timezone.
  */
-export function assembleReminderEvents(input: AssembleInput, now: Date): CalendarEvent[] {
+export function assembleReminderEvents(
+  input: AssembleInput,
+  now: Date,
+  tz: string,
+): CalendarEvent[] {
   const description = input.description ?? '';
   const leadSeconds = input.leadTimeDays * 86_400;
   const events: CalendarEvent[] = [];
@@ -60,7 +67,6 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
 
   if (!isSentinelDate(input.nextDueOn)) {
     const date = utcMidnight(input.nextDueOn);
-    const todayUtc = utcMidnight(now);
     events.push({
       uid: `reminder-${input.id}-${isoDate(date)}`,
       reminderId: input.id,
@@ -68,7 +74,7 @@ export function assembleReminderEvents(input: AssembleInput, now: Date): Calenda
       title: input.title,
       description,
       kind: 'due',
-      alarmSecondsBefore: date.getTime() >= todayUtc.getTime() ? leadSeconds : null,
+      alarmSecondsBefore: isOverdue(input.nextDueOn, now, tz) ? null : leadSeconds,
     });
 
     for (const occ of previewOccurrences(input.recurrence, input.nextDueOn, 11)) {
