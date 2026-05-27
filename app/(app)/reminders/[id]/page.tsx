@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { CompleteReminderForm } from '@/components/reminders/CompleteReminderForm';
+import { CompletionRow } from '@/components/reminders/CompletionRow';
 import { MarkCompleteButton } from '@/components/reminders/MarkCompleteButton';
 import type { ReminderTargetSummary } from '@/components/reminders/MarkCompleteDialog';
 import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMenu';
@@ -78,8 +79,13 @@ export default async function ReminderDetailPage({ params }: { params: Params })
               <ul className="space-y-1 text-sm">
                 {r.completions.map((c) => (
                   <li key={c.id}>
-                    {formatCalendarDate(c.completedOn)} — completed by {c.completedBy.name}
-                    {c.notes && <span className="text-muted-foreground">: {c.notes}</span>}
+                    <CompletionRow
+                      id={c.id}
+                      completedOn={c.completedOn}
+                      completedById={c.completedById}
+                      completedBy={c.completedBy}
+                      notes={c.notes}
+                    />
                   </li>
                 ))}
               </ul>
