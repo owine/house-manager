@@ -1,5 +1,14 @@
-import { RRule, type Weekday } from 'rrule';
+// rrule@2.8.1 has no `exports` field in its package.json, so under Node ESM
+// the named import `import { RRule } from 'rrule'` fails with "does not provide
+// an export named 'RRule'". Next.js/Webpack hides this via bundler interop, but
+// the worker container (tsx worker/index.ts) hits raw ESM and crashes on
+// startup. Default-import-then-destructure is the standard workaround. The
+// `type Weekday` import is erased at compile time and is unaffected.
+import type { Weekday } from 'rrule';
+import rrulePkg from 'rrule';
 import type { Recurrence } from './schema';
+
+const { RRule } = rrulePkg;
 
 const DAY_MS = 86_400_000;
 export const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
