@@ -119,6 +119,31 @@ describe('updateReminder — autoComplete server-side coercion', () => {
     expect(row?.autoComplete).toBe(false);
   });
 
+  it('clears latent autoComplete=true on CHORE→REMINDER flip even when payload omits autoComplete', async () => {
+    // Seed a CHORE with autoComplete=true, then flip to REMINDER WITHOUT
+    // mentioning autoComplete in the payload. The latent true must be cleared.
+    const chore = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Water plants',
+        kind: 'CHORE',
+        recurrence: { kind: 'interval', every: 1, unit: 'week' },
+        notifyUserIds: ['u1'],
+        autoComplete: true,
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-05-27') }] },
+      },
+    });
+
+    const result = await actions.updateReminder({
+      id: chore.id,
+      kind: 'REMINDER',
+      targets: [{ itemId }],
+    });
+    expect(result.ok).toBe(true);
+
+    const row = await ctx.prisma.reminder.findUnique({ where: { id: chore.id } });
+    expect(row?.autoComplete).toBe(false);
+  });
+
   it('preserves autoComplete=true when update keeps kind=CHORE', async () => {
     const chore = await ctx.prisma.reminder.create({
       data: {

@@ -172,13 +172,20 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   }
 
   // Coerce autoComplete to false if the effective kind is not CHORE.
-  // This covers three cases: (a) explicit kind=REMINDER in the payload,
-  // (b) kind-omitted update where the existing row is a REMINDER, and
-  // (c) a kind flip from CHORE → REMINDER (clear the previously-true flag).
-  // Only touch the field if it was actually present in the parsed payload
-  // so we don't fabricate a write on every update of a CHORE.
+  // Coerce autoComplete=false whenever the effective kind isn't CHORE. We write
+  // the false in two cases:
+  //   (a) autoComplete is in the payload — coerce a smuggled REMINDER+true.
+  //   (b) the update is a CHORE → non-CHORE kind flip — clear any latent true
+  //       that the old CHORE carried, even when the payload omits the field.
+  // On a plain REMINDER update with no autoComplete in payload we leave it
+  // alone (the existing row is already false from prior coercion or default).
   const effectiveKindForCoerce = parsed.data.kind ?? existing.kind;
-  if (effectiveKindForCoerce !== 'CHORE' && 'autoComplete' in parsed.data) {
+  const isKindFlipFromChore =
+    parsed.data.kind !== undefined && parsed.data.kind !== 'CHORE' && existing.kind === 'CHORE';
+  if (
+    effectiveKindForCoerce !== 'CHORE' &&
+    ('autoComplete' in parsed.data || isKindFlipFromChore)
+  ) {
     (rest as Record<string, unknown>).autoComplete = false;
   }
 
