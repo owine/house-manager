@@ -95,6 +95,7 @@ model HouseProfile {
   location     String?
   climateZone  String?
   propertyType String?
+  timezone     String   @default("UTC")
   updatedAt    DateTime @updatedAt
 
   @@map("house_profile")
@@ -471,6 +472,7 @@ model Reminder {
   leadTimeDays            Int                 @default(3)
   notifyUserIds           String[]
   autoCreateServiceRecord Boolean             @default(false)
+  autoComplete            Boolean             @default(false)
   active                  Boolean             @default(true)
   kind                    ReminderKind        @default(REMINDER)
   createdAt               DateTime            @default(now())
