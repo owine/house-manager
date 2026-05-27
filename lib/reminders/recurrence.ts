@@ -1,14 +1,20 @@
-// rrule@2.8.1 has no `exports` field in its package.json, so under Node ESM
-// the named import `import { RRule } from 'rrule'` fails with "does not provide
-// an export named 'RRule'". Next.js/Webpack hides this via bundler interop, but
-// the worker container (tsx worker/index.ts) hits raw ESM and crashes on
-// startup. Default-import-then-destructure is the standard workaround. The
-// `type Weekday` import is erased at compile time and is unaffected.
+// rrule@2.8.1 has asymmetric package shapes that defeat both common workarounds:
+//   - Node ESM (worker container, `tsx worker/index.ts`) resolves rrule's CJS
+//     `main` (dist/es5/rrule.js). The plain `import { RRule } from 'rrule'`
+//     fails here because cjs-module-lexer can't parse the webpacked dist.
+//   - Next.js / Turbopack resolves rrule's `module` ESM (dist/esm/index.js),
+//     which has only named exports — no default. So `import rrulePkg from 'rrule'`
+//     fails there.
+// Namespace import + `default ?? namespace` works on both: Node's CJS interop
+// puts module.exports on `.default`; Turbopack's ESM import has no `.default`
+// and falls through to the namespace's own named exports.
+
 import type { Weekday } from 'rrule';
-import rrulePkg from 'rrule';
+import * as rruleNs from 'rrule';
 import type { Recurrence } from './schema';
 
-const { RRule } = rrulePkg;
+const { RRule } = ((rruleNs as unknown as { default?: typeof rruleNs }).default ??
+  rruleNs) as typeof rruleNs;
 
 const DAY_MS = 86_400_000;
 export const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
