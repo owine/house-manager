@@ -48,6 +48,13 @@ Add to `lib/time/tz.ts`:
  * calendar date in `tz`. Due-today (any wall-clock time) returns false.
  */
 export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean;
+
+/**
+ * The UTC instant of the last moment of the calendar day that contains
+ * `d` in `tz`. Used to stamp `completedOn` when a chore auto-completes
+ * at end-of-due-day.
+ */
+export function endOfDayInTz(d: Date, tz: string): Date;
 ```
 
 Implementation compares `tzParts(...)` tuples (`{year, month, day}`) using the existing tz util — no millisecond math, no DAY_MS constant.
@@ -79,7 +86,7 @@ model Reminder {
 }
 ```
 
-App-layer constraint: `autoComplete = true` is only permitted when `kind = CHORE`. Enforced in the Zod schema for the chore form (matches existing pattern; ReminderKind constraints are app-layer, not DB CHECK).
+App-layer constraint: `autoComplete = true` is only permitted when `kind = CHORE`. Enforced in **both** the Zod schema and the server action — the action must coerce `autoComplete` to `false` whenever `kind !== CHORE` regardless of payload, so a hand-crafted request can't smuggle `autoComplete=true` onto a reminder. UI-only hiding is not sufficient. (Matches the existing pattern; ReminderKind constraints are app-layer, not DB CHECK.)
 
 ### Sentinel system user
 
@@ -108,6 +115,8 @@ New job (or fold into `worker/jobs/reminders-tick.ts`, decided in the plan):
 worker/jobs/chore-auto-complete-tick.ts
 ```
 
+**Cadence:** run hourly. Since `HouseProfile.timezone` is single-row and the query is cheap (indexed on `nextDueOn`), hourly is simpler than computing a tz-midnight wake-up and gives us at-most-one-hour lag between local midnight and the auto-close. Idempotency makes the extra ticks harmless.
+
 Tick logic, per run:
 
 1. Read `HouseProfile.timezone` (single-row table, cache once per tick).
@@ -123,7 +132,7 @@ Tick logic, per run:
    });
    ```
 3. For each candidate, inside one transaction:
-   - Insert `ReminderCompletion` with `completedById = 'system-auto-complete'`, `completedOn = endOfDueDayUtc(target.nextDueOn, houseTz)`, `notes = "Auto-completed"`.
+   - Insert `ReminderCompletion` with `completedById = 'system-auto-complete'`, `completedOn = endOfDayInTz(target.nextDueOn, houseTz)`, `notes = "Auto-completed"`.
    - Update the target: `lastCompletedOn = completedOn`, `nextDueOn = computeNextDueOn(parseRecurrence(reminder.recurrence), completedOn)` — same advance helper as manual completion in `lib/reminders/actions.ts:392`.
    - **Skip** `autoCreateServiceRecord` side effects — auto-completes never create service records.
    - **Skip** notification side effects — no `NotificationLog`.
@@ -193,6 +202,7 @@ The advance updates `nextDueOn` to a future date inside the same transaction, so
 
 ## Out of scope
 
+- **Settings UI for `HouseProfile.timezone`.** v1 ships the schema field with default `"UTC"`; values are seeded/configured manually (Prisma Studio, direct SQL, or the existing house-profile actions if they cover it). A dedicated settings page can land later.
 - Per-user timezone influence on overdue (digests already handle delivery timing per-user; overdue is a global property).
 - An `isAuto`/`source` column on `ReminderCompletion` (deferred until we have a UI/reporting need beyond the derived "Auto" badge).
 - Backfilling auto-complete for existing chores at migration time — opt-in only, new field defaults to `false`.
