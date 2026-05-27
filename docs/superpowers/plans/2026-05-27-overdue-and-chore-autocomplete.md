@@ -828,7 +828,7 @@ Expected: green.
 - [ ] **Step 10.2: Audit for stray overdue logic**
 
 ```bash
-rg -n "overdue|Overdue|DAY_MS" lib app components worker --type ts --type tsx
+rg -n "overdue|Overdue|DAY_MS" lib app components worker -g '*.{ts,tsx}'
 ```
 For each non-test hit, confirm it either uses `isOverdue` or is intentionally separate (e.g. `daysOverdue` projection in digests is a *count*, not a boundary check, and is fine).
 
