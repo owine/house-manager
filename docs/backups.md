@@ -26,6 +26,27 @@ BACKUP_DIR=/srv/duplicacy-source/house-manager/db-backups
 
 If unset, it defaults to `./db-backups` (relative to the docker-compose.yml directory).
 
+## Production deployments
+
+The in-repo `docker-compose.yml` is the dev shape. If you run the app from a hand-curated production compose (not the in-repo file), you must mirror the worker's backup mount yourself — there is no CI check for drift between the two.
+
+The worker block needs both:
+
+```yaml
+    volumes:
+      - <host-files-path>:/data/files
+      - <host-backups-path>:/backups
+```
+
+If `/backups` is missing inside the worker container, `pg_dump` fails with `could not open output file ... No such file or directory` and the scheduler's missed-tick recovery will retry every ~2s.
+
+Quick check on the deploy host:
+
+```bash
+docker compose exec -T <worker-service> ls -la /backups
+docker inspect <worker-container> --format '{{json .Mounts}}' | jq
+```
+
 ## Restoring
 
 ### Postgres
