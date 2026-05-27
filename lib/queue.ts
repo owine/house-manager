@@ -24,6 +24,7 @@ export const Queue = {
   EmbedContent: 'embed.content',
   EmbedBackfill: 'embed.backfill',
   ExtractAttachmentText: 'attachment.extract-text',
+  ChoreAutoCompleteTick: 'chore-auto-complete.tick',
 } as const;
 type QueueName = (typeof Queue)[keyof typeof Queue];
 const QUEUES = Object.values(Queue) as readonly QueueName[];

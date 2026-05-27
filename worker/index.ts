@@ -7,6 +7,7 @@ import { startMemoryWatchdog } from '@/lib/observability/memory-watchdog';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
+import { handleChoreAutoCompleteTick } from './jobs/chore-auto-complete-tick';
 import {
   type ClassifyIncomingEmailJob,
   handleClassifyIncomingEmail,
@@ -99,6 +100,12 @@ async function main() {
     await handleSearchReindex();
   });
 
+  // Chore auto-complete — runs hourly; completes overdue CHOREs with autoComplete=true.
+  await boss.schedule(Queue.ChoreAutoCompleteTick, '0 * * * *');
+  await boss.work(Queue.ChoreAutoCompleteTick, { batchSize: 1 }, async () => {
+    await handleChoreAutoCompleteTick();
+  });
+
   // Digest-tick sweeper — runs every 30 min, sends overdue + weekly digests.
   await boss.schedule(Queue.DigestTick, '*/30 * * * *');
   await boss.work(Queue.DigestTick, { batchSize: 1 }, async () => {
@@ -169,7 +176,7 @@ async function main() {
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
   logger.info(
-    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, incoming-email.classify, embed.content, embed.backfill, attachment.extract-text jobs',
+    'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, chore-auto-complete.tick, incoming-email.classify, embed.content, embed.backfill, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {
