@@ -176,6 +176,42 @@ describe('createReminderSchema', () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it('accepts autoComplete on CHORE', () => {
+    const parsed = createReminderSchema.parse({
+      title: 'Water plants',
+      kind: 'CHORE',
+      recurrence: { kind: 'interval', every: 1, unit: 'week' },
+      nextDueOn: new Date('2026-05-27'),
+      targets: [],
+      autoComplete: true,
+    });
+    expect(parsed.autoComplete).toBe(true);
+  });
+
+  it('parses autoComplete=true on REMINDER at schema level (server action enforces coercion)', () => {
+    const parsed = createReminderSchema.parse({
+      title: 'HVAC service',
+      kind: 'REMINDER',
+      recurrence: { kind: 'interval', every: 6, unit: 'month' },
+      nextDueOn: new Date('2026-05-27'),
+      targets: [{ itemId: 'i1' }],
+      autoComplete: true,
+    });
+    // Schema doesn't reject — the server action coerces it. See integration test.
+    expect(parsed.autoComplete).toBe(true);
+  });
+
+  it('autoComplete defaults to false when omitted', () => {
+    const parsed = createReminderSchema.parse({
+      title: 'X',
+      kind: 'CHORE',
+      recurrence: { kind: 'interval', every: 1, unit: 'day' },
+      nextDueOn: new Date('2026-05-27'),
+      targets: [],
+    });
+    expect(parsed.autoComplete).toBe(false);
+  });
 });
 
 describe('updateReminderSchema', () => {

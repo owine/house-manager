@@ -158,6 +158,7 @@ const baseReminderShape = {
   nextDueOn: z.coerce.date(),
   leadTimeDays: z.number().int().min(0).max(365).default(3),
   autoCreateServiceRecord: z.boolean().default(false),
+  autoComplete: z.boolean().default(false),
   notifyUserIds: z.array(z.string().min(1)).optional(),
 } as const;
 
