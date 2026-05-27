@@ -36,12 +36,22 @@ export async function handleChoreAutoCompleteTick(now: Date = new Date()): Promi
 
   const reindexReminderIds = new Set<string>();
 
+  let advancedCount = 0;
   for (const t of candidates) {
     const completedOn = endOfDayInTz(t.nextDueOn, tz);
     const recurrence = parseRecurrence(t.reminder.recurrence);
     const nextDueOn = computeNextDueOn(recurrence, completedOn);
 
-    await prisma.$transaction(async (tx) => {
+    const advanced = await prisma.$transaction(async (tx) => {
+      // Compare-and-swap: only proceed if nextDueOn is still what we selected.
+      // Protects against double-processing if a second worker (or a manual
+      // completion racing the tick) advanced the target between findMany and
+      // here. updateMany returns count, update would throw on missing row.
+      const result = await tx.reminderTarget.updateMany({
+        where: { id: t.id, nextDueOn: t.nextDueOn },
+        data: { lastCompletedOn: completedOn, nextDueOn },
+      });
+      if (result.count === 0) return false;
       await tx.reminderCompletion.create({
         data: {
           reminderId: t.reminderId,
@@ -51,18 +61,18 @@ export async function handleChoreAutoCompleteTick(now: Date = new Date()): Promi
           notes: 'Auto-completed',
         },
       });
-      await tx.reminderTarget.update({
-        where: { id: t.id },
-        data: { lastCompletedOn: completedOn, nextDueOn },
-      });
+      return true;
     });
 
-    reindexReminderIds.add(t.reminderId);
+    if (advanced) {
+      advancedCount++;
+      reindexReminderIds.add(t.reminderId);
+    }
   }
 
   for (const id of reindexReminderIds) {
     await enqueueSearchIndex('reminder', id, 'upsert');
   }
 
-  logger.info({ count: candidates.length }, 'auto-completed chores');
+  logger.info({ candidates: candidates.length, advanced: advancedCount }, 'auto-completed chores');
 }

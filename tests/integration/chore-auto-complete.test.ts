@@ -202,4 +202,42 @@ describe('handleChoreAutoCompleteTick', () => {
     const srCount = await ctx.prisma.serviceRecord.count();
     expect(srCount).toBe(0);
   });
+
+  it('falls back to UTC when no HouseProfile row exists (bootstrap case)', async () => {
+    // Remove the NY profile set in beforeEach to exercise the `?? 'UTC'` fallback.
+    await ctx.prisma.houseProfile.deleteMany();
+
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'UTC bootstrap chore',
+        kind: 'CHORE',
+        autoComplete: true,
+        active: true,
+        recurrence: { kind: 'interval', every: 1, unit: 'day' },
+        notifyUserIds: ['u1'],
+        // YESTERDAY (2026-05-26T00:00:00Z) is strictly before TODAY_UTC_MIDNIGHT
+        // (2026-05-27T00:00:00Z). In NY tz YESTERDAY equals today's start
+        // (00:00 EDT on the 26th maps to 04:00Z on 26th, still < 04:00Z on 27th),
+        // so this test confirms the worker actually used UTC, not NY.
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
+      },
+      include: { targets: true },
+    });
+    const target = reminder.targets[0];
+
+    await handleChoreAutoCompleteTick(NOW);
+
+    const completions = await ctx.prisma.reminderCompletion.findMany({
+      where: { reminderId: reminder.id },
+    });
+    expect(completions).toHaveLength(1);
+    expect(completions[0].completedById).toBe(SYSTEM_AUTO_COMPLETE_USER_ID);
+    // completedOn = endOfDayInTz(YESTERDAY, 'UTC') = 2026-05-26T23:59:59.999Z
+    expect(completions[0].completedOn.toISOString()).toBe('2026-05-26T23:59:59.999Z');
+
+    const updatedTarget = await ctx.prisma.reminderTarget.findUniqueOrThrow({
+      where: { id: target.id },
+    });
+    expect(updatedTarget.nextDueOn.getTime()).toBeGreaterThan(YESTERDAY.getTime());
+  });
 });
