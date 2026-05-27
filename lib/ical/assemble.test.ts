@@ -209,4 +209,26 @@ describe('assembleReminderEvents', () => {
     expect(due).toBeDefined();
     expect(due?.alarmSecondsBefore).toBeNull();
   });
+
+  it('UTC+ tz diverges from the old UTC-midnight check (Auckland regression guard)', () => {
+    // The realistic stored shape: nextDueOn is at 00:00:00Z.
+    // nextDueOn = 2026-05-26T00:00:00Z → Auckland (UTC+12) = May 26 12:00 local
+    // now       = 2026-05-26T15:00:00Z → Auckland (UTC+12) = May 27 03:00 local
+    // Auckland calendar day for due is May 26; for now is May 27 → OVERDUE → no alarm.
+    // Under the old `utcMidnight(due) >= utcMidnight(now)` check both UTC dates are
+    // May 26 → alarm would fire incorrectly. This test fails on the old code path.
+    const aklNow = new Date('2026-05-26T15:00:00Z');
+    const events = assembleReminderEvents(
+      base({
+        leadTimeDays: 3,
+        recurrence: { kind: 'once' },
+        nextDueOn: new Date('2026-05-26T00:00:00Z'),
+      }),
+      aklNow,
+      'Pacific/Auckland',
+    );
+    const due = events.find((e) => e.kind === 'due');
+    expect(due).toBeDefined();
+    expect(due?.alarmSecondsBefore).toBeNull();
+  });
 });
