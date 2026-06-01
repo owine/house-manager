@@ -125,7 +125,7 @@ export function SuggestionPreview(props: Props) {
 
   return (
     <form onSubmit={onSave} className="space-y-4">
-      <ul className="rounded-md border">
+      <ul className="max-h-[50vh] overflow-y-auto rounded-md border">
         {fields.map((f, i) => (
           <SuggestionRow
             key={f.id}
