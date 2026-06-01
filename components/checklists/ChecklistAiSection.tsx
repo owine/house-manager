@@ -1,5 +1,5 @@
 'use client';
-import { Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { SuggestionPreview } from '@/app/(app)/_components/SuggestionPreview';
 import { ChecklistPromptDialog } from '@/components/checklists/ChecklistPromptDialog';
@@ -23,6 +23,12 @@ export function ChecklistAiSection() {
           {pending ? 'Thinking…' : 'Generate seasonal'}
         </Button>
       </div>
+      {pending && !preview && (
+        <div className="flex items-center gap-3 rounded-md border bg-muted/50 p-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Generating checklist…
+        </div>
+      )}
       {preview && (
         <section className="space-y-3">
           <div>

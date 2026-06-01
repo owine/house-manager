@@ -1,5 +1,5 @@
 'use client';
-import { ChevronDown, Plus, Sparkles } from 'lucide-react';
+import { ChevronDown, Loader2, Plus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { SuggestionPreview } from '@/app/(app)/_components/SuggestionPreview';
@@ -52,8 +52,20 @@ export function ChecklistCreateMenu() {
         pending={pending}
       />
 
+      <Dialog open={pending && preview === null}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generating checklist…</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Drafting items from your inventory. This can take a few seconds.
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={preview !== null} onOpenChange={(o) => !o && reset()}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           {preview && (
             <>
               <DialogHeader>
