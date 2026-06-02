@@ -15,7 +15,7 @@ env:
   # and Dockerfile via Renovate (see renovate.json customManagers + the
   # toolchain-versions packageRule).
   # renovate: datasource=npm depName=pnpm
-  PNPM_VERSION: 11.5.0
+  PNPM_VERSION: 11.5.1
   # renovate: datasource=node-version depName=node
   NODE_VERSION: 24.16.0
 
