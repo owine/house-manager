@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 // Auth gate: each test sets `currentUserId` to switch the simulated session.
@@ -74,6 +74,22 @@ async function createReminderWithTwoTargets(autoCreateServiceRecord = false) {
 }
 
 describe('Per-target completion', () => {
+  // completeReminder advances nextDueOn to `now + interval` (here, now + 60d).
+  // The fixture's nextDueOn is hardcoded to 2026-08-01, so on the one real-world
+  // day where now + 60d === 2026-08-01 (i.e. 2026-06-02) the "advanced" date
+  // collides with the original and the `.not.toBe(originalDueOn)` assertions
+  // fail. Freeze the wall clock to a fixed, non-colliding instant so the test is
+  // deterministic regardless of when it runs. Fake only Date — the integration
+  // DB driver and async waits depend on real setTimeout/setInterval.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('completing only one targetId writes one ReminderCompletion and only advances the matching target', async () => {
     const r = await createReminderWithTwoTargets();
     const itemTarget = r.targets.find((t) => t.itemId === itemId);
