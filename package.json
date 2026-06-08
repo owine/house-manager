@@ -106,7 +106,7 @@
     "@types/react": "19.2.15",
     "@types/react-dom": "19.2.3",
     "@types/web-push": "3.6.4",
-    "@vitest/coverage-v8": "4.1.7",
+    "@vitest/coverage-v8": "4.1.8",
     "axe-core": "4.11.4",
     "jsdom": "29.1.1",
     "knip": "6.15.0",
@@ -117,6 +117,6 @@
     "testcontainers": "12.0.1",
     "typescript": "6.0.3",
     "vite": "8.0.14",
-    "vitest": "4.1.7"
+    "vitest": "4.1.8"
   }
 }
