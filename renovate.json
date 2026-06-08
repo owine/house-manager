@@ -32,11 +32,6 @@
       "description": "GitGuardian (action + ggshield CLI) must stay version-consistent",
       "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
       "groupName": "gitguardian"
-    },
-    {
-      "description": "Hold pnpm at 11.1.2 — 11.3.x+ OOMs Renovate's lockfile maintenance on Mend-hosted infra; 11.1.2 is the last confirmed-stable release (the worker-concurrency floor jumped 1->16 after this). See https://github.com/renovatebot/renovate/discussions/40942 and https://github.com/pnpm/pnpm/issues/8441. The 11.x resolver will NOT be patched — the fix is pnpm 12 (Rust rewrite). Remove this rule once pnpm 12 ships and is confirmed stable in Renovate lockfile maintenance.",
-      "matchPackageNames": ["pnpm"],
-      "allowedVersions": "11.1.2"
     }
   ]
 }
