@@ -26,6 +26,6 @@ export function toTargetInputs(
   rows: { itemId: string | null; systemId: string | null }[],
 ): TargetInput[] {
   return rows
-    .filter((t) => t.itemId || t.systemId)
-    .map((t) => (t.itemId ? { itemId: t.itemId } : { systemId: t.systemId as string }));
+    .filter((t) => t.itemId !== null || t.systemId !== null)
+    .map((t) => (t.itemId !== null ? { itemId: t.itemId } : { systemId: t.systemId as string }));
 }
