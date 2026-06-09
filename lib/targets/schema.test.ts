@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { targetSchema, targetsArraySchema } from '@/lib/targets/schema';
+import { targetSchema, targetsArraySchema, toTargetInputs } from '@/lib/targets/schema';
 
 describe('targetSchema', () => {
   it('accepts itemId only', () => {
@@ -53,5 +53,43 @@ describe('targetsArraySchema', () => {
   it('rejects when any element is invalid', () => {
     const result = targetsArraySchema.safeParse([{ itemId: 'a' }, { itemId: 'b', systemId: 'c' }]);
     expect(result.success).toBe(false);
+  });
+});
+
+describe('toTargetInputs', () => {
+  it('maps an item-linked row to { itemId }', () => {
+    expect(toTargetInputs([{ itemId: 'i1', systemId: null }])).toEqual([{ itemId: 'i1' }]);
+  });
+
+  it('maps a system-linked row to { systemId }', () => {
+    expect(toTargetInputs([{ itemId: null, systemId: 's1' }])).toEqual([{ systemId: 's1' }]);
+  });
+
+  it('drops a standalone (both-null) row instead of emitting { systemId: null }', () => {
+    // Standalone chore targets carry no link; the form expects an empty
+    // targets list so the server reconciles to the standalone shape. Emitting
+    // { systemId: null } here would fail targetSchema's XOR refine and block
+    // every save of a standalone chore.
+    expect(toTargetInputs([{ itemId: null, systemId: null }])).toEqual([]);
+  });
+
+  it('keeps links and drops standalone rows in a mixed list', () => {
+    expect(
+      toTargetInputs([
+        { itemId: 'i1', systemId: null },
+        { itemId: null, systemId: null },
+        { itemId: null, systemId: 's1' },
+      ]),
+    ).toEqual([{ itemId: 'i1' }, { systemId: 's1' }]);
+  });
+
+  it('emits only rows that satisfy targetSchema', () => {
+    for (const t of toTargetInputs([
+      { itemId: 'i1', systemId: null },
+      { itemId: null, systemId: null },
+      { itemId: null, systemId: 's1' },
+    ])) {
+      expect(targetSchema.safeParse(t).success).toBe(true);
+    }
   });
 });

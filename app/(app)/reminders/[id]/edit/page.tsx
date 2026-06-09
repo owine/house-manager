@@ -8,7 +8,7 @@ import { updateReminder } from '@/lib/reminders/actions';
 import { getReminder } from '@/lib/reminders/queries';
 import { parseRecurrence } from '@/lib/reminders/schema';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
-import type { TargetInput } from '@/lib/targets/schema';
+import { toTargetInputs } from '@/lib/targets/schema';
 
 type Params = Promise<{ id: string }>;
 
@@ -27,9 +27,10 @@ export default async function EditReminderPage({ params }: { params: Params }) {
   ]);
   if (!r) notFound();
 
-  const initialTargets: TargetInput[] = r.targets.map((t) =>
-    t.itemId ? { itemId: t.itemId } : { systemId: t.systemId as string },
-  );
+  // Drop standalone (both-null) chore targets so the form submits an empty
+  // targets list; mapping them to { systemId: null } would fail targetSchema's
+  // XOR refine and block every save of a standalone chore.
+  const initialTargets = toTargetInputs(r.targets);
 
   const isChore = r.kind === 'CHORE';
   return (
@@ -46,6 +47,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
           nextDueOn: r.nextDueOn ?? new Date(),
           leadTimeDays: r.leadTimeDays,
           autoCreateServiceRecord: r.autoCreateServiceRecord,
+          autoComplete: r.autoComplete,
         }}
         action={updateReminder}
         submitLabel="Save changes"
