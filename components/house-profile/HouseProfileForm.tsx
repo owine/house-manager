@@ -25,6 +25,7 @@ import {
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { saveHouseProfile } from '@/lib/house-profile/actions';
 import { type HouseProfileInput, houseProfileSchema } from '@/lib/house-profile/schema';
+import { TIMEZONE_OPTIONS } from '@/lib/time/timezones';
 
 // z.input preserves optional/literal-'' before the resolver transforms the value.
 type FormValues = z.input<typeof houseProfileSchema>;
@@ -148,6 +149,34 @@ export function HouseProfileForm({ defaultValues }: Props) {
                   ))}
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="timezone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Timezone</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value ?? 'UTC'}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <SelectItem key={tz} value={tz}>
+                      {tz}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                Drives every due date, overdue check, reminder/digest email, and the calendar feed.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

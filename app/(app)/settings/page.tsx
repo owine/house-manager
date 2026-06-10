@@ -26,6 +26,7 @@ export default async function SettingsPage() {
     location: profile?.location ?? '',
     climateZone: profile?.climateZone ?? '',
     propertyType: (profile?.propertyType as HouseProfileInput['propertyType']) ?? undefined,
+    timezone: profile?.timezone ?? 'UTC',
   };
 
   if (!userSettings) {

@@ -22,6 +22,7 @@ export async function saveHouseProfile(input: unknown): Promise<ActionResult<{ i
     location: parsed.data.location || null,
     climateZone: parsed.data.climateZone || null,
     propertyType: parsed.data.propertyType ?? null,
+    timezone: parsed.data.timezone,
   };
 
   // find-or-create is not atomic: if two writers race on a fresh DB, both could

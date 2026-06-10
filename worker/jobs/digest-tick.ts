@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { getOverdueForUser, getWeeklyForUser } from '@/lib/digests/queries';
 import { digestEmail } from '@/lib/email/templates/digest';
 import { getEnv } from '@/lib/env';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { sendEmail } from '@/lib/notifications/email';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
 import { isoWeek, tzParts } from '@/lib/time/tz';
@@ -66,6 +67,9 @@ async function maybeSend(
 
 export async function handleDigestTick(): Promise<void> {
   const env = getEnv();
+  // One house-wide timezone drives both digest scheduling and the overdue/weekly
+  // window — so the email's "today" matches the in-app calendar exactly.
+  const tz = await getHouseTimezone();
   // User.email is non-nullable in the schema, so no email-presence filter is
   // needed. We still skip users whose JSON prefs don't enable email delivery.
   const users = await prisma.user.findMany({
@@ -77,7 +81,7 @@ export async function handleDigestTick(): Promise<void> {
     if (!prefs.overdueDigestEnabled && !prefs.weeklySummaryEnabled) continue;
 
     try {
-      const local = localParts(prefs.timezone);
+      const local = localParts(tz);
       const overdueDue = prefs.overdueDigestEnabled && local.hour === prefs.overdueDigestHour;
       const weeklyDue =
         prefs.weeklySummaryEnabled &&
@@ -111,10 +115,10 @@ export async function handleDigestTick(): Promise<void> {
       }
 
       if (overdueDue) {
-        await maybeSend(u.id, u.email, 'overdue', local.date, env.APP_URL, prefs.timezone);
+        await maybeSend(u.id, u.email, 'overdue', local.date, env.APP_URL, tz);
       }
       if (weeklyDue) {
-        await maybeSend(u.id, u.email, 'weekly', local.week, env.APP_URL, prefs.timezone);
+        await maybeSend(u.id, u.email, 'weekly', local.week, env.APP_URL, tz);
       }
     } catch (err) {
       console.error(`digest-tick: failed processing user ${u.id}:`, err);

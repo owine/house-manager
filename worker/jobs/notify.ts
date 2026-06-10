@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { reminderEmail } from '@/lib/email/templates/reminder';
 import { getEnv } from '@/lib/env';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { sendEmail } from '@/lib/notifications/email';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
 import { sendPush } from '@/lib/notifications/push';
@@ -44,10 +45,11 @@ export async function handleNotify(
   if (!user) return;
 
   const prefs = readNotificationPrefs(user.notificationPrefs);
+  const tz = await getHouseTimezone();
   const now = new Date();
 
-  if (isInQuietWindow(now, prefs)) {
-    if (deps?.enqueueLater) await deps.enqueueLater(nextNonQuietTime(now, prefs));
+  if (isInQuietWindow(now, prefs, tz)) {
+    if (deps?.enqueueLater) await deps.enqueueLater(nextNonQuietTime(now, prefs, tz));
     return;
   }
 
@@ -126,7 +128,7 @@ export async function handleNotify(
     title: reminder.title,
     description: reminder.description,
     appUrl: env.APP_URL,
-    timezone: prefs.timezone,
+    timezone: tz,
     targets: reminder.targets.map((t) => ({
       nextDueOn: t.nextDueOn,
       item: t.item ?? undefined,

@@ -8,13 +8,13 @@ function parseHM(hm: string): { h: number; m: number } {
 
 /**
  * Returns true when `now` falls within the user's quiet window, evaluated
- * against the wall-clock time in `prefs.timezone`.
+ * against the wall-clock time in the house timezone `tz`.
  */
-export function isInQuietWindow(now: Date, prefs: NotificationPrefs): boolean {
+export function isInQuietWindow(now: Date, prefs: NotificationPrefs, tz: string): boolean {
   if (!prefs.quietStart || !prefs.quietEnd) return false;
   const start = parseHM(prefs.quietStart);
   const end = parseHM(prefs.quietEnd);
-  const { hour, minute } = tzParts(now, prefs.timezone);
+  const { hour, minute } = tzParts(now, tz);
   const minutesNow = hour * 60 + minute;
   const minutesStart = start.h * 60 + start.m;
   const minutesEnd = end.h * 60 + end.m;
@@ -30,19 +30,20 @@ export function isInQuietWindow(now: Date, prefs: NotificationPrefs): boolean {
 
 /**
  * If `now` is inside the quiet window, return the UTC instant corresponding to
- * the next `quietEnd` wall-clock time in `prefs.timezone`; otherwise return `now`.
+ * the next `quietEnd` wall-clock time in the house timezone `tz`; otherwise
+ * return `now`.
  *
  * DST note: uses the current tz offset (same simplification as
  * endOfCalendarDayInTz in lib/time/tz.ts); a DST transition right at quietEnd
  * would shift the result by ≤1 h, which is acceptable for notification deferral.
  */
-export function nextNonQuietTime(now: Date, prefs: NotificationPrefs): Date {
-  if (!prefs.quietEnd || !isInQuietWindow(now, prefs)) return now;
+export function nextNonQuietTime(now: Date, prefs: NotificationPrefs, tz: string): Date {
+  if (!prefs.quietEnd || !isInQuietWindow(now, prefs, tz)) return now;
   const end = parseHM(prefs.quietEnd);
 
-  // Wall-clock Y/M/D in the user's timezone.
-  const { year: y, month: mo, day: d } = tzParts(now, prefs.timezone);
-  const offsetMins = tzOffsetMinutes(now, prefs.timezone);
+  // Wall-clock Y/M/D in the house timezone.
+  const { year: y, month: mo, day: d } = tzParts(now, tz);
+  const offsetMins = tzOffsetMinutes(now, tz);
   // quietEnd wall-clock time on the user's current calendar date, as UTC instant.
   let candidate = Date.UTC(y, mo - 1, d, end.h, end.m, 0) - offsetMins * 60_000;
   if (candidate <= now.getTime()) {

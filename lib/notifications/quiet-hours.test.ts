@@ -3,12 +3,13 @@ import type { NotificationPrefs } from './prefs';
 import { isInQuietWindow, nextNonQuietTime } from './quiet-hours';
 
 const utc = (iso: string) => new Date(iso);
+const UTC = 'UTC';
+const NY = 'America/New_York';
 const baseline: NotificationPrefs = {
   pushEnabled: true,
   emailEnabled: false,
   quietStart: '22:00',
   quietEnd: '07:00',
-  timezone: 'UTC',
   overdueDigestEnabled: false,
   overdueDigestHour: 8,
   weeklySummaryEnabled: false,
@@ -19,72 +20,62 @@ const baseline: NotificationPrefs = {
 describe('isInQuietWindow', () => {
   it('returns false when both null', () => {
     const prefs = { ...baseline, quietStart: null, quietEnd: null };
-    expect(isInQuietWindow(utc('2026-04-30T03:00:00Z'), prefs)).toBe(false);
+    expect(isInQuietWindow(utc('2026-04-30T03:00:00Z'), prefs, UTC)).toBe(false);
   });
 
   it('returns true when now is inside an overnight window', () => {
-    expect(isInQuietWindow(utc('2026-04-30T23:30:00Z'), baseline)).toBe(true);
-    expect(isInQuietWindow(utc('2026-04-30T05:00:00Z'), baseline)).toBe(true);
+    expect(isInQuietWindow(utc('2026-04-30T23:30:00Z'), baseline, UTC)).toBe(true);
+    expect(isInQuietWindow(utc('2026-04-30T05:00:00Z'), baseline, UTC)).toBe(true);
   });
 
   it('returns false when now is outside the window', () => {
-    expect(isInQuietWindow(utc('2026-04-30T12:00:00Z'), baseline)).toBe(false);
-    expect(isInQuietWindow(utc('2026-04-30T07:00:00Z'), baseline)).toBe(false);
+    expect(isInQuietWindow(utc('2026-04-30T12:00:00Z'), baseline, UTC)).toBe(false);
+    expect(isInQuietWindow(utc('2026-04-30T07:00:00Z'), baseline, UTC)).toBe(false);
   });
 
   it('handles a daytime window (no midnight crossing)', () => {
     const prefs = { ...baseline, quietStart: '13:00', quietEnd: '14:00' };
-    expect(isInQuietWindow(utc('2026-04-30T13:30:00Z'), prefs)).toBe(true);
-    expect(isInQuietWindow(utc('2026-04-30T15:00:00Z'), prefs)).toBe(false);
+    expect(isInQuietWindow(utc('2026-04-30T13:30:00Z'), prefs, UTC)).toBe(true);
+    expect(isInQuietWindow(utc('2026-04-30T15:00:00Z'), prefs, UTC)).toBe(false);
   });
 });
 
 describe('nextNonQuietTime', () => {
   it('returns now when not in window', () => {
     const now = utc('2026-04-30T12:00:00Z');
-    expect(nextNonQuietTime(now, baseline).getTime()).toBe(now.getTime());
+    expect(nextNonQuietTime(now, baseline, UTC).getTime()).toBe(now.getTime());
   });
 
   it('returns next quietEnd today when within window before midnight', () => {
     const now = utc('2026-04-30T23:30:00Z');
-    const next = nextNonQuietTime(now, baseline);
+    const next = nextNonQuietTime(now, baseline, UTC);
     expect(next.toISOString()).toBe('2026-05-01T07:00:00.000Z');
   });
 
   it('returns quietEnd today when within window after midnight', () => {
     const now = utc('2026-04-30T05:00:00Z');
-    const next = nextNonQuietTime(now, baseline);
+    const next = nextNonQuietTime(now, baseline, UTC);
     expect(next.toISOString()).toBe('2026-04-30T07:00:00.000Z');
   });
 });
 
 describe('isInQuietWindow — timezone aware', () => {
-  it('uses the user tz wall-clock, not UTC', () => {
+  it('uses the house tz wall-clock, not UTC', () => {
     // America/New_York is UTC-4 in summer (EDT). Quiet 22:00-07:00 local.
-    const prefs = {
-      ...baseline,
-      timezone: 'America/New_York',
-      quietStart: '22:00',
-      quietEnd: '07:00',
-    };
+    const prefs = { ...baseline, quietStart: '22:00', quietEnd: '07:00' };
     // 2026-07-01T10:00:00Z = 06:00 EDT → INSIDE quiet window (UTC hour=10 would be outside).
-    expect(isInQuietWindow(utc('2026-07-01T10:00:00Z'), prefs)).toBe(true);
+    expect(isInQuietWindow(utc('2026-07-01T10:00:00Z'), prefs, NY)).toBe(true);
     // 2026-07-01T18:00:00Z = 14:00 EDT → OUTSIDE quiet window.
-    expect(isInQuietWindow(utc('2026-07-01T18:00:00Z'), prefs)).toBe(false);
+    expect(isInQuietWindow(utc('2026-07-01T18:00:00Z'), prefs, NY)).toBe(false);
   });
 });
 
 describe('nextNonQuietTime — timezone aware', () => {
-  it('returns the next quietEnd wall-clock time in the user tz as a UTC instant', () => {
-    const prefs = {
-      ...baseline,
-      timezone: 'America/New_York',
-      quietStart: '22:00',
-      quietEnd: '07:00',
-    };
+  it('returns the next quietEnd wall-clock time in the house tz as a UTC instant', () => {
+    const prefs = { ...baseline, quietStart: '22:00', quietEnd: '07:00' };
     // At 2026-07-01T02:00:00Z (22:00 EDT on Jun-30, inside window),
     // next 07:00 EDT = 2026-07-01T07:00 EDT = 2026-07-01T11:00:00Z.
-    expect(nextNonQuietTime(utc('2026-07-01T02:00:00Z'), prefs).toISOString()).toBe(
+    expect(nextNonQuietTime(utc('2026-07-01T02:00:00Z'), prefs, NY).toISOString()).toBe(
       '2026-07-01T11:00:00.000Z',
     );
   });
