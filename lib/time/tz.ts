@@ -67,43 +67,54 @@ export function tzOffsetMinutes(date: Date, timeZone: string): number {
   return m ? sign * (Number(m[2]) * 60 + Number(m[3])) : 0;
 }
 
+/** Normalize a date-only value to UTC midnight (its calendar date, in UTC). */
+function utcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 /**
- * True iff `nextDueOn`'s calendar date in `tz` is strictly before `now`'s
- * calendar date in `tz`. Due-today (any wall-clock time) returns false.
+ * UTC-midnight anchor of the calendar day that `instant` falls on in `tz`.
+ *
+ * This is the date-only ("calendar date") representation to compare against
+ * `nextDueOn`, which is itself stored at UTC midnight (see `computeNextDueOn` →
+ * `toUtcMidnight` and `lib/format/date.ts`). Use as the `{ lt: ... }` cutoff for
+ * "due before today (house tz)" queries.
+ *
+ * Unlike a tz-local-midnight *instant*, this does NOT apply the tz offset to the
+ * result: a due-today value stored at UTC midnight must compare equal to today's
+ * anchor, not earlier — otherwise negative-offset zones flag due-today as overdue.
+ */
+export function startOfDayUtc(instant: Date, tz: string): Date {
+  const { year, month, day } = tzParts(instant, tz);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+/**
+ * True iff `nextDueOn`'s calendar date is strictly before the calendar date that
+ * `now` falls on in `tz`. `nextDueOn` is a date-only value stored at UTC midnight,
+ * so its calendar date is read in UTC; `now` is a real instant whose "today" is
+ * read in the house timezone. Due-today (in tz) returns false — and "today" flips
+ * at house-local midnight, not UTC midnight.
  */
 export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
-  const a = tzParts(nextDueOn, tz);
-  const b = tzParts(now, tz);
-  // Lex compare (year, month, day).
-  if (a.year !== b.year) return a.year < b.year;
-  if (a.month !== b.month) return a.month < b.month;
-  return a.day < b.day;
+  return utcMidnight(nextDueOn).getTime() < startOfDayUtc(now, tz).getTime();
 }
 
 /**
- * The UTC instant of 00:00 wall-clock on the calendar day that contains `d`
- * in `tz`. Use this as the cutoff for "is this date before today in tz?".
- */
-export function startOfDayInTz(d: Date, tz: string): Date {
-  const { year, month, day } = tzParts(d, tz);
-  const offsetMinutes = tzOffsetMinutes(d, tz);
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60_000);
-}
-
-/**
- * The UTC instant of 23:59:59.999 wall-clock on the calendar day that contains
- * `d` in `tz`. Used to stamp `completedOn` when a chore auto-completes at
- * end-of-due-day.
+ * The UTC instant of 23:59:59.999 wall-clock in `tz` on the calendar date that
+ * `calendarDate` represents (a date-only value stored at UTC midnight). Used to
+ * stamp `completedOn` when a chore auto-completes at end-of-due-day.
  *
- * NOTE: the timezone offset is evaluated at `d`, not at 23:59:59. On a DST
- * transition day where the active offset at 23:59 differs from the offset at
- * `d`, the result may be off by ≤1h. For stamping `completedOn` on chore
- * auto-completion, exact ms precision around DST jumps is not required.
+ * NOTE: the timezone offset is evaluated at `calendarDate` (UTC midnight), not at
+ * 23:59:59. On a DST transition day the result may be off by ≤1h — acceptable for
+ * a `completedOn` stamp.
  */
-export function endOfDayInTz(d: Date, tz: string): Date {
-  const { year, month, day } = tzParts(d, tz);
-  const offsetMinutes = tzOffsetMinutes(d, tz);
-  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetMinutes * 60_000);
+export function endOfCalendarDayInTz(calendarDate: Date, tz: string): Date {
+  const year = calendarDate.getUTCFullYear();
+  const month = calendarDate.getUTCMonth();
+  const day = calendarDate.getUTCDate();
+  const offsetMinutes = tzOffsetMinutes(calendarDate, tz);
+  return new Date(Date.UTC(year, month, day, 23, 59, 59, 999) - offsetMinutes * 60_000);
 }
 
 /** ISO-8601 week key 'YYYY-Www' for the given wall-clock parts (Thursday-based). */

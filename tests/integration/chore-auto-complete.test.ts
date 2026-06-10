@@ -48,19 +48,19 @@ beforeEach(async () => {
   });
   // Set the house timezone so wall-clock logic is deterministic
   await ctx.prisma.houseProfile.deleteMany();
-  await ctx.prisma.houseProfile.create({ data: { timezone: 'America/New_York' } });
+  await ctx.prisma.houseProfile.create({ data: { timezone: 'America/Chicago' } });
 });
 
-// Fixed "now" reference: 2026-05-27 10:00 UTC = 06:00 New_York (no DST ambiguity)
+// Fixed "now" reference: 2026-05-27 10:00 UTC = 05:00 America/Chicago (CDT, UTC-5)
 const NOW = new Date('2026-05-27T10:00:00.000Z');
-// "Two days ago" in UTC — safely before today in America/New_York too
-const TWO_DAYS_AGO = new Date('2026-05-25T00:00:00.000Z');
-// "Yesterday" in UTC
-const YESTERDAY = new Date('2026-05-26T00:00:00.000Z');
-// 2026-05-27 midnight America/New_York (EDT = UTC-4) → 2026-05-27T04:00:00Z
-// startOfDayInTz(NOW, 'America/New_York') returns this value, so nextDueOn === startToday
-// means the target is NOT strictly before today → should be skipped.
-const TODAY_NY_MIDNIGHT = new Date('2026-05-27T04:00:00.000Z');
+// nextDueOn values are date-only, stored at UTC midnight (computeNextDueOn → toUtcMidnight).
+const TWO_DAYS_AGO = new Date(Date.UTC(2026, 4, 25)); // 2026-05-25T00:00:00Z
+const YESTERDAY = new Date(Date.UTC(2026, 4, 26)); // 2026-05-26T00:00:00Z
+// "Due today": UTC midnight of the day `NOW` falls on in the house tz. This is the
+// shape production stores, and the regression value — the old tz-local-midnight
+// cutoff wrongly flagged it overdue in a negative-offset zone. NOT strictly before
+// today → must be skipped.
+const TODAY_UTC_MIDNIGHT = new Date(Date.UTC(2026, 4, 27)); // 2026-05-27T00:00:00Z
 
 describe('handleChoreAutoCompleteTick', () => {
   it('auto-closes an overdue CHORE with autoComplete=true', async () => {
@@ -107,8 +107,9 @@ describe('handleChoreAutoCompleteTick', () => {
         active: true,
         recurrence: { kind: 'interval', every: 7, unit: 'day' },
         notifyUserIds: ['u1'],
-        // midnight America/New_York on 2026-05-27 = 04:00 UTC — "today" in NY
-        targets: { create: [{ itemId, nextDueOn: TODAY_NY_MIDNIGHT }] },
+        // Due today, stored at UTC midnight (2026-05-27T00:00:00Z) the way
+        // computeNextDueOn produces it — must NOT auto-complete.
+        targets: { create: [{ itemId, nextDueOn: TODAY_UTC_MIDNIGHT }] },
       },
     });
 
@@ -215,10 +216,9 @@ describe('handleChoreAutoCompleteTick', () => {
         active: true,
         recurrence: { kind: 'interval', every: 1, unit: 'day' },
         notifyUserIds: ['u1'],
-        // YESTERDAY (2026-05-26T00:00:00Z) is strictly before TODAY_UTC_MIDNIGHT
-        // (2026-05-27T00:00:00Z). In NY tz YESTERDAY equals today's start
-        // (00:00 EDT on the 26th maps to 04:00Z on 26th, still < 04:00Z on 27th),
-        // so this test confirms the worker actually used UTC, not NY.
+        // YESTERDAY (2026-05-26T00:00:00Z) is strictly before today's UTC-midnight
+        // cutoff (2026-05-27T00:00:00Z), and completedOn lands at UTC end-of-day —
+        // confirming the worker used UTC, not the (now-removed) house tz.
         targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
       },
       include: { targets: true },

@@ -121,35 +121,40 @@ describe('getOverdueForUser', () => {
     expect(await getOverdueForUser(userId, 'America/New_York')).toEqual([]);
   });
 
-  it('respects the tz midnight boundary (a reminder due just before local midnight is overdue; one due at/after local midnight is not)', async () => {
-    // Fix "now" at 2026-07-01T16:00:00Z. In America/New_York (EDT, UTC-4) that is
-    // 12:00 on 2026-07-01, so local start-of-today = 2026-07-01T04:00:00Z (00:00 EDT Jul-1).
+  it('treats a chore due today (UTC-midnight) as NOT overdue, but yesterday as overdue', async () => {
+    // Calendar-date convention: nextDueOn is stored at UTC midnight (Date.UTC,
+    // no offset) the way computeNextDueOn produces it. "Overdue" means the
+    // calendar date is strictly before today in the house tz.
+    //
+    // Fix "now" at 2026-07-01T16:00:00Z = 11:00 CDT on 2026-07-01 in America/Chicago,
+    // so today-in-house = Jul-1 and the cutoff is UTC-midnight Jul-1.
     const now = new Date('2026-07-01T16:00:00Z');
-    const tz = 'America/New_York';
+    const tz = 'America/Chicago';
 
-    // 2026-07-01T03:00:00Z = 23:00 EDT Jun-30 → before start-of-today (04:00Z) → OVERDUE.
+    // Due today (UTC midnight Jul-1). Under the old (buggy) tz-local-midnight
+    // cutoff this was wrongly flagged overdue in a negative-offset zone.
     await ctx.prisma.reminder.create({
       data: {
-        title: 'Before local midnight',
+        title: 'Due today',
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: new Date('2026-07-01T03:00:00Z') }] },
+        targets: { create: [{ itemId, nextDueOn: new Date(Date.UTC(2026, 6, 1)) }] },
       },
     });
-    // 2026-07-01T04:00:00Z = 00:00 EDT Jul-1 → equals start-of-today → NOT overdue (filter is `lt`, strict <).
+    // Due yesterday (UTC midnight Jun-30) → strictly before today → OVERDUE.
     await ctx.prisma.reminder.create({
       data: {
-        title: 'At local midnight',
+        title: 'Due yesterday',
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: new Date('2026-07-01T04:00:00Z') }] },
+        targets: { create: [{ itemId, nextDueOn: new Date(Date.UTC(2026, 5, 30)) }] },
       },
     });
 
     const rows = await getOverdueForUser(userId, tz, now);
-    expect(rows.map((r) => r.title)).toEqual(['Before local midnight']);
+    expect(rows.map((r) => r.title)).toEqual(['Due yesterday']);
   });
 });
 

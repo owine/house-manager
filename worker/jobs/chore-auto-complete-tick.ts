@@ -4,7 +4,7 @@ import { computeNextDueOn } from '@/lib/reminders/recurrence';
 import { parseRecurrence } from '@/lib/reminders/schema';
 import { SYSTEM_AUTO_COMPLETE_USER_ID } from '@/lib/reminders/system-user';
 import { enqueueSearchIndex } from '@/lib/search/client';
-import { endOfDayInTz, startOfDayInTz } from '@/lib/time/tz';
+import { endOfCalendarDayInTz, startOfDayUtc } from '@/lib/time/tz';
 
 const logger = getLogger('chore-auto-complete-tick');
 
@@ -20,7 +20,7 @@ const logger = getLogger('chore-auto-complete-tick');
 export async function handleChoreAutoCompleteTick(now: Date = new Date()): Promise<void> {
   const profile = await prisma.houseProfile.findFirst({ select: { timezone: true } });
   const tz = profile?.timezone ?? 'UTC';
-  const startToday = startOfDayInTz(now, tz);
+  const startToday = startOfDayUtc(now, tz);
 
   const candidates = await prisma.reminderTarget.findMany({
     where: {
@@ -38,7 +38,7 @@ export async function handleChoreAutoCompleteTick(now: Date = new Date()): Promi
 
   let advancedCount = 0;
   for (const t of candidates) {
-    const completedOn = endOfDayInTz(t.nextDueOn, tz);
+    const completedOn = endOfCalendarDayInTz(t.nextDueOn, tz);
     const recurrence = parseRecurrence(t.reminder.recurrence);
     const nextDueOn = computeNextDueOn(recurrence, completedOn);
 

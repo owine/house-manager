@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { startOfDayInTz } from '@/lib/time/tz';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 export type DigestItem = {
   reminderId: string;
@@ -53,7 +53,7 @@ export async function getOverdueForUser(
   timezone: string,
   now: Date = new Date(),
 ): Promise<DigestItem[]> {
-  const start = startOfDayInTz(now, timezone);
+  const start = startOfDayUtc(now, timezone);
   return findAndProject(userId, { lt: start }, 'asc', now);
 }
 
