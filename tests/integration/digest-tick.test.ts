@@ -49,7 +49,6 @@ beforeEach(async () => {
       name: 'Tick',
       notificationPrefs: {
         emailEnabled: true,
-        timezone: 'UTC',
         overdueDigestEnabled: true,
         overdueDigestHour: nowHour,
         weeklySummaryEnabled: false,
@@ -99,7 +98,7 @@ describe('handleDigestTick — overdue path', () => {
     await ctx.prisma.user.update({
       where: { id: userId },
       data: {
-        notificationPrefs: { emailEnabled: true, timezone: 'UTC', overdueDigestEnabled: false },
+        notificationPrefs: { emailEnabled: true, overdueDigestEnabled: false },
       },
     });
     await seedOverdue();
@@ -139,7 +138,6 @@ describe('handleDigestTick — weekly path', () => {
       data: {
         notificationPrefs: {
           emailEnabled: true,
-          timezone: 'UTC',
           overdueDigestEnabled: false,
           weeklySummaryEnabled: true,
           weeklySummaryDay: dayIdx,

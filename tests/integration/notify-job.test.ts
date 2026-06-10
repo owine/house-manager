@@ -175,7 +175,6 @@ describe('handleNotify', () => {
           emailEnabled: false,
           quietStart: '00:00',
           quietEnd: '23:59',
-          timezone: 'UTC',
         },
       },
     });

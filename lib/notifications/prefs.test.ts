@@ -8,9 +8,14 @@ describe('notificationPrefsSchema', () => {
       emailEnabled: false,
       quietStart: '22:00',
       quietEnd: '07:00',
-      timezone: 'America/Chicago',
     });
     expect(r.success).toBe(true);
+  });
+
+  it('ignores a legacy stored `timezone` key (timezone moved to HouseProfile)', () => {
+    const prefs = readNotificationPrefs({ emailEnabled: true, timezone: 'America/Chicago' });
+    expect(prefs.emailEnabled).toBe(true);
+    expect('timezone' in prefs).toBe(false);
   });
 
   it('applies defaults for missing fields', () => {

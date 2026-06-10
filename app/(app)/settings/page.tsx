@@ -16,6 +16,7 @@ import { getHouseProfile } from '@/lib/house-profile/queries';
 import type { HouseProfileInput } from '@/lib/house-profile/schema';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
 import { getCurrentUserSettings } from '@/lib/notifications/queries';
+import { HOUSE_DEFAULT_TIMEZONE } from '@/lib/time/timezones';
 
 export default async function SettingsPage() {
   const profile = await getHouseProfile();
@@ -26,6 +27,7 @@ export default async function SettingsPage() {
     location: profile?.location ?? '',
     climateZone: profile?.climateZone ?? '',
     propertyType: (profile?.propertyType as HouseProfileInput['propertyType']) ?? undefined,
+    timezone: profile?.timezone ?? HOUSE_DEFAULT_TIMEZONE,
   };
 
   if (!userSettings) {
