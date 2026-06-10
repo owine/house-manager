@@ -4,6 +4,13 @@
  * logic — overdue/due, the .ics feed, chore auto-complete, digest content and
  * scheduling, and quiet hours. See lib/house-profile + getHouseTimezone().
  */
+/**
+ * Default house timezone before a profile is saved. Must match the
+ * `HouseProfile.timezone` column default (`@default("UTC")` in schema.prisma) —
+ * the schema can't import this TS constant, so keep the two in sync.
+ */
+export const HOUSE_DEFAULT_TIMEZONE = 'UTC';
+
 export const TIMEZONE_OPTIONS = [
   'UTC',
   'America/New_York',

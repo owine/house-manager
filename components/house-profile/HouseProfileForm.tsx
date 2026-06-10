@@ -25,7 +25,7 @@ import {
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { saveHouseProfile } from '@/lib/house-profile/actions';
 import { type HouseProfileInput, houseProfileSchema } from '@/lib/house-profile/schema';
-import { TIMEZONE_OPTIONS } from '@/lib/time/timezones';
+import { HOUSE_DEFAULT_TIMEZONE, TIMEZONE_OPTIONS } from '@/lib/time/timezones';
 
 // z.input preserves optional/literal-'' before the resolver transforms the value.
 type FormValues = z.input<typeof houseProfileSchema>;
@@ -160,7 +160,7 @@ export function HouseProfileForm({ defaultValues }: Props) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Timezone</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value ?? 'UTC'}>
+              <Select onValueChange={field.onChange} value={field.value ?? HOUSE_DEFAULT_TIMEZONE}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue />

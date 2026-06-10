@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { HOUSE_DEFAULT_TIMEZONE } from '@/lib/time/timezones';
 
 /**
  * Returns the singleton HouseProfile row, or null if none has been saved yet.
@@ -17,5 +18,5 @@ export async function getHouseProfile() {
  */
 export async function getHouseTimezone(): Promise<string> {
   const profile = await prisma.houseProfile.findFirst({ select: { timezone: true } });
-  return profile?.timezone ?? 'UTC';
+  return profile?.timezone ?? HOUSE_DEFAULT_TIMEZONE;
 }
