@@ -62,7 +62,7 @@
     "hast-util-from-html": "2.0.3",
     "hast-util-sanitize": "5.0.2",
     "hast-util-to-jsx-runtime": "2.3.6",
-    "ical-generator": "10.2.0",
+    "ical-generator": "11.0.0",
     "lucide-react": "1.17.0",
     "meilisearch": "0.58.0",
     "next": "16.2.7",
