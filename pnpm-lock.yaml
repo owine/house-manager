@@ -65,8 +65,8 @@ importers:
         specifier: 2.3.6
         version: 2.3.6
       ical-generator:
-        specifier: 10.2.0
-        version: 10.2.0(@types/node@25.9.2)(luxon@3.7.2)(rrule@2.8.1)
+        specifier: 11.0.0
+        version: 11.0.0(@types/node@25.9.2)(luxon@3.7.2)(rrule@2.8.1)
       lucide-react:
         specifier: 1.17.0
         version: 1.17.0(react@19.2.7)
@@ -3456,9 +3456,9 @@ packages:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
 
-  ical-generator@10.2.0:
-    resolution: {integrity: sha512-XR5FsiDWCsz5MwBwMA/sQqR3A9H240xkXIeXOabV7uNAiieP+TA9rleVvlwPLRXMz+CXME8cGuDd7cdnE5At6w==}
-    engines: {node: 20 || 22 || >=24}
+  ical-generator@11.0.0:
+    resolution: {integrity: sha512-OScZbXduIbjqtJzq0WLyPpAuKnc106+l28wszD+Wi2O9jXn76NVBfr4Ksv2XFyQn4JNZ9vWr5xAac0uT/FhVag==}
+    engines: {node: 22 || >=24.0.0}
     peerDependencies:
       '@touch4it/ical-timezones': '>=1.6.0'
       '@types/luxon': '>= 1.26.0'
@@ -8501,7 +8501,7 @@ snapshots:
 
   human-signals@8.0.1: {}
 
-  ical-generator@10.2.0(@types/node@25.9.2)(luxon@3.7.2)(rrule@2.8.1):
+  ical-generator@11.0.0(@types/node@25.9.2)(luxon@3.7.2)(rrule@2.8.1):
     optionalDependencies:
       '@types/node': 25.9.2
       luxon: 3.7.2
@@ -8631,7 +8631,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 25.9.1
+      '@types/node': 25.9.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
