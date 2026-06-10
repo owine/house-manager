@@ -32,9 +32,9 @@ export function isInQuietWindow(now: Date, prefs: NotificationPrefs): boolean {
  * If `now` is inside the quiet window, return the UTC instant corresponding to
  * the next `quietEnd` wall-clock time in `prefs.timezone`; otherwise return `now`.
  *
- * DST note: uses the current tz offset (same simplification as startOfDayInTz
- * in lib/time/tz.ts); a DST transition right at quietEnd would shift the
- * result by ≤1 h, which is acceptable for notification deferral.
+ * DST note: uses the current tz offset (same simplification as
+ * endOfCalendarDayInTz in lib/time/tz.ts); a DST transition right at quietEnd
+ * would shift the result by ≤1 h, which is acceptable for notification deferral.
  */
 export function nextNonQuietTime(now: Date, prefs: NotificationPrefs): Date {
   if (!prefs.quietEnd || !isInQuietWindow(now, prefs)) return now;

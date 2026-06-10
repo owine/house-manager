@@ -172,16 +172,16 @@ describe('assembleReminderEvents', () => {
     expect(events.every((e) => e.description === '')).toBe(true);
   });
 
-  it('due-today in NY tz keeps lead-time alarm when UTC midnight has already passed', () => {
-    // nextDueOn = 2026-05-27T04:00:00Z = 2026-05-27 00:00 EDT (midnight New York)
+  it('due-today in NY tz keeps lead-time alarm', () => {
+    // nextDueOn = 2026-05-27T00:00:00Z (date-only, UTC midnight — production shape)
     // now       = 2026-05-27T20:00:00Z = 2026-05-27 16:00 EDT (afternoon New York)
-    // In NY both dates are on the 27th → NOT overdue → alarm should fire
+    // Due date is the 27th, today in NY is the 27th → NOT overdue → alarm should fire
     const nyNow = new Date('2026-05-27T20:00:00Z');
     const events = assembleReminderEvents(
       base({
         leadTimeDays: 3,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date('2026-05-27T04:00:00Z'),
+        nextDueOn: new Date(Date.UTC(2026, 4, 27)),
       }),
       nyNow,
       'America/New_York',
@@ -192,15 +192,15 @@ describe('assembleReminderEvents', () => {
   });
 
   it('due-yesterday in NY tz has no alarm', () => {
-    // nextDueOn = 2026-05-26T04:00:00Z = 2026-05-26 00:00 EDT (yesterday in NY)
+    // nextDueOn = 2026-05-26T00:00:00Z (date-only, UTC midnight — production shape)
     // now       = 2026-05-27T20:00:00Z = 2026-05-27 16:00 EDT (today in NY)
-    // In NY the due date is the 26th, now is the 27th → overdue → no alarm
+    // Due date is the 26th, today in NY is the 27th → overdue → no alarm
     const nyNow = new Date('2026-05-27T20:00:00Z');
     const events = assembleReminderEvents(
       base({
         leadTimeDays: 3,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date('2026-05-26T04:00:00Z'),
+        nextDueOn: new Date(Date.UTC(2026, 4, 26)),
       }),
       nyNow,
       'America/New_York',

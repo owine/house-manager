@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { endOfDayInTz, isOverdue, isoWeek, startOfDayInTz, tzOffsetMinutes, tzParts } from './tz';
+import {
+  endOfCalendarDayInTz,
+  isOverdue,
+  isoWeek,
+  startOfDayUtc,
+  tzOffsetMinutes,
+  tzParts,
+  utcMidnight,
+} from './tz';
 
 describe('tzParts', () => {
   it('decomposes a UTC instant into EDT wall-clock parts (America/New_York, summer)', () => {
@@ -78,81 +86,120 @@ describe('isoWeek', () => {
   });
 });
 
-const NY = 'America/New_York';
+const CHI = 'America/Chicago';
 const UTC = 'UTC';
 
+// nextDueOn is a date-only value stored at UTC midnight (see computeNextDueOn ->
+// toUtcMidnight, and lib/format/date.ts). These helpers build values the way
+// production actually stores them: Date.UTC(y, m-1, d) with NO timezone offset.
+const dueOn = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+
 describe('isOverdue', () => {
-  it('returns false when due date is later today in tz (mid-afternoon)', () => {
-    // 2026-05-27 15:00 UTC = 2026-05-27 11:00 EDT; due midnight UTC = 2026-05-27 in UTC, 2026-05-26 in NY.
-    const now = new Date('2026-05-27T15:00:00Z');
-    const dueToday = new Date('2026-05-27T00:00:00Z'); // wall-clock today in UTC
-    expect(isOverdue(dueToday, now, UTC)).toBe(false);
+  it('returns false when due date is today in tz (chore stored at UTC midnight)', () => {
+    // The reported bug: a chore "due today" stored at UTC midnight must NOT be
+    // overdue in a negative-offset zone. 2026-06-10 09:00 CDT, due 2026-06-10.
+    const now = new Date('2026-06-10T14:00:00Z'); // 09:00 CDT Jun-10
+    expect(isOverdue(dueOn(2026, 6, 10), now, CHI)).toBe(false);
+  });
+
+  it('returns false even late on the due day in tz (just before local midnight)', () => {
+    // 2026-06-10 23:30 CDT = 2026-06-11T04:30Z. Still the 10th locally → not overdue.
+    const now = new Date('2026-06-11T04:30:00Z');
+    expect(isOverdue(dueOn(2026, 6, 10), now, CHI)).toBe(false);
   });
 
   it('returns true when due date is yesterday in tz', () => {
-    const now = new Date('2026-05-27T15:00:00Z');
-    const dueYesterday = new Date('2026-05-26T00:00:00Z');
-    expect(isOverdue(dueYesterday, now, UTC)).toBe(true);
+    const now = new Date('2026-06-10T14:00:00Z'); // 09:00 CDT Jun-10
+    expect(isOverdue(dueOn(2026, 6, 9), now, CHI)).toBe(true);
   });
 
   it('returns false when due is tomorrow', () => {
+    const now = new Date('2026-06-10T14:00:00Z');
+    expect(isOverdue(dueOn(2026, 6, 11), now, CHI)).toBe(false);
+  });
+
+  it('flips to overdue at local midnight, not UTC midnight (Chicago, UTC-5 in summer)', () => {
+    const due = dueOn(2026, 6, 10);
+    // 2026-06-11 00:30 UTC = 2026-06-10 19:30 CDT → still the 10th locally → NOT overdue.
+    expect(isOverdue(due, new Date('2026-06-11T00:30:00Z'), CHI)).toBe(false);
+    // 2026-06-11 05:30 UTC = 2026-06-11 00:30 CDT → now the 11th locally → overdue.
+    expect(isOverdue(due, new Date('2026-06-11T05:30:00Z'), CHI)).toBe(true);
+  });
+
+  it('handles DST spring-forward (2026-03-08 in Chicago)', () => {
+    // Due on the 8th, "now" later on the 8th — same calendar day, not overdue.
+    const now = new Date('2026-03-08T18:00:00Z'); // 13:00 CDT post spring-forward
+    expect(isOverdue(dueOn(2026, 3, 8), now, CHI)).toBe(false);
+  });
+
+  it('handles DST fall-back (2026-11-01 in Chicago)', () => {
+    const now = new Date('2026-11-01T22:00:00Z'); // 16:00 CST post fall-back
+    expect(isOverdue(dueOn(2026, 11, 1), now, CHI)).toBe(false);
+  });
+
+  it('compares by calendar date in UTC for the UTC tz', () => {
     const now = new Date('2026-05-27T15:00:00Z');
-    const dueTomorrow = new Date('2026-05-28T00:00:00Z');
-    expect(isOverdue(dueTomorrow, now, UTC)).toBe(false);
-  });
-
-  it('is not overdue at 23:59 local on the due day', () => {
-    // 2026-05-27 23:59 EDT = 2026-05-28 03:59 UTC; due date 2026-05-27 in NY tz.
-    const now = new Date('2026-05-28T03:59:00Z');
-    const due = new Date('2026-05-27T04:00:00Z'); // 00:00 EDT on the 27th
-    expect(isOverdue(due, now, NY)).toBe(false);
-  });
-
-  it('is overdue at 00:01 local the day after due', () => {
-    // 2026-05-28 00:01 EDT = 2026-05-28 04:01 UTC.
-    const now = new Date('2026-05-28T04:01:00Z');
-    const due = new Date('2026-05-27T04:00:00Z');
-    expect(isOverdue(due, now, NY)).toBe(true);
-  });
-
-  it('handles DST spring-forward (2026-03-08 in NY)', () => {
-    // Due on the 8th, "now" is later on the 8th — same calendar day, not overdue.
-    const due = new Date('2026-03-08T05:00:00Z'); // 00:00 EST
-    const now = new Date('2026-03-08T18:00:00Z'); // 14:00 EDT post spring-forward
-    expect(isOverdue(due, now, NY)).toBe(false);
-  });
-
-  it('handles DST fall-back (2026-11-01 in NY)', () => {
-    const due = new Date('2026-11-01T04:00:00Z'); // 00:00 EDT
-    const now = new Date('2026-11-01T22:00:00Z'); // 17:00 EST post fall-back
-    expect(isOverdue(due, now, NY)).toBe(false);
+    expect(isOverdue(dueOn(2026, 5, 27), now, UTC)).toBe(false);
+    expect(isOverdue(dueOn(2026, 5, 26), now, UTC)).toBe(true);
   });
 });
 
-describe('startOfDayInTz', () => {
-  it('returns 00:00 wall-clock of the input date in tz, as UTC instant', () => {
-    const d = new Date('2026-05-27T10:00:00Z'); // 06:00 EDT on the 27th
-    const start = startOfDayInTz(d, 'America/New_York');
-    // 00:00 EDT on 2026-05-27 = 04:00 UTC on 2026-05-27.
-    expect(start.toISOString()).toBe('2026-05-27T04:00:00.000Z');
+describe('utcMidnight', () => {
+  it('collapses a timestamp to UTC midnight of its UTC calendar date', () => {
+    expect(utcMidnight(new Date('2026-06-10T15:43:21.123Z')).toISOString()).toBe(
+      '2026-06-10T00:00:00.000Z',
+    );
   });
 
-  it('UTC returns 00:00:00.000Z of the same UTC date', () => {
-    const d = new Date('2026-05-27T15:00:00Z');
-    expect(startOfDayInTz(d, 'UTC').toISOString()).toBe('2026-05-27T00:00:00.000Z');
+  it('is a no-op for a value already at UTC midnight', () => {
+    const d = dueOn(2026, 6, 10);
+    expect(utcMidnight(d).getTime()).toBe(d.getTime());
   });
 });
 
-describe('endOfDayInTz', () => {
-  it('returns 23:59:59.999 wall-clock of the input date in tz, as UTC instant', () => {
-    const d = new Date('2026-05-27T10:00:00Z'); // 06:00 EDT on the 27th
-    const eod = endOfDayInTz(d, NY);
-    // 23:59:59.999 EDT on 2026-05-27 = 03:59:59.999 UTC on 2026-05-28.
-    expect(eod.toISOString()).toBe('2026-05-28T03:59:59.999Z');
+describe('calendar-date contract assertions (non-production)', () => {
+  it('isOverdue throws on a non-UTC-midnight nextDueOn', () => {
+    const now = new Date('2026-06-10T14:00:00Z');
+    expect(() => isOverdue(new Date('2026-06-10T15:00:00Z'), now, CHI)).toThrow(
+      /UTC-midnight date-only value/,
+    );
+  });
+
+  it('endOfCalendarDayInTz throws on a non-UTC-midnight calendarDate', () => {
+    expect(() => endOfCalendarDayInTz(new Date('2026-06-10T15:00:00Z'), CHI)).toThrow(
+      /UTC-midnight date-only value/,
+    );
+  });
+});
+
+describe('startOfDayUtc', () => {
+  it('returns UTC midnight of the calendar day the instant falls on in tz', () => {
+    // 2026-06-10 09:00 CDT (= 14:00Z) → calendar day Jun-10 → UTC-midnight Jun-10.
+    const start = startOfDayUtc(new Date('2026-06-10T14:00:00Z'), CHI);
+    expect(start.toISOString()).toBe('2026-06-10T00:00:00.000Z');
+  });
+
+  it('uses the LOCAL calendar day, not the UTC one, near local midnight', () => {
+    // 2026-06-11 04:30Z = 2026-06-10 23:30 CDT → local day is still Jun-10.
+    const start = startOfDayUtc(new Date('2026-06-11T04:30:00Z'), CHI);
+    expect(start.toISOString()).toBe('2026-06-10T00:00:00.000Z');
+  });
+
+  it('UTC tz returns UTC midnight of the same UTC date', () => {
+    const start = startOfDayUtc(new Date('2026-05-27T15:00:00Z'), UTC);
+    expect(start.toISOString()).toBe('2026-05-27T00:00:00.000Z');
+  });
+});
+
+describe('endOfCalendarDayInTz', () => {
+  it('returns 23:59:59.999 wall-clock in tz on the value’s UTC calendar date', () => {
+    // Calendar date Jun-10; 23:59:59.999 CDT (UTC-5) = 2026-06-11T04:59:59.999Z.
+    const eod = endOfCalendarDayInTz(dueOn(2026, 6, 10), CHI);
+    expect(eod.toISOString()).toBe('2026-06-11T04:59:59.999Z');
   });
 
   it('UTC returns 23:59:59.999Z of the same UTC date', () => {
-    const d = new Date('2026-05-27T15:00:00Z');
-    expect(endOfDayInTz(d, UTC).toISOString()).toBe('2026-05-27T23:59:59.999Z');
+    const eod = endOfCalendarDayInTz(dueOn(2026, 5, 27), UTC);
+    expect(eod.toISOString()).toBe('2026-05-27T23:59:59.999Z');
   });
 });

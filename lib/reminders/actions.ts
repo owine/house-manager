@@ -7,6 +7,7 @@ import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
+import { utcMidnight } from '@/lib/time/tz';
 import { withWeeklyAnchor } from './anchor';
 import { computeNextDueOn } from './recurrence';
 import {
@@ -204,7 +205,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
         orderBy: { nextDueOn: 'asc' },
         select: { nextDueOn: true },
       });
-      seedDueOn = earliest?.nextDueOn ?? new Date();
+      seedDueOn = earliest?.nextDueOn ?? utcMidnight(new Date());
     }
     data.recurrence = withWeeklyAnchor(recurrence, seedDueOn ?? new Date());
   }
@@ -248,7 +249,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               itemId: null,
               systemId: null,
               lastCompletedOn: seed?.lastCompletedOn ?? null,
-              nextDueOn: seed?.nextDueOn ?? nextDueOn ?? new Date(),
+              nextDueOn: seed?.nextDueOn ?? nextDueOn ?? utcMidnight(new Date()),
             },
           });
         }
@@ -303,7 +304,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               orderBy: { nextDueOn: 'asc' },
               select: { nextDueOn: true },
             });
-            seedNextDueOn = anyExisting?.nextDueOn ?? new Date();
+            seedNextDueOn = anyExisting?.nextDueOn ?? utcMidnight(new Date());
           }
           await tx.reminderTarget.createMany({
             data: toAdd.map((t) => ({
