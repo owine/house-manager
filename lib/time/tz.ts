@@ -68,8 +68,24 @@ export function tzOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 /** Normalize a date-only value to UTC midnight (its calendar date, in UTC). */
-function utcMidnight(d: Date): Date {
+export function utcMidnight(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/**
+ * Dev/test guard: date-only values (nextDueOn, purchaseDate, …) must be stored
+ * at UTC midnight (see `computeNextDueOn` → `toUtcMidnight` and
+ * `lib/format/date.ts`). A stray time component would be silently collapsed to
+ * its UTC calendar day here, so fail fast outside production to surface misuse.
+ */
+function assertCalendarDate(d: Date, fn: string): void {
+  if (process.env.NODE_ENV === 'production') return;
+  if (utcMidnight(d).getTime() !== d.getTime()) {
+    throw new Error(
+      `${fn}: expected a UTC-midnight date-only value, got ${d.toISOString()} ` +
+        '(see toUtcMidnight / lib/format/date.ts)',
+    );
+  }
 }
 
 /**
@@ -97,6 +113,7 @@ export function startOfDayUtc(instant: Date, tz: string): Date {
  * at house-local midnight, not UTC midnight.
  */
 export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
+  assertCalendarDate(nextDueOn, 'isOverdue');
   return utcMidnight(nextDueOn).getTime() < startOfDayUtc(now, tz).getTime();
 }
 
@@ -110,6 +127,7 @@ export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
  * a `completedOn` stamp.
  */
 export function endOfCalendarDayInTz(calendarDate: Date, tz: string): Date {
+  assertCalendarDate(calendarDate, 'endOfCalendarDayInTz');
   const year = calendarDate.getUTCFullYear();
   const month = calendarDate.getUTCMonth();
   const day = calendarDate.getUTCDate();

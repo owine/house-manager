@@ -6,6 +6,7 @@ import {
   startOfDayUtc,
   tzOffsetMinutes,
   tzParts,
+  utcMidnight,
 } from './tz';
 
 describe('tzParts', () => {
@@ -140,6 +141,34 @@ describe('isOverdue', () => {
     const now = new Date('2026-05-27T15:00:00Z');
     expect(isOverdue(dueOn(2026, 5, 27), now, UTC)).toBe(false);
     expect(isOverdue(dueOn(2026, 5, 26), now, UTC)).toBe(true);
+  });
+});
+
+describe('utcMidnight', () => {
+  it('collapses a timestamp to UTC midnight of its UTC calendar date', () => {
+    expect(utcMidnight(new Date('2026-06-10T15:43:21.123Z')).toISOString()).toBe(
+      '2026-06-10T00:00:00.000Z',
+    );
+  });
+
+  it('is a no-op for a value already at UTC midnight', () => {
+    const d = dueOn(2026, 6, 10);
+    expect(utcMidnight(d).getTime()).toBe(d.getTime());
+  });
+});
+
+describe('calendar-date contract assertions (non-production)', () => {
+  it('isOverdue throws on a non-UTC-midnight nextDueOn', () => {
+    const now = new Date('2026-06-10T14:00:00Z');
+    expect(() => isOverdue(new Date('2026-06-10T15:00:00Z'), now, CHI)).toThrow(
+      /UTC-midnight date-only value/,
+    );
+  });
+
+  it('endOfCalendarDayInTz throws on a non-UTC-midnight calendarDate', () => {
+    expect(() => endOfCalendarDayInTz(new Date('2026-06-10T15:00:00Z'), CHI)).toThrow(
+      /UTC-midnight date-only value/,
+    );
   });
 });
 
