@@ -73,10 +73,10 @@ RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 # (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
 # pgvector:pg18, matched.
 RUN apk add --no-cache \
-  curl=8.19.0-r0 \
+  curl=8.20.0-r1 \
   postgresql18-client=18.4-r0 \
-  vips=8.17.3-r1 \
-  vips-heif=8.17.3-r1
+  vips=8.18.2-r0 \
+  vips-heif=8.18.2-r0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
