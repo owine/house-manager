@@ -7,7 +7,7 @@ settings:
 overrides:
   postcss@<8.5.12: 8.5.15
   uuid@<14.0.0: 14.0.0
-  '@hono/node-server@<2.0.1': 2.0.5
+  '@hono/node-server@<2.0.1': 2.0.8
 
 importers:
 
@@ -799,8 +799,8 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hono/node-server@2.0.5':
-    resolution: {integrity: sha512-yQFvDmyDo3y6rEOJZDUYPJ49DIKTPpIk4kGvm40xx4Ejne0Pu9a1+exxPN+C1UppWK/WGZX9F++/Xs231tE86g==}
+  '@hono/node-server@2.0.8':
+    resolution: {integrity: sha512-GuCWzLxwg218fy1JaHculFsdcuY12hxit83V+algozTPnwhNjLrRL/Alg9OYjLZLoUZ1rw/S4CdTMsnkSKCmFA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
@@ -6267,7 +6267,7 @@ snapshots:
       protobufjs: 7.6.4
       yargs: 17.7.3
 
-  '@hono/node-server@2.0.5(hono@4.12.26)':
+  '@hono/node-server@2.0.8(hono@4.12.26)':
     dependencies:
       hono: 4.12.26
 
@@ -6521,7 +6521,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 2.0.5(hono@4.12.26)
+      '@hono/node-server': 2.0.8(hono@4.12.26)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -6859,7 +6859,7 @@ snapshots:
       '@electric-sql/pglite': 0.4.1
       '@electric-sql/pglite-socket': 0.1.1(@electric-sql/pglite@0.4.1)
       '@electric-sql/pglite-tools': 0.3.1(@electric-sql/pglite@0.4.1)
-      '@hono/node-server': 2.0.5(hono@4.12.26)
+      '@hono/node-server': 2.0.8(hono@4.12.26)
       '@prisma/get-platform': 7.2.0
       '@prisma/query-plan-executor': 7.2.0
       '@prisma/streams-local': 0.1.2
