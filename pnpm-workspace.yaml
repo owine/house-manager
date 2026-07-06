@@ -23,4 +23,4 @@ allowBuilds:
 overrides:
   "postcss@<8.5.12": "8.5.15"
   "uuid@<14.0.0": "14.0.0"
-  "@hono/node-server@<2.0.1": "2.0.5"
+  "@hono/node-server@<2.0.1": "2.0.8"
