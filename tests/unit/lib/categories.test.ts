@@ -6,6 +6,13 @@ import {
   visibleMetadataFields,
 } from '@/lib/categories';
 
+function schemaKeys(slug: string): string[] {
+  const config = categoryConfigFor(slug);
+  if (!config) throw new Error(`no category config for '${slug}'`);
+  // biome-ignore lint/suspicious/noExplicitAny: schema introspection
+  return Object.keys((config.schema as any).shape);
+}
+
 describe('categoryConfigs', () => {
   it('defines schemas for known categories', () => {
     expect(categoryConfigs.appliance).toBeDefined();
@@ -27,9 +34,7 @@ describe('categoryConfigs', () => {
 
 describe('visibleMetadataFields — vehicle', () => {
   it('shows mileage for cars but engineHours for boats', () => {
-    const config = categoryConfigFor('vehicle');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('vehicle');
     const car = visibleMetadataFields('vehicle', keys, 'car');
     expect(car).toContain('mileage');
     expect(car).toContain('vin');
@@ -42,9 +47,7 @@ describe('visibleMetadataFields — vehicle', () => {
   });
 
   it('shows tireSize for trailers but no engine fields', () => {
-    const config = categoryConfigFor('vehicle');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('vehicle');
     const trailer = visibleMetadataFields('vehicle', keys, 'trailer');
     expect(trailer).toContain('tireSize');
     expect(trailer).not.toContain('engineDisplacement');
@@ -55,9 +58,7 @@ describe('visibleMetadataFields — vehicle', () => {
 
 describe('visibleMetadataFields — tool', () => {
   it('shows mower-specific fields for lawn-mower', () => {
-    const config = categoryConfigFor('tool');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('tool');
     const mower = visibleMetadataFields('tool', keys, 'lawn-mower');
     expect(mower).toContain('cuttingWidthInches');
     expect(mower).toContain('bagCapacityBushels');
@@ -67,9 +68,7 @@ describe('visibleMetadataFields — tool', () => {
   });
 
   it('shows tank+psi for compressors and watts for generators', () => {
-    const config = categoryConfigFor('tool');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('tool');
     const compressor = visibleMetadataFields('tool', keys, 'air-compressor');
     expect(compressor).toContain('maxPsi');
     expect(compressor).toContain('tankGallons');
@@ -83,9 +82,7 @@ describe('visibleMetadataFields — tool', () => {
 
 describe('visibleMetadataFields — landscaping', () => {
   it('shows species + plantedDate for trees, fence fields for fence-section', () => {
-    const config = categoryConfigFor('landscaping');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('landscaping');
     const tree = visibleMetadataFields('landscaping', keys, 'tree');
     expect(tree).toContain('speciesOrCultivar');
     expect(tree).toContain('plantedDate');
@@ -100,9 +97,7 @@ describe('visibleMetadataFields — landscaping', () => {
   });
 
   it('keeps legacy `coverageArea` (string) always visible for back-compat', () => {
-    const config = categoryConfigFor('landscaping');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('landscaping');
     const irrigation = visibleMetadataFields('landscaping', keys, 'irrigation-zone');
     expect(irrigation).toContain('coverageArea');
     expect(irrigation).toContain('sprinklerHeadCount');
@@ -111,10 +106,7 @@ describe('visibleMetadataFields — landscaping', () => {
 
 describe('visibleMetadataFields', () => {
   it('shows only always-on fields when no typeField value is picked', () => {
-    const config = categoryConfigFor('appliance');
-    if (!config?.schema || !(config.schema instanceof Object)) throw new Error('config missing');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config.schema as any).shape);
+    const keys = schemaKeys('appliance');
     const visible = visibleMetadataFields('appliance', keys, undefined);
     // discriminator + always-on (color, fuelType, dimensions) visible;
     // capacity/btu/etc. hidden until applianceType is picked
@@ -125,9 +117,7 @@ describe('visibleMetadataFields', () => {
   });
 
   it('shows type-specific fields once the discriminator is set', () => {
-    const config = categoryConfigFor('appliance');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('appliance');
     const fridge = visibleMetadataFields('appliance', keys, 'refrigerator');
     expect(fridge).toContain('capacityCuFt');
     expect(fridge).toContain('waterLineRequired');
@@ -141,9 +131,7 @@ describe('visibleMetadataFields', () => {
   });
 
   it('returns the full key list for categories without a typeField', () => {
-    const config = categoryConfigFor('plumbing');
-    // biome-ignore lint/suspicious/noExplicitAny: schema introspection
-    const keys = Object.keys((config?.schema as any).shape);
+    const keys = schemaKeys('plumbing');
     expect(visibleMetadataFields('plumbing', keys, undefined)).toEqual(keys);
   });
 });
