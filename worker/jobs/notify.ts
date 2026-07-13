@@ -128,7 +128,6 @@ export async function handleNotify(
     title: reminder.title,
     description: reminder.description,
     appUrl: env.APP_URL,
-    timezone: tz,
     targets: reminder.targets.map((t) => ({
       nextDueOn: t.nextDueOn,
       item: t.item ?? undefined,

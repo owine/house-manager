@@ -7,10 +7,9 @@ function baseData(overrides: Partial<ReminderEmailData> = {}): ReminderEmailData
     title: 'Replace furnace filter',
     description: null,
     appUrl: 'https://hm.example',
-    timezone: 'America/New_York',
     targets: [
       {
-        nextDueOn: new Date('2026-06-01T12:00:00Z'),
+        nextDueOn: new Date('2026-06-01T00:00:00Z'),
         item: { id: 'itm_1', name: 'Furnace' },
       },
     ],
@@ -38,22 +37,24 @@ describe('reminderEmail', () => {
     expect(text).toContain('Use a MERV-13 filter.');
   });
 
-  it('formats due dates in the supplied timezone', () => {
+  // `nextDueOn` is a calendar date stored at UTC midnight (computeNextDueOn →
+  // toUtcMidnight), not an instant. Rendering it through a negative-offset tz
+  // shifts it a day back — a reminder due July 15 arrived reading "July 14".
+  it('renders the stored calendar date, never shifted by a timezone', () => {
     const { html, text } = reminderEmail(
       baseData({
-        timezone: 'America/New_York',
         targets: [
           {
-            nextDueOn: new Date('2026-06-01T12:00:00Z'),
+            nextDueOn: new Date('2026-07-15T00:00:00Z'),
             item: { id: 'itm_1', name: 'Furnace' },
           },
         ],
       }),
     );
-    // 12:00 UTC on 2026-06-01 is 08:00 EDT in America/New_York (still June 1) — the date
-    // portion must render in the user's tz, never UTC.
-    expect(html).toMatch(/June 1, 2026|Jun 1, 2026/);
-    expect(text).toMatch(/June 1, 2026|Jun 1, 2026/);
+    expect(html).toContain('July 15, 2026');
+    expect(text).toContain('July 15, 2026');
+    expect(html).not.toContain('July 14, 2026');
+    expect(text).not.toContain('July 14, 2026');
   });
 
   it('renders a link for each item target', () => {
@@ -106,10 +107,8 @@ describe('reminderEmail', () => {
     );
     expect(html).toContain('Furnace');
     expect(html).toContain('Heating');
-    // 2026-06-01T00:00:00Z is May 31 in America/New_York (EDT, UTC-4)
-    // 2026-07-15T00:00:00Z is July 14 in America/New_York (EDT, UTC-4)
-    expect(html).toMatch(/May 31, 2026|May 31, 26/);
-    expect(html).toMatch(/July 14, 2026|Jul 14, 26/);
+    expect(html).toContain('June 1, 2026');
+    expect(html).toContain('July 15, 2026');
   });
 
   it('renders the CTA labeled "View reminder" with the correct href', () => {

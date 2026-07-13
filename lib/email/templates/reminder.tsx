@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { formatCalendarDate } from '@/lib/format/date';
 import { EMAIL_TOKENS, Layout } from '../layout';
 import { renderEmail } from '../render';
 
@@ -15,7 +16,6 @@ export type ReminderEmailData = {
   title: string;
   description: string | null;
   appUrl: string; // guaranteed non-empty by the caller (see notify.ts guard)
-  timezone: string;
   targets: ReminderEmailTarget[];
 };
 
@@ -26,23 +26,17 @@ export type ReminderEmailResult = {
 };
 
 /**
- * Format a due date in the user's notification-prefs timezone. The date
- * portion must render in the user's tz, never UTC — a reminder due
- * "today" should read as today in the recipient's local time.
+ * `nextDueOn` is a calendar date stored at UTC midnight, so it renders in UTC —
+ * passing it through the house timezone would shift it a day back in the Americas.
  */
-function formatDue(d: Date, timezone: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(d);
+function formatDue(d: Date): string {
+  return formatCalendarDate(d, 'long');
 }
 
 type ResolvedTarget = {
   label: string; // item or system name
   href: string; // absolute, appUrl-rooted
-  due: string; // formatted in user's tz
+  due: string; // the stored calendar date, rendered in UTC
 };
 
 function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
@@ -54,20 +48,20 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
       return {
         label: t.item.name,
         href: `${data.appUrl}/items/${t.item.id}`,
-        due: formatDue(t.nextDueOn, data.timezone),
+        due: formatDue(t.nextDueOn),
       };
     }
     if (t.system) {
       return {
         label: t.system.name,
         href: `${data.appUrl}/systems/${t.system.id}`,
-        due: formatDue(t.nextDueOn, data.timezone),
+        due: formatDue(t.nextDueOn),
       };
     }
     return {
       label: '(no target)',
       href: data.appUrl,
-      due: formatDue(t.nextDueOn, data.timezone),
+      due: formatDue(t.nextDueOn),
     };
   });
 }

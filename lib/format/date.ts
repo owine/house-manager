@@ -3,10 +3,18 @@
  * Calendar dates are stored as UTC midnight and should always display
  * as the UTC date, regardless of the viewer's timezone.
  *
+ * Never format one through a house/user timezone: a calendar date has no
+ * instant to convert, so a negative-offset zone renders it a day early
+ * (2026-07-15T00:00:00Z reads as "July 14" in America/New_York).
+ *
  * @param d - Date object, ISO string, null, or undefined
- * @returns Formatted date string (e.g., "Jan 15, 2024") or empty string if null/undefined
+ * @param month - Month style: 'short' (default, "Jan 15, 2024") or 'long' ("January 15, 2024")
+ * @returns Formatted date string, or empty string if null/undefined
  */
-export function formatCalendarDate(d: Date | string | null | undefined): string {
+export function formatCalendarDate(
+  d: Date | string | null | undefined,
+  month: 'short' | 'long' = 'short',
+): string {
   if (d === null || d === undefined) {
     return '';
   }
@@ -16,7 +24,7 @@ export function formatCalendarDate(d: Date | string | null | undefined): string 
   return date.toLocaleDateString('en-US', {
     timeZone: 'UTC',
     year: 'numeric',
-    month: 'short',
+    month,
     day: 'numeric',
   });
 }
