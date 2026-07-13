@@ -57,7 +57,10 @@ async function maybeSend(
     });
     return;
   }
-  const { subject, html, text } = digestEmail({ mode: kind, items, appUrl, timezone });
+  // `timezone` scopes the queries above (which "today" the overdue/weekly window
+  // is anchored to); the template renders each due date from its stored calendar
+  // date, so it needs no tz.
+  const { subject, html, text } = digestEmail({ mode: kind, items, appUrl });
   const r = await sendEmail(userEmail, { subject, text, html });
   await prisma.digestLog.update({
     where: { id: logId },

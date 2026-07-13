@@ -5,7 +5,7 @@ function baseItem(over: Partial<DigestEmailData['items'][number]> = {}) {
   return {
     reminderId: 'rem_1',
     title: 'Replace filter',
-    dueOn: new Date('2026-06-01T12:00:00Z'),
+    dueOn: new Date('2026-06-01T00:00:00Z'),
     daysOverdue: 0,
     targets: [{ kind: 'item' as const, id: 'itm_1', name: 'Furnace' }],
     ...over,
@@ -17,7 +17,6 @@ function baseData(over: Partial<DigestEmailData> = {}): DigestEmailData {
     mode: 'overdue',
     items: [baseItem({ daysOverdue: 3 })],
     appUrl: 'https://hm.example',
-    timezone: 'America/New_York',
     ...over,
   };
 }
@@ -68,15 +67,19 @@ describe('digestEmail', () => {
     expect(html).toMatch(/7d overdue/);
   });
 
-  it('renders a "due {date}" badge in weekly mode formatted in the supplied tz', () => {
-    const { html } = digestEmail(
+  // `dueOn` is a calendar date stored at UTC midnight, not an instant. Rendering it
+  // through a negative-offset tz shifts it a day back — the weekly digest listed a
+  // July 15 reminder as "due July 14".
+  it('renders a "due {date}" badge in weekly mode using the stored calendar date', () => {
+    const { html, text } = digestEmail(
       baseData({
         mode: 'weekly',
-        timezone: 'America/New_York',
-        items: [baseItem({ dueOn: new Date('2026-06-01T12:00:00Z') })],
+        items: [baseItem({ dueOn: new Date('2026-07-15T00:00:00Z') })],
       }),
     );
-    expect(html).toMatch(/due (June 1, 2026|Jun 1, 2026)/);
+    expect(html).toContain('due July 15, 2026');
+    expect(text).toContain('due July 15, 2026');
+    expect(html).not.toContain('July 14, 2026');
   });
 
   it('links each reminder title to {appUrl}/reminders/{id}', () => {

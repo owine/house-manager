@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { formatCalendarDate } from '@/lib/format/date';
 import { EMAIL_TOKENS, Layout } from '../layout';
 import { renderEmail } from '../render';
 
@@ -20,18 +21,18 @@ export type DigestEmailData = {
   mode: 'overdue' | 'weekly';
   items: DigestItem[]; // template never re-sorts; query owns order
   appUrl: string;
-  timezone: string;
 };
 
 export type DigestEmailResult = { subject: string; html: string; text: string };
 
-function formatDue(d: Date, timezone: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(d);
+/**
+ * `dueOn` is a calendar date stored at UTC midnight, so it renders in UTC —
+ * passing it through the house timezone would shift it a day back in the Americas.
+ * (The house tz still drives digest *scheduling* and the overdue cutoff in the
+ * query; it just has no business formatting a date-only value.)
+ */
+function formatDue(d: Date): string {
+  return formatCalendarDate(d, 'long');
 }
 
 function pluralize(n: number, singular: string): string {
@@ -78,7 +79,7 @@ function Body({ data }: { data: DigestEmailData }): ReactNode {
               {it.targets.length > 0 ? ' · ' : ''}
               {data.mode === 'overdue'
                 ? `${it.daysOverdue}d overdue`
-                : `due ${formatDue(it.dueOn, data.timezone)}`}
+                : `due ${formatDue(it.dueOn)}`}
             </div>
           </li>
         ))}
@@ -93,9 +94,7 @@ function buildText(data: DigestEmailData): string {
   lines.push('');
   for (const it of data.items) {
     const badge =
-      data.mode === 'overdue'
-        ? `${it.daysOverdue}d overdue`
-        : `due ${formatDue(it.dueOn, data.timezone)}`;
+      data.mode === 'overdue' ? `${it.daysOverdue}d overdue` : `due ${formatDue(it.dueOn)}`;
     const targetNames = it.targets.map((t) => t.name).join(', ');
     lines.push(`- ${it.title}${targetNames ? ` (${targetNames})` : ''} — ${badge}`);
     lines.push(`  ${data.appUrl}/reminders/${it.reminderId}`);
