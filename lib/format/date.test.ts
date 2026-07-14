@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCalendarDate } from './date';
+import { formatCalendarDate, formatHouseDay } from './date';
 
 describe('formatCalendarDate', () => {
   it('returns empty string for null', () => {
@@ -64,5 +64,34 @@ describe('parseDateInput', () => {
     const d = parseDateInput('2026-05-31');
     expect(d).toBeInstanceOf(Date);
     expect(d?.toISOString()).toBe('2026-05-31T00:00:00.000Z');
+  });
+});
+
+describe('formatHouseDay', () => {
+  const TZ = 'America/Chicago'; // UTC-5 in July
+
+  it('renders an instant as the day it fell on in the house tz', () => {
+    // 11:00 CDT on Jul 14 -- unambiguous, same day in UTC.
+    expect(formatHouseDay(new Date('2026-07-14T16:00:00Z'), TZ)).toBe('Jul 14, 2026');
+  });
+
+  it('does not roll an evening instant into the next day', () => {
+    // 20:00 CDT Jul 14 is 01:00Z Jul 15. formatCalendarDate renders in UTC, so
+    // handing it this INSTANT shows "Jul 15" -- a day late. That is the bug
+    // (CompletionRow, InboxPreviewCard, RecentActivityList all did this).
+    const evening = new Date('2026-07-15T01:00:00Z');
+    expect(formatHouseDay(evening, TZ)).toBe('Jul 14, 2026');
+    expect(formatCalendarDate(evening)).toBe('Jul 15, 2026'); // the bug, pinned
+  });
+
+  it('handles the chore auto-complete sentinel instant', () => {
+    // chore-auto-complete stamps completedOn = endOfCalendarDayInTz(dueOn, tz),
+    // which in Chicago is 04:59:59.999Z the NEXT UTC day. Rendered in UTC that is
+    // systematically one day late for every auto-completed chore.
+    expect(formatHouseDay(new Date('2026-07-15T04:59:59.999Z'), TZ)).toBe('Jul 14, 2026');
+  });
+
+  it('supports the long month style', () => {
+    expect(formatHouseDay(new Date('2026-07-15T01:00:00Z'), TZ, 'long')).toBe('July 14, 2026');
   });
 });

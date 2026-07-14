@@ -10,6 +10,7 @@ const baseProps = {
   completedOn: new Date('2026-05-27T00:00:00Z'),
   completedBy: { name: 'Alice' },
   notes: null,
+  tz: 'America/Chicago',
 };
 
 describe('CompletionRow', () => {
@@ -36,5 +37,33 @@ describe('CompletionRow', () => {
   it('does not render notes section when notes is null', () => {
     render(<CompletionRow {...baseProps} completedById="user-123" notes={null} />);
     expect(screen.queryByText(/:/)).not.toBeInTheDocument();
+  });
+
+  // `completedOn` is an INSTANT. It was rendered with formatCalendarDate, which
+  // formats in UTC -- so any completion after 7pm Chicago showed tomorrow's date.
+  it('dates an evening completion by the house day, not the UTC day', () => {
+    render(
+      <CompletionRow
+        {...baseProps}
+        completedOn={new Date('2026-07-15T01:00:00Z')} // 20:00 CDT on Jul 14
+        completedById="user-123"
+      />,
+    );
+    expect(screen.getByText(/Jul 14, 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/Jul 15, 2026/)).not.toBeInTheDocument();
+  });
+
+  it('dates an auto-completed chore by the day it was actually due', () => {
+    // chore-auto-complete stamps completedOn = endOfCalendarDayInTz(dueOn, tz) =
+    // 04:59:59.999Z the NEXT UTC day, so in UTC this read a day late for EVERY
+    // auto-completed chore, systematically.
+    render(
+      <CompletionRow
+        {...baseProps}
+        completedOn={new Date('2026-07-15T04:59:59.999Z')} // chore due Jul 14
+        completedById={SYSTEM_AUTO_COMPLETE_USER_ID}
+      />,
+    );
+    expect(screen.getByText(/Jul 14, 2026/)).toBeInTheDocument();
   });
 });

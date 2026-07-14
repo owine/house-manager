@@ -5,6 +5,7 @@ export const metadata: Metadata = { title: 'dashboard' };
 import { auth } from '@/lib/auth';
 import { listChecklists } from '@/lib/checklists/queries';
 import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { listInboxEmails } from '@/lib/incoming-email/queries';
 import { ActiveChecklistsCard } from './ActiveChecklistsCard';
 import { DashboardGreeting } from './DashboardGreeting';
@@ -16,9 +17,13 @@ import { SeasonalChecklistCard } from './SeasonalChecklistCard';
 import { UpcomingRemindersCard } from './UpcomingRemindersCard';
 
 export default async function Dashboard() {
+  // Resolved once, up front: quickStats needs it as an argument and the two
+  // date-rendering children need it as a prop, and every consumer on this page
+  // must agree on which day "today" is.
+  const tz = await getHouseTimezone();
   const [session, stats, activity, reminders, checklists, inbox] = await Promise.all([
     auth(),
-    quickStats(),
+    quickStats(tz),
     recentActivity(10),
     upcomingReminders(5),
     listChecklists(),
@@ -39,10 +44,10 @@ export default async function Dashboard() {
           taller column for long item names; reminders on the left is dense. */}
       <div className="grid gap-6 md:grid-cols-2">
         <UpcomingRemindersCard reminders={reminders} />
-        <RecentActivityList activity={activity} />
+        <RecentActivityList activity={activity} tz={tz} />
       </div>
 
-      <InboxPreviewCard emails={inbox} />
+      <InboxPreviewCard emails={inbox} tz={tz} />
 
       <ActiveChecklistsCard checklists={checklists} />
 

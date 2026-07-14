@@ -5,9 +5,11 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import { startOfDayUtc } from '@/lib/time/tz';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext } from '../context-builder';
 import { createSuggestionLog, markAccepted } from '../log';
@@ -90,7 +92,12 @@ export async function proposeChecklist(
     return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
   }
 
-  const ctx = await buildSuggestContext({ today: new Date() });
+  // `today` is rendered into the prompt as a UTC day (`toISOString().slice(0,10)`)
+  // and drives seasonForDate. Passing a raw instant told the model TOMORROW's
+  // date every evening after 7pm Chicago. Reduce it to the house day first.
+  const houseToday = startOfDayUtc(new Date(), await getHouseTimezone());
+
+  const ctx = await buildSuggestContext({ today: houseToday });
 
   const start = Date.now();
   let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
@@ -100,7 +107,7 @@ export async function proposeChecklist(
       max_tokens: ANTHROPIC_MAX_TOKENS,
       system: buildSystemBlocks({
         profile: ctx.profile,
-        today: new Date(),
+        today: houseToday,
         inventory: ctx.inventory,
       }),
       messages: [{ role: 'user', content: buildChecklistUserMessage(input, appendingTo?.name) }],

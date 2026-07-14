@@ -6,6 +6,8 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { MonthGrid } from '@/components/calendar/MonthGrid';
 import { Button } from '@/components/ui/button';
 import { listCalendarEventsInRange } from '@/lib/calendar/queries';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 export const metadata: Metadata = { title: 'reminders calendar' };
 
@@ -16,8 +18,7 @@ type SearchParams = Promise<{ month?: string }>;
  * to the current month when missing or malformed so the page is always
  * useful even after a typo in the URL.
  */
-function parseMonth(raw: string | undefined): Date {
-  const today = new Date();
+function parseMonth(raw: string | undefined, today: Date): Date {
   if (!raw || !/^\d{4}-\d{2}$/.test(raw)) {
     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
   }
@@ -40,7 +41,17 @@ function monthName(d: Date): string {
 
 export default async function CalendarPage({ searchParams }: { searchParams: SearchParams }) {
   const { month } = await searchParams;
-  const monthStart = parseMonth(month);
+
+  // "Today" is the current day in the HOUSE, not in UTC. Derived from a raw
+  // instant, the today-ring jumped to tomorrow -- and muted today's cell as
+  // "past" -- from 7pm Chicago onward, once the UTC date had rolled over. The
+  // same anchor drives parseMonth's fallback, which otherwise rolled the default
+  // month over on the evening of the last day of a month.
+  const tz = await getHouseTimezone();
+  const today = startOfDayUtc(new Date(), tz);
+  const todayIso = today.toISOString().slice(0, 10);
+
+  const monthStart = parseMonth(month, today);
   const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
   const prev = new Date(monthStart);
   prev.setUTCMonth(prev.getUTCMonth() - 1);
@@ -48,9 +59,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Sea
   next.setUTCMonth(next.getUTCMonth() + 1);
 
   const events = await listCalendarEventsInRange({ start: monthStart, end: monthEnd });
-
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
 
   return (
     <ListPageShell

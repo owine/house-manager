@@ -84,6 +84,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
                       completedById={c.completedById}
                       completedBy={c.completedBy}
                       notes={c.notes}
+                      tz={houseTimezone}
                     />
                   </li>
                 ))}

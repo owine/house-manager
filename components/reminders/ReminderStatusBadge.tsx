@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { isOverdue, tzParts } from '@/lib/time/tz';
+import { isOverdue, startOfDayUtc } from '@/lib/time/tz';
 
 type Props = {
   nextDueOn: Date;
@@ -8,15 +8,6 @@ type Props = {
   /** Override for tests; defaults to `new Date()`. */
   now?: Date;
 };
-
-function calendarDaysBetween(
-  later: { year: number; month: number; day: number },
-  earlier: { year: number; month: number; day: number },
-): number {
-  const a = Date.UTC(later.year, later.month - 1, later.day);
-  const b = Date.UTC(earlier.year, earlier.month - 1, earlier.day);
-  return Math.round((a - b) / 86_400_000);
-}
 
 export function ReminderStatusBadge({ nextDueOn, active, tz, now = new Date() }: Props) {
   if (!active) {
@@ -33,7 +24,11 @@ export function ReminderStatusBadge({ nextDueOn, active, tz, now = new Date() }:
       </Badge>
     );
   }
-  const days = calendarDaysBetween(tzParts(nextDueOn, tz), tzParts(now, tz));
+  // `nextDueOn` is a calendar date (UTC midnight) -- it is already a day, so it
+  // must be read in UTC. Only `now`, a real instant, needs the house timezone,
+  // to work out which day "today" is. Running the due date through the tz (as
+  // this once did) drags it onto the previous day in any negative-offset zone.
+  const days = Math.round((nextDueOn.getTime() - startOfDayUtc(now, tz).getTime()) / 86_400_000);
   if (days <= 3) {
     return (
       <Badge

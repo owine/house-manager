@@ -6,9 +6,9 @@ import type { getItem } from '@/lib/items/queries';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
 
-type Props = { item: Item };
+type Props = { item: Item; tz: string };
 
-export function WarrantiesTab({ item }: Props) {
+export function WarrantiesTab({ item, tz }: Props) {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between border-b pb-3">
@@ -25,7 +25,7 @@ export function WarrantiesTab({ item }: Props) {
         {item.warranties.length === 0 ? (
           <p className="text-sm text-muted-foreground">no warranties yet.</p>
         ) : (
-          <WarrantyTable warranties={item.warranties} />
+          <WarrantyTable warranties={item.warranties} tz={tz} />
         )}
       </CardContent>
     </Card>
