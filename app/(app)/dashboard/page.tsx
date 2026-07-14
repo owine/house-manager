@@ -19,7 +19,7 @@ import { UpcomingRemindersCard } from './UpcomingRemindersCard';
 export default async function Dashboard() {
   const [session, stats, activity, reminders, checklists, inbox, tz] = await Promise.all([
     auth(),
-    quickStats(),
+    quickStats(await getHouseTimezone()),
     recentActivity(10),
     upcomingReminders(5),
     listChecklists(),

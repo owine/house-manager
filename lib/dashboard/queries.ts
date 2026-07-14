@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { listUpcomingReminders } from '@/lib/reminders/queries';
+import { tzParts } from '@/lib/time/tz';
 
 type ActivityTarget = {
   id: string;
@@ -232,8 +233,14 @@ export type QuickStats = {
   serviceThisYear: number;
 };
 
-export async function quickStats(): Promise<QuickStats> {
-  const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+export async function quickStats(tz: string): Promise<QuickStats> {
+  // `performedOn` is a calendar date at UTC midnight, so the cutoff must be one
+  // too. The old `new Date(new Date().getFullYear(), 0, 1)` used the LOCAL Date
+  // ctor and the LOCAL year -- correct only because the containers happen to run
+  // UTC. Set TZ on the app container and every Jan-1 service record silently
+  // dropped out of the count (or Dec-31 of the prior year silently joined it).
+  const { year } = tzParts(new Date(), tz);
+  const startOfYear = new Date(Date.UTC(year, 0, 1));
   const [activeItems, vendors, serviceThisYear] = await Promise.all([
     prisma.item.count({ where: { archivedAt: null } }),
     prisma.vendor.count(),

@@ -5,6 +5,7 @@ import { createSuggestionLog } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import {
   aiClassifyExtract,
   shouldAutoStub,
@@ -15,6 +16,7 @@ import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 export type ClassifyIncomingEmailJob = { id: string };
 
@@ -106,7 +108,11 @@ async function classifyOne(id: string): Promise<void> {
       fromName: row.fromName,
       subject: row.subject,
       bodyText: augmentedBody,
-      emailDate: row.receivedAt,
+      // `receivedAt` is an INSTANT; the prompt renders it as a UTC day. An email
+      // received at 8pm Chicago would tell the model "Email date: <tomorrow>",
+      // and the model's answer feeds aiExtractedPerformedOn -> ServiceRecord.
+      // Reduce it to the house day first.
+      emailDate: startOfDayUtc(row.receivedAt, await getHouseTimezone()),
       vendors,
       items,
       systems,

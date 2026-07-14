@@ -4,11 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import { computeNextDueOn } from '@/lib/reminders/recurrence';
 import { parseRecurrence } from '@/lib/reminders/schema';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import { startOfDayUtc } from '@/lib/time/tz';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext, type FocusedItem } from '../context-builder';
 import { createSuggestionLog, markAccepted } from '../log';
@@ -67,7 +69,12 @@ export async function proposeReminders(input: {
     return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
   }
 
-  const ctx = await buildSuggestContext({ today: new Date(), focusedItemId: input.itemId });
+  // `today` is rendered into the prompt as a UTC day (`toISOString().slice(0,10)`)
+  // and drives seasonForDate. Passing a raw instant told the model TOMORROW's
+  // date every evening after 7pm Chicago. Reduce it to the house day first.
+  const houseToday = startOfDayUtc(new Date(), await getHouseTimezone());
+
+  const ctx = await buildSuggestContext({ today: houseToday, focusedItemId: input.itemId });
 
   const start = Date.now();
   let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
@@ -77,7 +84,7 @@ export async function proposeReminders(input: {
       max_tokens: ANTHROPIC_MAX_TOKENS,
       system: buildSystemBlocks({
         profile: ctx.profile,
-        today: new Date(),
+        today: houseToday,
         inventory: ctx.inventory,
       }),
       messages: [{ role: 'user', content: buildReminderUserMessage(ctx.focusedItem) }],

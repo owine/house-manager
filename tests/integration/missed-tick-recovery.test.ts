@@ -32,9 +32,20 @@ beforeEach(async () => {
   recoveryItemId = item.id;
 });
 
+/**
+ * `nextDueOn` is a CALENDAR DATE at UTC midnight. Seeding it with a wall-clock
+ * instant ("2 hours ago") is not a past-due *date* -- it is a moment earlier
+ * today -- so once the tick correctly compares house-day to house-day, such a
+ * fixture is not past due at all. Past-due means the calendar date is behind us.
+ */
+const yesterdayCal = (): Date => {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 86_400_000);
+};
+
 describe('missed-tick recovery', () => {
   it('enqueues notify jobs for past-due reminders that have no NotificationLog row', async () => {
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const pastDue = yesterdayCal();
     await ctx.prisma.reminder.create({
       data: {
         id: 'past-due-r1',
@@ -42,7 +53,7 @@ describe('missed-tick recovery', () => {
         recurrence: { kind: 'interval', days: 90 },
         leadTimeDays: 0,
         notifyUserIds: ['r1u'],
-        targets: { create: [{ nextDueOn: twoHoursAgo, itemId: recoveryItemId }] },
+        targets: { create: [{ nextDueOn: pastDue, itemId: recoveryItemId }] },
       },
     });
 
@@ -59,8 +70,8 @@ describe('missed-tick recovery', () => {
   });
 
   it('locks in tick-side dedup behavior: tick re-enqueues even when a NotificationLog exists; the unique constraint at the notify handler is what dedupes', async () => {
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const cycle = twoHoursAgo.toISOString().slice(0, 10);
+    const pastDue = yesterdayCal();
+    const cycle = pastDue.toISOString().slice(0, 10);
     await ctx.prisma.reminder.create({
       data: {
         id: 'past-due-r2',
@@ -68,7 +79,7 @@ describe('missed-tick recovery', () => {
         recurrence: { kind: 'interval', days: 90 },
         leadTimeDays: 0,
         notifyUserIds: ['r1u'],
-        targets: { create: [{ nextDueOn: twoHoursAgo, itemId: recoveryItemId }] },
+        targets: { create: [{ nextDueOn: pastDue, itemId: recoveryItemId }] },
       },
     });
     await ctx.prisma.notificationLog.create({

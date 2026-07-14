@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix the **thirteen** live bugs caused by confusing calendar dates with instants, then make the confusion *unrepresentable* — first in the database, then in the type system.
+**Goal:** Fix the **fifteen** live bugs caused by confusing calendar dates with instants, then make the confusion *unrepresentable* — first in the database, then in the type system.
 
 **Architecture:** The app stores two semantically different things in one type. `nextDueOn`, `endsOn`, `startsOn`, `performedOn`, `purchaseDate`, `installDate` are **calendar dates** — a day, encoded as UTC midnight by convention. `now`, `completedOn`, `receivedAt`, `occurredAt` are **instants**. Both are `Date`, so TypeScript cannot tell them apart and every call site is a coin flip. We fix the bugs with the existing `lib/time/tz.ts` helpers (PR 2, PR 3), then migrate the columns to real Postgres `date` so a time component becomes **structurally impossible** (PR 4), then brand the TypeScript type so misuse becomes a **compile error** (PR 5).
 
@@ -64,6 +64,8 @@ Seven prior fixes, all this same root cause: #151, #194, #205/#206, #225, #226, 
 | C10 | `components/reminders/CompletionRow.tsx:21` | `formatCalendarDate(completedOn)` — completions render a day late; **systematically** for auto-completed chores |
 | C11 | `app/(app)/dashboard/InboxPreviewCard.tsx:44` | `formatCalendarDate(receivedAt)` — evening emails show tomorrow's date |
 | C12 | `app/(app)/dashboard/RecentActivityList.tsx:13` | `formatCalendarDate(occurredAt)` — same class, lower impact |
+| **C14** | `lib/incoming-email/ai-classify.ts:65` | `emailDate.toISOString().slice(0,10)` on an **instant** — an email received at 8 PM Chicago tells the classifier **tomorrow's** date. Its answer feeds `aiExtractedPerformedOn` → `ServiceRecord.performedOn`, so this is the **upstream of C5's second site**: fixing C5 alone still files evening emails a day late. |
+| C15 | `lib/ai/prompts.ts:132`, `lib/ai/suggest/{reminders,checklist}.ts` | `today: new Date()` → rendered as a UTC day and fed to `seasonForDate`; the model is told tomorrow's date every evening |
 | L1 | `lib/dashboard/queries.ts:236` | local-ctor `startOfYear`; breaks the moment `TZ` is set on the container |
 | L2 | `lib/reminders/actions.ts:208,252,307` | `utcMidnight(new Date())` seeds the **UTC** day, not the house day |
 
@@ -191,8 +193,13 @@ Fix: these are instants, so render the **house day**: `formatCalendarDate(startO
 
 ### Task 9: Remaining test time bombs
 
-- [ ] `tests/integration/notify-job.test.ts:~176` — `quietStart: '00:00', quietEnd: '23:59'` intends "all day", but `isInQuietWindow` (`lib/notifications/quiet-hours.ts:25`) evaluates the non-crossing branch as `minutesNow >= 0 && minutesNow < 1439` — **exclusive** of 23:59. Fails during the 23:59 UTC minute. Use `quietEnd: '00:00'` (overnight branch, always true) or inject `now`.
-- [ ] `tests/integration/digest-tick.test.ts:45,133` — `beforeEach` captures `new Date().getUTCHours()` but the handler re-reads the clock; an hour rollover between setup and act flips every test. Inject `now`.
+- [ ] `tests/integration/notify-job.test.ts:~176` — `quietStart: '00:00', quietEnd: '23:59'` intends "all day", but `isInQuietWindow` (`lib/notifications/quiet-hours.ts:25`) evaluates the non-crossing branch as `minutesNow >= 0 && minutesNow < 1439` — **exclusive** of 23:59. Fails during the 23:59 UTC minute.
+
+  ⚠️ **`quietEnd: '00:00'` is NOT the fix** (an earlier draft said it was). `quiet-hours.ts:22` short-circuits `if (minutesStart === minutesEnd) return false` — a zero-length window — so `'00:00'`/`'00:00'` is *never* quiet and never reaches the overnight branch, inverting the test's premise. **No single window is quiet for all 1440 minutes under this predicate.** The only correct fix is to **inject `now` into `handleNotify`**.
+
+- [ ] `tests/integration/digest-tick.test.ts:45,133` — `beforeEach` captures `new Date().getUTCHours()` but the handler re-reads the clock; an hour rollover between setup and act flips every test.
+
+  ⚠️ **`handleDigestTick()` takes no `now`** (`worker/jobs/digest-tick.ts:71`, called at `worker/index.ts:112`) and reads the clock **three times** per tick: `localParts()` at `:16`, plus `getOverdueForUser` and `getWeeklyForUser` each defaulting `now = new Date()`. Thread `now` through all three — the same omission Task 5 flagged for `handleRemindersTick`. This is now a live seam, not just test hygiene: Task 1 makes the query window derive from `now`, so the dedup cycle key and the window can disagree across an hour boundary.
 - [ ] `tests/integration/digest-tick.test.ts:63` — same `Date.now() - 24h` wall-clock seed as the #267 bomb. Benign *only* because the file seeds no `HouseProfile` (tz defaults to `'UTC'`). Task 5 seeds a Chicago tz in a sibling file — arm this before someone does it here. Seed UTC-midnight dates.
 - [ ] Commit. **Open PR 2.**
 
@@ -260,7 +267,31 @@ const nextDueOn = computeNextDueOn(recurrence, t.nextDueOn);
 
 Branch: `refactor/calendar-date-columns`
 
-`ItemVendor.contractEndsOn` and `SystemVendor.contractEndsOn` are already `DateTime? @db.Date` — **the schema already contains the fix.** A `date` column cannot hold a time component, so the entire bug class becomes structurally impossible for these columns, and a bad write fails at the constraint instead of silently storing 8 PM. This is a stronger guarantee than any TypeScript brand, and it removes the need for a Prisma write-guard extension entirely.
+`ItemVendor.contractEndsOn` and `SystemVendor.contractEndsOn` are already `DateTime? @db.Date`. A `date` column cannot hold a time component, so the **read** side becomes structurally clean: every value arrives at UTC midnight, by construction.
+
+> ### ⚠️ `@db.Date` does NOT reject a bad write. It silently truncates in UTC.
+>
+> An earlier draft of this plan claimed a time component would "fail at the constraint". **That is false**, and it was tested against the real generated client (Prisma 7.8 + adapter-pg 7.8, pg18) on the existing `contractEndsOn @db.Date` column:
+>
+> ```
+> write 2026-07-15T01:00:00Z  (8 PM Chicago, Jul 14)  ->  WRITE OK  ->  db = 2026-07-15   ← WRONG DAY, no error
+> write 2026-07-14T04:59:59Z  (chore stamp, Jul 13)   ->  WRITE OK  ->  db = 2026-07-14   ← WRONG DAY, no error
+> ```
+>
+> Prisma truncates the instant to its **UTC** day and stores it. So `performedOn: new Date()` at 8 PM Chicago stores **tomorrow**, silently.
+>
+> **It is worse than that.** `assertCalendarDate` (`lib/time/tz.ts:81`) is currently the *only* runtime detector of a dirty calendar-date value — it throws in dev/test when `isOverdue` is handed one. After this migration every read is UTC-midnight by construction, so **the assert can never fire again**, and a write-side bug becomes invisible in the data. That is precisely the property this plan calls "the worst" about C6/C13.
+>
+> **PR 4 must therefore ship the `query`-extension write guard in Task 16b.** Migrating the columns without it makes the write-side class *stealthier*, not impossible. A `result` extension gives **zero** write protection — verified: `prisma.reminderTarget.create({ data: { nextDueOn: new Date() } })` compiles clean with the extension applied.
+
+**⚠️ Hard ordering constraint: PR 2 and PR 3 MUST land first.** Prisma truncates the **filter bound** to its UTC date too, so `lt`/`gte` flip inclusivity at the day boundary once the column is `date`:
+
+| filter | after PR 4 (`date`) | today (`timestamp`) |
+|---|---|---|
+| `lt: 2026-07-15T01:00Z` | `Jul14` | `Jul14, Jul15` |
+| `gte: 2026-07-15T01:00Z` | `Jul15` | *(none)* |
+
+After PR 2 + PR 3 every bound on these columns is UTC-midnight (verified: `lib/calendar/queries.ts:37,45`; `lib/service-records/queries.ts:20-21`; `lib/dashboard/queries.ts`; `reminders-tick.ts:31`; `chore-auto-complete-tick.ts:27`). Before them, it is not. **Add an explicit verification step: no instant may reach a filter bound on these columns.**
 
 ### Task 15: Migrate the calendar-date columns to `@db.Date`
 
@@ -361,14 +392,63 @@ export function tzParts(
 // tzParts(now, tz)       -> ok
 ```
 
-- [ ] **⚠️ `utcMidnight(d: Date): Date` is a hole through the ratchet.** It is *precisely* the forbidden "read an instant in UTC to get a day" operation. If you type it `-> CalendarDate` it becomes a compiler-blessed laundromat for converting any instant into a `CalendarDate`. Give it the same `{ [CalendarDateBrand]?: never }` param guard, or make it private to `tz.ts` and replace its three call sites (`actions.ts:208,252,307`, already fixed in Task 14) with `startOfDayUtc`.
+- [ ] **⚠️ EVERY function that turns an instant into a day is a hole. Guard them ALL, or the ratchet leaks.**
+
+  `utcMidnight` is one. **`startOfDayUtc` is the same hole and worse**, because it *returns* a `CalendarDate` — so running a calendar date through a tz launders a wrong day straight into the branded type. Verified under `--strict`: `startOfDayUtc(nextDueOn, tz)` produces **zero errors** with the naive signature. That is the C3 bug, compiler-blessed. The brand as first specced didn't close the class; it just moved it from `tzParts` to `startOfDayUtc`.
+
+  Every instant-accepting param needs the guard:
+  ```ts
+  type Instant = Date & { readonly [CalendarDateBrand]?: never };
+
+  export function tzParts(instant: Instant, tz: string): TzParts
+  export function startOfDayUtc(instant: Instant, tz: string): CalendarDate
+  export function isOverdue(nextDueOn: CalendarDate, now: Instant, tz: string): boolean
+  //                                                      ^^^^^^^ `now: Date` accepts a
+  //                                                      CalendarDate, so isOverdue(d, d, tz)
+  //                                                      compiles today.
+  ```
+
+- [ ] **⚠️ `lib/ical/assemble.ts:28` declares its OWN private `utcMidnight`.** Making tz.ts's copy private does nothing about it — the local one returns a plain `Date`, strips the brand, and reintroduces the forbidden operation right at the C8 site. **Delete it.** Its calls at `:69`/`:81` are no-ops (both operands are already calendar dates).
 
 - [ ] Tighten the rest:
-  - `startOfDayUtc(instant: Date, tz: string): CalendarDate`
-  - `isOverdue(nextDueOn: CalendarDate, now: Date, tz: string): boolean`
+  - `endOfCalendarDayInTz(d: CalendarDate, tz: string): Date` — the direct counterpart of `startOfDayUtc`
+  - `formatHouseDay(instant: Instant, tz, month?)` — added in PR 2
   - `formatCalendarDate(d: CalendarDate | null | undefined, month?)` — **keep the nullable union**, or ~10 callers break (`OverviewTab.tsx:69`, `ItemCardGrid.tsx:36`, `ItemMetaCard.tsx:34`, `systems/page.tsx:93`, `SystemHeader.tsx:57`, `VendorLinkChips.tsx:78`). Drop `string` — nothing passes one. **This signature alone catches C10/C11/C12 at compile time.**
   - `computeNextDueOn(rec: Recurrence, completedOn: CalendarDate): CalendarDate` — makes C6 and C13 unstateable.
   - `previewOccurrences(rec, startAfter: CalendarDate, count)` (`recurrence.ts:181`) — loops `cursor = computeNextDueOn(rec, cursor)`, so it must be branded too. Callers: `app/(app)/reminders/[id]/page.tsx:36`, `lib/ical/assemble.ts:80`.
+
+### Task 16b: The write guard — PR 4 CANNOT SHIP WITHOUT THIS
+
+Because `@db.Date` truncates silently (see the box above) and the `result` extension protects only reads, the **only** thing standing between a future `performedOn: new Date()` and a silently-wrong day is a `query` extension. Every calendar-date write is top-level `data:` (verified: `actions.ts:252` create, `:307` createMany, `:441` update, `chore-auto-complete-tick.ts:52` updateMany), so walking `args.data` / `.create` / `.update` covers them all.
+
+```ts
+const CAL_DATE_FIELDS: Record<string, readonly string[]> = {
+  ReminderTarget: ['nextDueOn'], Warranty: ['endsOn', 'startsOn'],
+  ServiceRecord: ['performedOn'], Item: ['purchaseDate'], System: ['installDate'],
+  Checklist: ['nextDueOn'], ItemVendor: ['contractEndsOn'], SystemVendor: ['contractEndsOn'],
+};
+
+function assertCalendarDateWrite(model: string, data: unknown) {
+  const fields = CAL_DATE_FIELDS[model];
+  if (!fields || data == null) return;
+  for (const row of Array.isArray(data) ? data : [data]) {
+    for (const f of fields) {
+      const raw = (row as Record<string, unknown>)[f];
+      const d = raw instanceof Date ? raw : (raw as { set?: unknown })?.set;
+      // The epoch is UTC midnight, so a UTC-midnight Date is an exact multiple of a day.
+      if (d instanceof Date && d.getTime() % 86_400_000 !== 0) {
+        throw new Error(
+          `${model}.${f} is a calendar date but was written with a time component ` +
+            `(${d.toISOString()}). Use startOfDayUtc(instant, tz).`,
+        );
+      }
+    }
+  }
+}
+```
+Wire it via `$extends({ query: { $allModels: { async $allOperations({ model, args, query }) { ... } } } })`.
+
+- [ ] **⚠️ This must NOT short-circuit on `NODE_ENV === 'production'`** the way `assertCalendarDate` does (`lib/time/tz.ts:82`), or it is decorative in the only environment that matters. Every write site is fixed by PR 3, so a throw in prod means a genuine new bug — which is exactly what you want to hear about.
 
 ### Task 17: Brand at the Prisma boundary
 
@@ -410,8 +490,11 @@ return new PrismaClient({ adapter, log: ['warn', 'error'] }).$extends({
 
 ## Definition of done
 
-- [ ] All 13 bugs + L1/L2 fixed, each with a regression test that fails without the fix.
+- [ ] All 15 bugs + L1/L2 fixed, each with a regression test that fails without the fix.
 - [ ] A weekly auto-completing chore advances **exactly 7 days**, six cycles running (C13).
-- [ ] Calendar-date columns are Postgres `date`; a write with a time component **fails**.
-- [ ] `tzParts(nextDueOn, tz)` and `formatCalendarDate(completedOn)` are **compile errors** — verified by actually trying them, not by assuming.
+- [ ] Calendar-date columns are Postgres `date`, AND the `query`-extension write guard throws on a time component **in production too**. (The column type alone does NOT reject it — it truncates in UTC, silently.)
+- [ ] These are all **compile errors** — verified by actually writing them and running `tsc`, not by assuming:
+  - `tzParts(nextDueOn, tz)` and `startOfDayUtc(nextDueOn, tz)`  (calendar date → tz)
+  - `formatCalendarDate(completedOn)`                            (instant → UTC day)
+  - `computeNextDueOn(rec, new Date())`                          (C6/C13's seed)
 - [ ] Verified against the real app, not just tests (`/verify`): at 8 PM Chicago, a reminder due today badges "Due today"; a warranty ending today does not read "Expired"; a completion made now renders with today's date.

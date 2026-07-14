@@ -11,6 +11,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Runners default to UTC -- the ONE timezone in which the calendar-date vs
+  # instant bugs are all invisible (a UTC-midnight date read in UTC is a no-op).
+  # Pinning a negative-offset zone means anything that leans on the runner's
+  # local clock fails here rather than in production. NOTE: this only affects the
+  # local `Date` ctor and un-zoned formatting -- the house tz is passed explicitly
+  # to Intl, so this is hygiene, not a guard for that class. See
+  # docs/superpowers/plans/2026-07-14-calendar-date-vs-instant.md.
+  TZ: America/Chicago
   # Kept in lockstep with package.json `packageManager`/`engines`, .nvmrc,
   # and Dockerfile via Renovate (see renovate.json customManagers + the
   # toolchain-versions packageRule).
