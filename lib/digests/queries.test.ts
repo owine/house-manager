@@ -193,63 +193,70 @@ describe('getOverdueForUser', () => {
 });
 
 describe('getWeeklyForUser', () => {
-  it('returns items due within now..now+7d', async () => {
-    const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-    await ctx.prisma.reminder.create({
+  const seed = (title: string, nextDueOn: Date) =>
+    ctx.prisma.reminder.create({
       data: {
-        title: 'Coming up',
+        title,
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: inThreeDays }] },
+        targets: { create: [{ itemId, nextDueOn }] },
       },
     });
-    const rows = await getWeeklyForUser(userId, 'America/New_York');
+
+  it('returns items due within the coming week', async () => {
+    await seed('Coming up', cal(2026, 7, 17)); // 3 days out
+    const rows = await getWeeklyForUser(userId, TZ, NOW);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toBe('Coming up');
     expect(rows[0]?.daysOverdue).toBe(0);
   });
 
   it('excludes items more than 7 days out', async () => {
-    const inTenDays = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
-    await ctx.prisma.reminder.create({
-      data: {
-        title: 'Way later',
-        recurrence: { kind: 'NONE' },
-        notifyUserIds: [userId],
-        active: true,
-        targets: { create: [{ itemId, nextDueOn: inTenDays }] },
-      },
-    });
-    expect(await getWeeklyForUser(userId, 'America/New_York')).toHaveLength(0);
+    await seed('Way later', cal(2026, 7, 24)); // 10 days out
+    expect(await getWeeklyForUser(userId, TZ, NOW)).toHaveLength(0);
   });
 
   it('sorts due date ascending', async () => {
-    const inOneDay = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000);
-    const inFiveDays = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-    await ctx.prisma.reminder.create({
-      data: {
-        title: 'Friday thing',
-        recurrence: { kind: 'NONE' },
-        notifyUserIds: [userId],
-        active: true,
-        targets: { create: [{ itemId, nextDueOn: inFiveDays }] },
-      },
-    });
-    await ctx.prisma.reminder.create({
-      data: {
-        title: 'Tomorrow thing',
-        recurrence: { kind: 'NONE' },
-        notifyUserIds: [userId],
-        active: true,
-        targets: { create: [{ itemId, nextDueOn: inOneDay }] },
-      },
-    });
-    const rows = await getWeeklyForUser(userId, 'America/New_York');
+    await seed('Friday thing', cal(2026, 7, 19));
+    await seed('Tomorrow thing', cal(2026, 7, 15));
+    const rows = await getWeeklyForUser(userId, TZ, NOW);
     expect(rows.map((r) => r.title)).toEqual(['Tomorrow thing', 'Friday thing']);
   });
 
   it('returns empty array when nothing is due this week', async () => {
-    expect(await getWeeklyForUser(userId, 'America/New_York')).toEqual([]);
+    expect(await getWeeklyForUser(userId, TZ, NOW)).toEqual([]);
+  });
+
+  it('includes items due TODAY in the house tz', async () => {
+    // The gap bug. Due-today is (correctly) not overdue, so if the weekly window
+    // starts at the firing *instant* rather than at the start of the house day,
+    // a UTC-midnight due-today date is already "past" and is dropped -- and the
+    // reminder then appears in NEITHER digest. The user is simply never told.
+    await seed('Due today', cal(2026, 7, 14));
+    expect(await getOverdueForUser(userId, TZ, NOW)).toEqual([]);
+    expect((await getWeeklyForUser(userId, TZ, NOW)).map((r) => r.title)).toEqual(['Due today']);
+  });
+
+  it('spans exactly 7 days so consecutive digests neither gap nor overlap', async () => {
+    await seed('Day 0', cal(2026, 7, 14));
+    await seed('Day 6', cal(2026, 7, 20));
+    await seed('Day 7', cal(2026, 7, 21));
+    const rows = await getWeeklyForUser(userId, TZ, NOW);
+    // Day 7 belongs to NEXT week's digest -- including it here would double-report
+    // it, since next week's window starts on day 7.
+    expect(rows.map((r) => r.title)).toEqual(['Day 0', 'Day 6']);
+
+    const nextWeek = new Date('2026-07-21T15:00:00Z');
+    expect((await getWeeklyForUser(userId, TZ, nextWeek)).map((r) => r.title)).toEqual(['Day 7']);
+  });
+
+  it('reports whole calendar days overdue regardless of the house offset', async () => {
+    await seed('Yesterday', cal(2026, 7, 13));
+    // Tokyo (+9): the digest fires at 08:00 local = 23:00Z the PREVIOUS day. The
+    // old instant-based day count divided 23h by 24h and truncated to 0.
+    const tokyoFire = new Date('2026-07-13T23:00:00Z');
+    const rows = await getOverdueForUser(userId, 'Asia/Tokyo', tokyoFire);
+    expect(rows[0]?.daysOverdue).toBe(1);
   });
 });
