@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { asCalendarDate } from '@/lib/time/tz';
 import { type DigestEmailData, digestEmail } from './digest';
 
 function baseItem(over: Partial<DigestEmailData['items'][number]> = {}) {
   return {
     reminderId: 'rem_1',
     title: 'Replace filter',
-    dueOn: new Date('2026-06-01T00:00:00Z'),
+    dueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
     daysOverdue: 0,
     targets: [{ kind: 'item' as const, id: 'itm_1', name: 'Furnace' }],
     ...over,
@@ -74,7 +75,7 @@ describe('digestEmail', () => {
     const { html, text } = digestEmail(
       baseData({
         mode: 'weekly',
-        items: [baseItem({ dueOn: new Date('2026-07-15T00:00:00Z') })],
+        items: [baseItem({ dueOn: asCalendarDate(new Date('2026-07-15T00:00:00Z')) })],
       }),
     );
     expect(html).toContain('due July 15, 2026');

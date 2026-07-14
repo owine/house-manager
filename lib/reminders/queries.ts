@@ -1,5 +1,6 @@
 import type { ReminderKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import type { CalendarDate } from '@/lib/time/tz';
 import type { ListParams } from '@/lib/url-params';
 
 const TARGETS_INCLUDE = {
@@ -16,10 +17,10 @@ const TARGETS_INCLUDE = {
 // Helper: derive an aggregate `nextDueOn` (earliest across targets) for the
 // reminder list view. The single-item derivation that used to live here is
 // gone — multi-target chip rendering replaces it.
-function withDerivedNextDueOn<R extends { targets: { nextDueOn: Date }[] }>(
+function withDerivedNextDueOn<R extends { targets: { nextDueOn: CalendarDate }[] }>(
   reminder: R,
-): R & { nextDueOn: Date | null } {
-  const earliest = reminder.targets.reduce<Date | null>(
+): R & { nextDueOn: CalendarDate | null } {
+  const earliest = reminder.targets.reduce<CalendarDate | null>(
     (acc, t) => (acc === null || t.nextDueOn < acc ? t.nextDueOn : acc),
     null,
   );
@@ -154,7 +155,7 @@ export async function listUpcomingReminders(limit = 5) {
   const out: {
     id: string;
     title: string;
-    nextDueOn: Date;
+    nextDueOn: CalendarDate;
     autoCreateServiceRecord: boolean;
     itemId: string | null;
     item: { id: string; name: string } | null;

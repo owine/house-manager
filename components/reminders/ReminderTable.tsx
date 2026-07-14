@@ -9,12 +9,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 import { ReminderStatusBadge } from './ReminderStatusBadge';
 
 type Row = {
   id: string;
   title: string;
-  nextDueOn: Date | null;
+  nextDueOn: CalendarDate | null;
   active: boolean;
   /**
    * Multi-target chip set. The chip renderer dedupes item chips whose

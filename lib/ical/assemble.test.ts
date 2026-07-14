@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asCalendarDate, calendarDate } from '@/lib/time/tz';
 import { assembleReminderEvents } from './assemble';
 
 const NOW = new Date('2026-05-21T00:00:00Z');
@@ -11,7 +12,7 @@ function base(overrides: Partial<Parameters<typeof assembleReminderEvents>[0]> =
     leadTimeDays: 3,
     completions: [] as Date[],
     recurrence: { kind: 'once' as const },
-    nextDueOn: new Date('2026-06-01T00:00:00Z'),
+    nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
     ...overrides,
   };
 }
@@ -21,7 +22,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
-        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-30T00:00:00Z')),
         completions: [new Date('2026-04-04T09:00:00Z'), new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
@@ -36,7 +37,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
-        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-30T00:00:00Z')),
         completions: [new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
@@ -54,7 +55,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'once' },
-        nextDueOn: new Date('9999-12-31T00:00:00.000Z'),
+        nextDueOn: asCalendarDate(new Date('9999-12-31T00:00:00.000Z')),
         completions: [new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
@@ -67,7 +68,10 @@ describe('assembleReminderEvents', () => {
 
   it('active one-shot: one plain due event, no projections', () => {
     const events = assembleReminderEvents(
-      base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-06-01T00:00:00Z') }),
+      base({
+        recurrence: { kind: 'once' },
+        nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
+      }),
       NOW,
       'UTC',
     );
@@ -78,7 +82,10 @@ describe('assembleReminderEvents', () => {
 
   it('overdue due date (past): plain title, no alarm', () => {
     const events = assembleReminderEvents(
-      base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-05-10T00:00:00Z') }),
+      base({
+        recurrence: { kind: 'once' },
+        nextDueOn: asCalendarDate(new Date('2026-05-10T00:00:00Z')),
+      }),
       NOW,
       'UTC',
     );
@@ -90,7 +97,10 @@ describe('assembleReminderEvents', () => {
 
   it('future due date: carries a lead-time alarm in seconds', () => {
     const events = assembleReminderEvents(
-      base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-06-01T00:00:00Z') }),
+      base({
+        recurrence: { kind: 'once' },
+        nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
+      }),
       NOW,
       'UTC',
     );
@@ -101,7 +111,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
-        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-30T00:00:00Z')),
         completions: [new Date('2026-05-04T10:00:00Z'), new Date('2026-05-04T14:00:00Z')],
       }),
       NOW,
@@ -118,7 +128,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
-        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-30T00:00:00Z')),
         completions: [new Date('2026-04-04T09:00:00Z'), new Date('2026-05-04T10:00:00Z')],
       }),
       NOW,
@@ -133,7 +143,10 @@ describe('assembleReminderEvents', () => {
   it('due date same UTC day as now but mid-day now: still gets an alarm', () => {
     const midDayNow = new Date('2026-05-21T14:00:00Z');
     const events = assembleReminderEvents(
-      base({ recurrence: { kind: 'once' }, nextDueOn: new Date('2026-05-21T00:00:00Z') }),
+      base({
+        recurrence: { kind: 'once' },
+        nextDueOn: asCalendarDate(new Date('2026-05-21T00:00:00Z')),
+      }),
       midDayNow,
       'UTC',
     );
@@ -146,7 +159,7 @@ describe('assembleReminderEvents', () => {
     const events = assembleReminderEvents(
       base({
         recurrence: { kind: 'interval', every: 30, unit: 'day' },
-        nextDueOn: new Date('2026-06-30T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-30T00:00:00Z')),
       }),
       NOW,
       'UTC',
@@ -164,7 +177,7 @@ describe('assembleReminderEvents', () => {
       base({
         description: null,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date('2026-06-01T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
       }),
       NOW,
       'UTC',
@@ -181,7 +194,7 @@ describe('assembleReminderEvents', () => {
       base({
         leadTimeDays: 3,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date(Date.UTC(2026, 4, 27)),
+        nextDueOn: calendarDate(2026, 5, 27),
       }),
       nyNow,
       'America/New_York',
@@ -200,7 +213,7 @@ describe('assembleReminderEvents', () => {
       base({
         leadTimeDays: 3,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date(Date.UTC(2026, 4, 26)),
+        nextDueOn: calendarDate(2026, 5, 26),
       }),
       nyNow,
       'America/New_York',
@@ -222,7 +235,7 @@ describe('assembleReminderEvents', () => {
       base({
         leadTimeDays: 3,
         recurrence: { kind: 'once' },
-        nextDueOn: new Date('2026-05-26T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-05-26T00:00:00Z')),
       }),
       aklNow,
       'Pacific/Auckland',

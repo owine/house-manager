@@ -12,6 +12,7 @@ import { getRemindersForSystem } from '@/lib/reminders/queries';
 import { getServiceRecordsForSystem } from '@/lib/service-records/queries';
 import { archiveSystem, unarchiveSystem } from '@/lib/systems/actions';
 import { getSystemDetail } from '@/lib/systems/queries';
+import { calendarDate } from '@/lib/time/tz';
 import { listAllVendors } from '@/lib/vendors/queries';
 import { getWarrantiesForSystem } from '@/lib/warranties/queries';
 
@@ -101,7 +102,8 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
     events.push({
       id: r.id,
       type: 'reminder',
-      date: r.nextDueOn ?? new Date(0),
+      // Epoch as an explicit calendar date -- sorts a null due date to the top.
+      date: r.nextDueOn ?? calendarDate(1970, 1, 1),
       summary: r.title,
       href: `/reminders/${r.id}`,
       targets: chips,

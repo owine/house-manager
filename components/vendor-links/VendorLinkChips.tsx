@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 
 export interface VendorLinkRow {
   id: string;
@@ -16,7 +17,7 @@ export interface VendorLinkRow {
   role: VendorRole;
   notes: string | null;
   serviceContract: boolean;
-  contractEndsOn: Date | null;
+  contractEndsOn: CalendarDate | null;
 }
 
 export interface VendorLinkChipsProps {

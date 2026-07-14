@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 
 export type TimelineTargetChip = {
   kind: 'item' | 'system';
@@ -16,7 +17,7 @@ export type TimelineTargetChip = {
 export type TimelineEvent = {
   id: string;
   type: 'service' | 'warranty' | 'reminder';
-  date: Date;
+  date: CalendarDate;
   summary: string;
   href: string;
   targets: TimelineTargetChip[];

@@ -11,28 +11,27 @@ describe('formatCalendarDate', () => {
   });
 
   it('formats a Date object correctly with UTC timezone', () => {
-    const date = new Date('2024-01-15T00:00:00Z');
+    const date = asCalendarDate(new Date('2024-01-15T00:00:00Z'));
     expect(formatCalendarDate(date)).toBe('Jan 15, 2024');
   });
 
-  it('formats an ISO string correctly with UTC timezone', () => {
-    expect(formatCalendarDate('2024-01-15T00:00:00Z')).toBe('Jan 15, 2024');
-  });
+  // NOTE: formatCalendarDate no longer accepts a string. It takes a CalendarDate,
+  // so an ISO instant can no longer be smuggled in -- passing one is now a COMPILE
+  // error rather than a silently-wrong day. Handing it an instant is exactly what
+  // C10/C11/C12 did (see formatHouseDay for the instant case).
 
-  it('anchors to UTC even when the instant straddles midnight in other TZs', () => {
-    // 23:30 UTC on Jun 20 is Jun 21 in Tokyo (UTC+9) and Jun 20 in LA (UTC-8).
-    // A non-UTC formatter would yield Jun 21 in Tokyo. Forcing UTC must yield Jun 20.
-    expect(formatCalendarDate('2024-06-20T23:30:00Z')).toBe('Jun 20, 2024');
-    // 00:30 UTC on Jun 20 is Jun 19 in LA (UTC-8). Forcing UTC must yield Jun 20.
-    expect(formatCalendarDate('2024-06-20T00:30:00Z')).toBe('Jun 20, 2024');
+  it('renders in UTC, never shifted by the ambient timezone', () => {
+    // A non-UTC formatter would render Jun 20 as Jun 19 in a negative-offset zone.
+    expect(formatCalendarDate(calendarDate(2024, 6, 20))).toBe('Jun 20, 2024');
   });
 
   it('handles dates from different months and years', () => {
-    expect(formatCalendarDate('2025-12-31T00:00:00Z')).toBe('Dec 31, 2025');
-    expect(formatCalendarDate('2000-02-29T00:00:00Z')).toBe('Feb 29, 2000');
+    expect(formatCalendarDate(calendarDate(2025, 12, 31))).toBe('Dec 31, 2025');
+    expect(formatCalendarDate(calendarDate(2000, 2, 29))).toBe('Feb 29, 2000');
   });
 });
 
+import { asCalendarDate, calendarDate } from '@/lib/time/tz';
 import { parseDateInput, toDateInputValue } from './date';
 
 describe('toDateInputValue', () => {
@@ -42,7 +41,7 @@ describe('toDateInputValue', () => {
   });
 
   it('formats a Date as YYYY-MM-DD using UTC components', () => {
-    expect(toDateInputValue(new Date('2026-05-31T00:00:00Z'))).toBe('2026-05-31');
+    expect(toDateInputValue(asCalendarDate(new Date('2026-05-31T00:00:00Z')))).toBe('2026-05-31');
   });
 
   it('preserves UTC date even when the instant is non-midnight', () => {
@@ -81,7 +80,9 @@ describe('formatHouseDay', () => {
     // (CompletionRow, InboxPreviewCard, RecentActivityList all did this).
     const evening = new Date('2026-07-15T01:00:00Z');
     expect(formatHouseDay(evening, TZ)).toBe('Jul 14, 2026');
-    expect(formatCalendarDate(evening)).toBe('Jul 15, 2026'); // the bug, pinned
+    // `formatCalendarDate(evening)` used to return 'Jul 15, 2026' -- the bug. It is
+    // now a COMPILE error (an instant is not a CalendarDate), so it cannot even be
+    // written here to assert against. That is the ratchet doing its job.
   });
 
   it('handles the chore auto-complete sentinel instant', () => {

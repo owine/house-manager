@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { asCalendarDate } from '@/lib/time/tz';
 import { type ReminderEmailData, reminderEmail } from './reminder';
 
 function baseData(overrides: Partial<ReminderEmailData> = {}): ReminderEmailData {
@@ -9,7 +10,7 @@ function baseData(overrides: Partial<ReminderEmailData> = {}): ReminderEmailData
     appUrl: 'https://hm.example',
     targets: [
       {
-        nextDueOn: new Date('2026-06-01T00:00:00Z'),
+        nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
         item: { id: 'itm_1', name: 'Furnace' },
       },
     ],
@@ -45,7 +46,7 @@ describe('reminderEmail', () => {
       baseData({
         targets: [
           {
-            nextDueOn: new Date('2026-07-15T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-07-15T00:00:00Z')),
             item: { id: 'itm_1', name: 'Furnace' },
           },
         ],
@@ -62,7 +63,7 @@ describe('reminderEmail', () => {
       baseData({
         targets: [
           {
-            nextDueOn: new Date('2026-06-01T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
             item: { id: 'itm_1', name: 'Furnace' },
           },
         ],
@@ -79,7 +80,7 @@ describe('reminderEmail', () => {
       baseData({
         targets: [
           {
-            nextDueOn: new Date('2026-06-01T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
             system: { id: 'sys_1', name: 'Heating' },
           },
         ],
@@ -95,11 +96,11 @@ describe('reminderEmail', () => {
       baseData({
         targets: [
           {
-            nextDueOn: new Date('2026-06-01T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
             item: { id: 'itm_1', name: 'Furnace' },
           },
           {
-            nextDueOn: new Date('2026-07-15T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-07-15T00:00:00Z')),
             system: { id: 'sys_1', name: 'Heating' },
           },
         ],
@@ -155,7 +156,7 @@ describe('reminderEmail', () => {
         appUrl: 'https://hm.example//',
         targets: [
           {
-            nextDueOn: new Date('2026-06-01T00:00:00Z'),
+            nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
             item: { id: 'itm_1', name: 'Furnace' },
           },
         ],

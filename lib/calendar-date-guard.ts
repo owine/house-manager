@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 /**
  * Write guard for the calendar-date columns.
  *
@@ -53,16 +55,68 @@ function checkValue(model: string, field: string, raw: unknown): void {
   );
 }
 
-/** Walk a Prisma `data` / `create` / `update` payload (object or array). */
+/**
+ * Relation field -> target model, per model, derived from the DMMF so it cannot
+ * drift as the schema changes.
+ */
+const RELATIONS: Record<string, Record<string, string>> = {};
+for (const m of Prisma.dmmf.datamodel.models) {
+  const rel: Record<string, string> = {};
+  for (const f of m.fields) {
+    if (f.kind === 'object') rel[f.name] = f.type;
+  }
+  RELATIONS[m.name] = rel;
+}
+
+/** The nested-write operations that carry a payload we must descend into. */
+const NESTED_OPS = ['create', 'update', 'upsert', 'connectOrCreate', 'createMany', 'updateMany'];
+
+/**
+ * Walk a Prisma write payload, checking calendar-date fields at every level.
+ *
+ * ⚠️ Descending into nested relations is NOT optional. Checking only the top-level
+ * model misses `reminder.create({ data: { targets: { create: [{ nextDueOn }] } } })`
+ * -- which is exactly how lib/reminders/actions.ts and lib/ai/suggest/reminders.ts
+ * create targets. The first version of this guard checked only the top level and
+ * silently let every one of those through.
+ */
 export function assertCalendarDateWrite(model: string | undefined, data: unknown): void {
   if (!model || data == null || typeof data !== 'object') return;
+
   const fields = CALENDAR_DATE_FIELDS[model];
-  if (!fields) return;
+  const relations = RELATIONS[model] ?? {};
 
   for (const row of Array.isArray(data) ? data : [data]) {
     if (row == null || typeof row !== 'object') continue;
-    for (const field of fields) {
-      checkValue(model, field, (row as Record<string, unknown>)[field]);
+    const rec = row as Record<string, unknown>;
+
+    // 1. This model's own calendar-date columns.
+    for (const field of fields ?? []) {
+      checkValue(model, field, rec[field]);
+    }
+
+    // 2. Nested relation writes -- re-enter with the RELATED model.
+    for (const [key, value] of Object.entries(rec)) {
+      const relatedModel = relations[key];
+      if (!relatedModel || value == null || typeof value !== 'object') continue;
+
+      for (const op of NESTED_OPS) {
+        const payload = (value as Record<string, unknown>)[op];
+        if (payload == null || typeof payload !== 'object') continue;
+
+        for (const entry of Array.isArray(payload) ? payload : [payload]) {
+          if (entry == null || typeof entry !== 'object') continue;
+          const e = entry as Record<string, unknown>;
+          // `createMany`/`updateMany` wrap rows in `{ data }`; `update` may be
+          // `{ where, data }`; `upsert` splits into `{ create, update }`.
+          if ('data' in e) assertCalendarDateWrite(relatedModel, e.data);
+          if ('create' in e) assertCalendarDateWrite(relatedModel, e.create);
+          if ('update' in e) assertCalendarDateWrite(relatedModel, e.update);
+          if (!('data' in e) && !('create' in e) && !('update' in e)) {
+            assertCalendarDateWrite(relatedModel, e);
+          }
+        }
+      }
     }
   }
 }

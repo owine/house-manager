@@ -1,4 +1,4 @@
-import { startOfDayUtc } from '@/lib/time/tz';
+import { type CalendarDate, type Instant, startOfDayUtc } from '@/lib/time/tz';
 
 /**
  * Format a calendar date (conceptually a date, not a timestamp).
@@ -14,16 +14,14 @@ import { startOfDayUtc } from '@/lib/time/tz';
  * @returns Formatted date string, or empty string if null/undefined
  */
 export function formatCalendarDate(
-  d: Date | string | null | undefined,
+  d: CalendarDate | null | undefined,
   month: 'short' | 'long' = 'short',
 ): string {
   if (d === null || d === undefined) {
     return '';
   }
 
-  const date = typeof d === 'string' ? new Date(d) : d;
-
-  return date.toLocaleDateString('en-US', {
+  return d.toLocaleDateString('en-US', {
     timeZone: 'UTC',
     year: 'numeric',
     month,
@@ -42,7 +40,7 @@ export function formatCalendarDate(
  * which timezone", and for us that is always the house.
  */
 export function formatHouseDay(
-  instant: Date,
+  instant: Instant,
   tz: string,
   month: 'short' | 'long' = 'short',
 ): string {

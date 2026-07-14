@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 import { EMAIL_TOKENS, Layout } from '../layout';
 import { renderEmail } from '../render';
 
 const T = EMAIL_TOKENS;
 
 type ReminderEmailTarget = {
-  nextDueOn: Date;
+  nextDueOn: CalendarDate;
   item?: { id: string; name: string };
   system?: { id: string; name: string };
 };
@@ -29,7 +30,7 @@ export type ReminderEmailResult = {
  * `nextDueOn` is a calendar date stored at UTC midnight, so it renders in UTC —
  * passing it through the house timezone would shift it a day back in the Americas.
  */
-function formatDue(d: Date): string {
+function formatDue(d: CalendarDate): string {
   return formatCalendarDate(d, 'long');
 }
 
