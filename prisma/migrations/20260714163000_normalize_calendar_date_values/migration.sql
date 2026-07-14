@@ -21,8 +21,15 @@
 -- so without it Postgres reads the naive value AS Chicago wall-clock and runs the
 -- conversion backwards -- and the result would then depend on the session's
 -- TimeZone GUC, making the migration non-deterministic.
+-- The house timezone is read from house_profile rather than hard-coded, so this
+-- migration is correct for any deployment, not just ours. HouseProfile is a
+-- singleton (there is exactly one house), and the column defaults to 'UTC'.
 UPDATE "service_records"
-SET "performedOn" = date_trunc('day', ("performedOn" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Chicago')
+SET "performedOn" = date_trunc(
+      'day',
+      ("performedOn" AT TIME ZONE 'UTC')
+        AT TIME ZONE COALESCE((SELECT "timezone" FROM "house_profile" LIMIT 1), 'UTC')
+    )
 WHERE "performedOn" <> date_trunc('day', "performedOn");
 
 -- nextDueOn: deliberately truncated in UTC, NOT through the house timezone.

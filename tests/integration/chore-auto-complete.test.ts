@@ -267,16 +267,18 @@ describe('handleChoreAutoCompleteTick cadence', () => {
     });
     const targetId = r.targets[0]?.id as string;
 
+    const DAY_MS = 86_400_000;
+    const HOUR_MS = 3_600_000;
     const seen: string[] = [];
     // Walk six cycles. Tick on the day AFTER each due date so the chore is
     // strictly overdue and gets picked up.
     for (let cycle = 0; cycle < 6; cycle++) {
       const t = await ctx.prisma.reminderTarget.findUniqueOrThrow({ where: { id: targetId } });
       // 10:00 UTC on the day after `nextDueOn` -> 05:00 Chicago, safely "tomorrow".
-      const tickAt = new Date(t.nextDueOn.getTime() + 86_400_000 + 10 * 3_600_000);
+      const tickAt = new Date(t.nextDueOn.getTime() + DAY_MS + 10 * HOUR_MS);
       await handleChoreAutoCompleteTick(tickAt);
       const after = await ctx.prisma.reminderTarget.findUniqueOrThrow({ where: { id: targetId } });
-      const advancedBy = (after.nextDueOn.getTime() - t.nextDueOn.getTime()) / 86_400_000;
+      const advancedBy = (after.nextDueOn.getTime() - t.nextDueOn.getTime()) / DAY_MS;
       seen.push(`${after.nextDueOn.toISOString().slice(0, 10)} (+${advancedBy}d)`);
       expect(advancedBy).toBe(7);
     }
