@@ -42,19 +42,31 @@ beforeEach(async () => {
   await ctx.prisma.reminder.deleteMany({});
 });
 
+// `nextDueOn` is a calendar date stored at UTC midnight (see computeNextDueOn),
+// and `getOverdueForUser` cuts at startOfDayUtc(now, tz). Seeding a wall-clock
+// instant (`Date.now() - 24h`) instead mixed the two conventions: in a negative-
+// offset zone the cutoff rolls back to the previous UTC date whenever the UTC
+// hour is 00:00-03:59, so "24h ago" was no longer strictly before it and the row
+// vanished. That made these tests fail on any CI run in that window. Seed UTC
+// midnight and pin `now`, so the assertions depend only on the fixtures.
+const TZ = 'America/New_York';
+const NOW = new Date('2026-07-14T15:00:00Z'); // 11:00 EDT on Jul 14
+const cal = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+const YESTERDAY = cal(2026, 7, 13);
+const WEEK_AGO = cal(2026, 7, 7);
+
 describe('getOverdueForUser', () => {
   it('returns items where nextDueOn < startOfToday in the user tz', async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     await ctx.prisma.reminder.create({
       data: {
         title: 'Overdue thing',
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: yesterday }] },
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
       },
     });
-    const rows = await getOverdueForUser(userId, 'America/New_York');
+    const rows = await getOverdueForUser(userId, TZ, NOW);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toBe('Overdue thing');
     expect(rows[0]?.daysOverdue).toBeGreaterThan(0);
@@ -63,43 +75,39 @@ describe('getOverdueForUser', () => {
   });
 
   it('excludes inactive reminders', async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     await ctx.prisma.reminder.create({
       data: {
         title: 'Inactive overdue',
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: false,
-        targets: { create: [{ itemId, nextDueOn: yesterday }] },
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
       },
     });
-    expect(await getOverdueForUser(userId, 'America/New_York')).toHaveLength(0);
+    expect(await getOverdueForUser(userId, TZ, NOW)).toHaveLength(0);
   });
 
   it('excludes reminders that do not list the user in notifyUserIds', async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     await ctx.prisma.reminder.create({
       data: {
         title: 'Not for me',
         recurrence: { kind: 'NONE' },
         notifyUserIds: ['someone-else'],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: yesterday }] },
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
       },
     });
-    expect(await getOverdueForUser(userId, 'America/New_York')).toHaveLength(0);
+    expect(await getOverdueForUser(userId, TZ, NOW)).toHaveLength(0);
   });
 
   it('sorts most-overdue first', async () => {
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     await ctx.prisma.reminder.create({
       data: {
         title: 'Recent overdue',
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: dayAgo }] },
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
       },
     });
     await ctx.prisma.reminder.create({
@@ -108,17 +116,43 @@ describe('getOverdueForUser', () => {
         recurrence: { kind: 'NONE' },
         notifyUserIds: [userId],
         active: true,
-        targets: { create: [{ itemId, nextDueOn: weekAgo }] },
+        targets: { create: [{ itemId, nextDueOn: WEEK_AGO }] },
       },
     });
-    const rows = await getOverdueForUser(userId, 'America/New_York');
+    const rows = await getOverdueForUser(userId, TZ, NOW);
     expect(rows).toHaveLength(2);
     expect(rows[0]?.title).toBe('Ancient overdue');
     expect(rows[1]?.title).toBe('Recent overdue');
   });
 
   it('returns empty array when nothing is overdue', async () => {
-    expect(await getOverdueForUser(userId, 'America/New_York')).toEqual([]);
+    expect(await getOverdueForUser(userId, TZ, NOW)).toEqual([]);
+  });
+
+  it('flips to overdue at house-local midnight, not UTC midnight', async () => {
+    // The boundary the wall-clock-seed bomb hid. A reminder due Jul 13 is *due
+    // today* while it is still Jul 13 in New York -- which is true right through
+    // 03:59 UTC on Jul 14 (20:00-23:59 EDT on the 13th). It becomes overdue only
+    // once NY rolls over to Jul 14, at 04:00 UTC. Overdue-ness must track the
+    // house day, never the UTC day.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Due Jul 13',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
+      },
+    });
+    const titlesAt = async (iso: string) =>
+      (await getOverdueForUser(userId, TZ, new Date(iso))).map((r) => r.title);
+
+    // Still Jul 13 in NY -> due today, not overdue.
+    expect(await titlesAt('2026-07-13T16:00:00Z')).toEqual([]); // 12:00 EDT Jul 13
+    expect(await titlesAt('2026-07-14T03:59:59Z')).toEqual([]); // 23:59 EDT Jul 13
+    // NY has rolled over to Jul 14 -> overdue.
+    expect(await titlesAt('2026-07-14T04:00:00Z')).toEqual(['Due Jul 13']); // 00:00 EDT Jul 14
+    expect(await titlesAt('2026-07-14T15:00:00Z')).toEqual(['Due Jul 13']); // 11:00 EDT Jul 14
   });
 
   it('treats a chore due today (UTC-midnight) as NOT overdue, but yesterday as overdue', async () => {
