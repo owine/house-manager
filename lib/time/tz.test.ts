@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type CalendarDate,
+  calendarDate,
   endOfCalendarDayInTz,
   isOverdue,
   isoWeek,
@@ -92,7 +94,7 @@ const UTC = 'UTC';
 // nextDueOn is a date-only value stored at UTC midnight (see computeNextDueOn ->
 // toUtcMidnight, and lib/format/date.ts). These helpers build values the way
 // production actually stores them: Date.UTC(y, m-1, d) with NO timezone offset.
-const dueOn = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+const dueOn = (y: number, m: number, d: number): CalendarDate => calendarDate(y, m, d);
 
 describe('isOverdue', () => {
   it('returns false when due date is today in tz (chore stored at UTC midnight)', () => {
@@ -151,22 +153,29 @@ describe('utcMidnight', () => {
     );
   });
 
-  it('is a no-op for a value already at UTC midnight', () => {
-    const d = dueOn(2026, 6, 10);
+  it('is a no-op for an instant that already sits at UTC midnight', () => {
+    // utcMidnight takes an INSTANT -- passing a CalendarDate is now a compile
+    // error, and rightly so: a CalendarDate is already UTC midnight.
+    const d = new Date('2026-06-10T00:00:00Z');
     expect(utcMidnight(d).getTime()).toBe(d.getTime());
   });
 });
 
 describe('calendar-date contract assertions (non-production)', () => {
+  // These feed a value the TYPE system now forbids, on purpose: the brand is a
+  // compile-time guarantee, and these prove the RUNTIME assertion still catches
+  // anything that reaches the function through a cast.
+  const dirty = (iso: string) => new Date(iso) as unknown as CalendarDate;
+
   it('isOverdue throws on a non-UTC-midnight nextDueOn', () => {
     const now = new Date('2026-06-10T14:00:00Z');
-    expect(() => isOverdue(new Date('2026-06-10T15:00:00Z'), now, CHI)).toThrow(
+    expect(() => isOverdue(dirty('2026-06-10T15:00:00Z'), now, CHI)).toThrow(
       /UTC-midnight date-only value/,
     );
   });
 
   it('endOfCalendarDayInTz throws on a non-UTC-midnight calendarDate', () => {
-    expect(() => endOfCalendarDayInTz(new Date('2026-06-10T15:00:00Z'), CHI)).toThrow(
+    expect(() => endOfCalendarDayInTz(dirty('2026-06-10T15:00:00Z'), CHI)).toThrow(
       /UTC-midnight date-only value/,
     );
   });

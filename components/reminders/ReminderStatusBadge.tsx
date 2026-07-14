@@ -1,8 +1,8 @@
 import { Badge } from '@/components/ui/badge';
-import { isOverdue, startOfDayUtc } from '@/lib/time/tz';
+import { type CalendarDate, isOverdue, startOfDayUtc } from '@/lib/time/tz';
 
 type Props = {
-  nextDueOn: Date;
+  nextDueOn: CalendarDate;
   active: boolean;
   tz: string;
   /** Override for tests; defaults to `new Date()`. */

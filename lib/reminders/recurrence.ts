@@ -11,6 +11,7 @@
 
 import type { Weekday } from 'rrule';
 import * as rruleNs from 'rrule';
+import type { CalendarDate } from '@/lib/time/tz';
 import type { Recurrence } from './schema';
 
 const { RRule } = ((rruleNs as unknown as { default?: typeof rruleNs }).default ??
@@ -98,11 +99,11 @@ function firstAfter(
 }
 
 /** Zero the time-of-day (UTC) so a due value is a pure calendar date. */
-function toUtcMidnight(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+function toUtcMidnight(d: Date): CalendarDate {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) as CalendarDate;
 }
 
-export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
+export function computeNextDueOn(rec: Recurrence, completedOn: CalendarDate): CalendarDate {
   let next: Date;
   switch (rec.kind) {
     case 'once':
@@ -178,9 +179,13 @@ export function computeNextDueOn(rec: Recurrence, completedOn: Date): Date {
 }
 
 /** Project up to N future occurrences after a starting date (detail view + iCal). */
-export function previewOccurrences(rec: Recurrence, startAfter: Date, count: number): Date[] {
+export function previewOccurrences(
+  rec: Recurrence,
+  startAfter: CalendarDate,
+  count: number,
+): CalendarDate[] {
   if (rec.kind === 'once') return [];
-  const occ: Date[] = [];
+  const occ: CalendarDate[] = [];
   let cursor = startAfter;
   for (let i = 0; i < count; i++) {
     cursor = computeNextDueOn(rec, cursor);

@@ -2,6 +2,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { asCalendarDate } from '@/lib/time/tz';
 import { expectNoAxeViolations } from '@/tests/a11y/axe';
 import { VendorLinkChips, type VendorLinkRow } from './VendorLinkChips';
 
@@ -119,7 +120,11 @@ describe('VendorLinkChips', () => {
 
   it('shows "Contract → <date>" badge when serviceContract is true with an end date', () => {
     const links: VendorLinkRow[] = [
-      { ...LINKS[0], serviceContract: true, contractEndsOn: new Date('2027-06-30T00:00:00.000Z') },
+      {
+        ...LINKS[0],
+        serviceContract: true,
+        contractEndsOn: asCalendarDate(new Date('2027-06-30T00:00:00.000Z')),
+      },
     ];
     render(<VendorLinkChips links={links} />);
     const badge = screen.getByTestId('vendor-link-chip-contract-l1');

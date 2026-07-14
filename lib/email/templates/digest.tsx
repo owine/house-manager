@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 import { EMAIL_TOKENS, Layout } from '../layout';
 import { renderEmail } from '../render';
 
@@ -12,7 +13,7 @@ type DigestItemTarget =
 type DigestItem = {
   reminderId: string;
   title: string;
-  dueOn: Date;
+  dueOn: CalendarDate;
   daysOverdue: number;
   targets: DigestItemTarget[];
 };
@@ -31,7 +32,7 @@ export type DigestEmailResult = { subject: string; html: string; text: string };
  * (The house tz still drives digest *scheduling* and the overdue cutoff in the
  * query; it just has no business formatting a date-only value.)
  */
-function formatDue(d: Date): string {
+function formatDue(d: CalendarDate): string {
   return formatCalendarDate(d, 'long');
 }
 

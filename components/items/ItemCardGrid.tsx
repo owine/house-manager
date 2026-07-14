@@ -5,8 +5,13 @@ import { CategoryIcon } from '@/components/items/CategoryIcon';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 
-type ItemWithRelations = Item & {
+// Prisma's raw `Item` model type is unbranded -- the CalendarDate brand lives on
+// the *client result* type (see lib/prisma-extensions.ts). Re-state it here so a
+// component typed off the base model still can't be handed an instant.
+type ItemWithRelations = Omit<Item, 'purchaseDate'> & {
+  purchaseDate: CalendarDate | null;
   category: Category;
   _count: { warrantyTargets: number; serviceRecordTargets: number; itemNotes: number };
 };

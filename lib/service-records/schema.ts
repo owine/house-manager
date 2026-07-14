@@ -52,7 +52,7 @@ export const updateServiceRecordSchema = baseServiceRecordSchema
   .partial()
   .extend({ id: z.string().min(1) })
   .superRefine((v, ctx) => {
-    if (v.selfPerformed === true && Boolean(v.vendorId)) {
+    if (v.selfPerformed === true && v.vendorId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "A self-performed record can't also have a vendor",

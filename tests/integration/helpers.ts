@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { calendarDateWriteGuard } from '@/lib/calendar-date-guard';
+import { applyPrismaExtensions } from '@/lib/prisma-extensions';
 
 /**
  * Today as a CALENDAR DATE -- UTC midnight, which is the shape the app actually
@@ -21,12 +21,13 @@ export function calDaysOut(n: number): Date {
 }
 
 /**
- * Same extension as the real client (lib/db.ts). Without it, integration tests
- * would bypass the calendar-date write guard -- a fixture seeding an instant into
- * a date column would sail through here while throwing in production.
+ * Same extensions as the real client. Imported from lib/prisma-extensions (a leaf
+ * module) rather than lib/db -- importing lib/db here would construct its
+ * module-level singleton from process.env.DATABASE_URL BEFORE setupIntegration()
+ * points it at the test container. That is the module-load DATABASE_URL trap.
  */
 function createTestPrismaClient(adapter: PrismaPg) {
-  return new PrismaClient({ adapter }).$extends(calendarDateWriteGuard);
+  return applyPrismaExtensions(new PrismaClient({ adapter }));
 }
 
 import { Meilisearch } from 'meilisearch';

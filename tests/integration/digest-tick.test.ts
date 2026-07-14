@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getEnv } from '@/lib/env';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  calDaysOut,
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+} from './helpers';
 
 const sentEmails: unknown[] = [];
 
@@ -61,7 +66,7 @@ beforeEach(async () => {
 });
 
 async function seedOverdue() {
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const yesterday = calDaysOut(-1);
   await ctx.prisma.reminder.create({
     data: {
       title: 'Filter',
@@ -145,7 +150,7 @@ describe('handleDigestTick — weekly path', () => {
         },
       },
     });
-    const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const inThreeDays = calDaysOut(3);
     await ctx.prisma.reminder.create({
       data: {
         title: 'Upcoming',

@@ -73,3 +73,64 @@ describe('assertCalendarDateWrite', () => {
     expect(() => assertCalendarDateWrite('Item', { purchaseDate: null })).not.toThrow();
   });
 });
+
+describe('nested relation writes', () => {
+  // The first version of this guard checked ONLY the top-level model, so a nested
+  // write sailed straight through -- and nested is exactly how the app creates
+  // reminder targets (lib/reminders/actions.ts, lib/ai/suggest/reminders.ts). The
+  // guard protected none of those paths.
+  it('catches an instant nested under reminder.create -> targets.create', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', {
+        title: 'x',
+        targets: { create: [{ itemId: 'i', nextDueOn: EVENING_IN_CHICAGO }] },
+      }),
+    ).toThrow(/ReminderTarget\.nextDueOn/);
+  });
+
+  it('catches an instant nested under a createMany { data } wrapper', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', {
+        title: 'x',
+        targets: { createMany: { data: [{ nextDueOn: EVENING_IN_CHICAGO }] } },
+      }),
+    ).toThrow(/ReminderTarget\.nextDueOn/);
+  });
+
+  it('catches an instant nested under an update { where, data } wrapper', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', {
+        targets: { update: { where: { id: 't' }, data: { nextDueOn: EVENING_IN_CHICAGO } } },
+      }),
+    ).toThrow(/ReminderTarget\.nextDueOn/);
+  });
+
+  it('catches an instant nested under upsert.create', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', {
+        targets: {
+          upsert: {
+            where: { id: 't' },
+            create: { nextDueOn: EVENING_IN_CHICAGO },
+            update: {},
+          },
+        },
+      }),
+    ).toThrow(/ReminderTarget\.nextDueOn/);
+  });
+
+  it('still accepts a valid nested calendar date', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', {
+        title: 'x',
+        targets: { create: [{ itemId: 'i', nextDueOn: cal(2026, 7, 14) }] },
+      }),
+    ).not.toThrow();
+  });
+
+  it('does not choke on connect / disconnect payloads', () => {
+    expect(() =>
+      assertCalendarDateWrite('Reminder', { targets: { connect: [{ id: 't' }] } }),
+    ).not.toThrow();
+  });
+});

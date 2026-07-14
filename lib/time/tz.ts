@@ -8,6 +8,69 @@ export type TzParts = {
   weekday: number; // 0=Sunday .. 6=Saturday
 };
 
+/**
+ * ===========================================================================
+ *  The one rule. Everything in this module follows from it.
+ * ===========================================================================
+ *
+ *  | Value                                    | What it is      | Correct handling                          |
+ *  |------------------------------------------|-----------------|-------------------------------------------|
+ *  | now, completedOn, receivedAt, occurredAt | an INSTANT      | Interpret it THROUGH the house tz to find |
+ *  |                                          |                 | out what day it is: startOfDayUtc(now, tz) |
+ *  | nextDueOn, endsOn, performedOn, ...      | a CALENDAR DATE | It is ALREADY a day. Read it in UTC.      |
+ *  |                                          |                 | NEVER run it through a tz.                |
+ *
+ *  The house tz answers "what day is it NOW". It must never reinterpret a value
+ *  that is already a day. `tzParts(nextDueOn, tz)` reads 2026-07-15T00:00:00Z as
+ *  "Jul 14" in Chicago -- every due date slides back a day. That single mistake,
+ *  in both directions, accounted for fifteen bugs and eight separate fixes.
+ *
+ *  The types below make it a compile error.
+ */
+
+declare const CalendarDateBrand: unique symbol;
+
+/**
+ * A date-only value: a DAY. Backed by a Postgres `date` column, so it always
+ * arrives at UTC midnight. NOT an instant.
+ *
+ * The brand is erased at build time -- it exists purely so the compiler can stop
+ * you running a day through a timezone, or handing an instant to something that
+ * wants a day.
+ */
+export type CalendarDate = Date & { readonly [CalendarDateBrand]: true };
+
+/**
+ * A real moment in time. Structurally just a `Date`, but the optional never-valued
+ * brand slot makes a `CalendarDate` NOT assignable to it -- which is the whole
+ * trick.
+ *
+ * NOTE: the obvious alternative does NOT work:
+ *
+ *     export function tzParts(d: CalendarDate, tz: string): never;   // USELESS
+ *     export function tzParts(instant: Date, tz: string): TzParts;
+ *
+ * Overload resolution picks the first signature and returns `never` -- but `never`
+ * is assignable to everything, so the call site compiles clean. Verified under
+ * --strict: it catches nothing. It LOOKS like a guard and is not one.
+ */
+export type Instant = Date & { readonly [CalendarDateBrand]?: never };
+
+/** Build a CalendarDate from Y/M/D. `month` is 1-12. */
+export function calendarDate(year: number, month: number, day: number): CalendarDate {
+  return new Date(Date.UTC(year, month - 1, day)) as CalendarDate;
+}
+
+/**
+ * Brand an existing Date as a CalendarDate, asserting it really is UTC-midnight.
+ * The Prisma client (lib/db.ts) applies this at the DB boundary, so application
+ * code should rarely need it.
+ */
+export function asCalendarDate(d: Date): CalendarDate {
+  assertCalendarDate(d, 'asCalendarDate');
+  return d as CalendarDate;
+}
+
 const WEEKDAY_MAP: Record<string, number> = {
   Sun: 0,
   Mon: 1,
@@ -21,7 +84,7 @@ const WEEKDAY_MAP: Record<string, number> = {
 /**
  * Decompose `date` into wall-clock parts in `timeZone` using Intl (no deps).
  */
-export function tzParts(date: Date, timeZone: string): TzParts {
+export function tzParts(date: Instant, timeZone: string): TzParts {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-CA', {
       timeZone,
@@ -68,8 +131,8 @@ export function tzOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 /** Normalize a date-only value to UTC midnight (its calendar date, in UTC). */
-export function utcMidnight(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+export function utcMidnight(d: Instant): CalendarDate {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) as CalendarDate;
 }
 
 /**
@@ -100,9 +163,9 @@ function assertCalendarDate(d: Date, fn: string): void {
  * result: a due-today value stored at UTC midnight must compare equal to today's
  * anchor, not earlier — otherwise negative-offset zones flag due-today as overdue.
  */
-export function startOfDayUtc(instant: Date, tz: string): Date {
+export function startOfDayUtc(instant: Instant, tz: string): CalendarDate {
   const { year, month, day } = tzParts(instant, tz);
-  return new Date(Date.UTC(year, month - 1, day));
+  return new Date(Date.UTC(year, month - 1, day)) as CalendarDate;
 }
 
 /**
@@ -112,9 +175,13 @@ export function startOfDayUtc(instant: Date, tz: string): Date {
  * read in the house timezone. Due-today (in tz) returns false — and "today" flips
  * at house-local midnight, not UTC midnight.
  */
-export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
+export function isOverdue(nextDueOn: CalendarDate, now: Instant, tz: string): boolean {
+  // The brand is a COMPILE-time guarantee; this is the runtime net for anything
+  // that reached here through a cast. Defence in depth -- keep both.
   assertCalendarDate(nextDueOn, 'isOverdue');
-  return utcMidnight(nextDueOn).getTime() < startOfDayUtc(now, tz).getTime();
+  // No utcMidnight() wrap: a CalendarDate is already UTC midnight by construction.
+  // (The brand is what surfaced that the old call was redundant.)
+  return nextDueOn.getTime() < startOfDayUtc(now, tz).getTime();
 }
 
 /**
@@ -126,7 +193,7 @@ export function isOverdue(nextDueOn: Date, now: Date, tz: string): boolean {
  * 23:59:59. On a DST transition day the result may be off by ≤1h — acceptable for
  * a `completedOn` stamp.
  */
-export function endOfCalendarDayInTz(calendarDate: Date, tz: string): Date {
+export function endOfCalendarDayInTz(calendarDate: CalendarDate, tz: string): Date {
   assertCalendarDate(calendarDate, 'endOfCalendarDayInTz');
   const year = calendarDate.getUTCFullYear();
   const month = calendarDate.getUTCMonth();

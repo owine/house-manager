@@ -1,6 +1,6 @@
 import { isSentinelDate, previewOccurrences } from '@/lib/reminders/recurrence';
 import type { Recurrence } from '@/lib/reminders/schema';
-import { isOverdue, startOfDayUtc } from '@/lib/time/tz';
+import { type CalendarDate, isOverdue, startOfDayUtc } from '@/lib/time/tz';
 
 type CalendarEventKind = 'completed' | 'due' | 'projected';
 
@@ -19,7 +19,7 @@ export type AssembleInput = {
   title: string;
   description: string | null;
   recurrence: Recurrence;
-  nextDueOn: Date;
+  nextDueOn: CalendarDate;
   leadTimeDays: number;
   completions: Date[]; // completedOn values, merged across targets
 };

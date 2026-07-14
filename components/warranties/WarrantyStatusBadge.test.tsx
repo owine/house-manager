@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { type CalendarDate, calendarDate } from '@/lib/time/tz';
 import { WarrantyStatusBadge } from './WarrantyStatusBadge';
 
 afterEach(cleanup);
 
-const cal = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+const cal = (y: number, m: number, d: number): CalendarDate => calendarDate(y, m, d);
 
 describe('WarrantyStatusBadge', () => {
   // `endsOn` is a calendar date at UTC midnight, and coverage is INCLUSIVE of

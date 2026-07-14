@@ -8,13 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LocalDate } from '@/components/ui/LocalDate';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 
 type SystemHeaderSystem = {
   id: string;
   name: string;
   kind: string | null;
   location: string | null;
-  installDate: Date | null;
+  installDate: CalendarDate | null;
   archivedAt: Date | null;
 };
 

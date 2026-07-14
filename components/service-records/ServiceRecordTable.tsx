@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 
 // Structural interface matching Prisma's Decimal for display purposes
 interface DecimalLike {
@@ -18,7 +19,7 @@ interface DecimalLike {
 
 type ServiceRecordRow = {
   id: string;
-  performedOn: Date;
+  performedOn: CalendarDate;
   summary: string;
   cost: DecimalLike | null;
   /**

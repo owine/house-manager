@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCalendarDate } from '@/lib/format/date';
+import type { CalendarDate } from '@/lib/time/tz';
 import { WarrantyRowActions } from './WarrantyRowActions';
 import { WarrantyStatusBadge } from './WarrantyStatusBadge';
 
@@ -21,8 +22,8 @@ type WarrantyRow = {
   id: string;
   provider: string;
   policyNumber: string | null;
-  startsOn: Date;
-  endsOn: Date;
+  startsOn: CalendarDate;
+  endsOn: CalendarDate;
   cost: DecimalLike | null;
   /**
    * Multi-target chip set. On an item-detail page this surfaces "what else

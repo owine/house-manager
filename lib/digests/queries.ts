@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/db';
-import { startOfDayUtc } from '@/lib/time/tz';
+import { type CalendarDate, startOfDayUtc } from '@/lib/time/tz';
 
 export type DigestItem = {
   reminderId: string;
   title: string;
-  dueOn: Date;
+  dueOn: CalendarDate;
   daysOverdue: number; // 0 if not yet overdue
   targets: Array<{ kind: 'item' | 'system'; id: string; name: string }>;
 };
