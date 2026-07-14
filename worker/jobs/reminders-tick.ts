@@ -1,17 +1,26 @@
 import { prisma } from '@/lib/db';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 const DAY_MS = 86_400_000;
 
-export async function handleRemindersTick(deps: {
-  enqueue: (job: {
-    reminderId: string;
-    userId: string;
-    channel: 'push' | 'email';
-    cycle: string;
-  }) => Promise<void>;
-}): Promise<{ enqueued: number }> {
-  const now = new Date();
+export async function handleRemindersTick(
+  deps: {
+    enqueue: (job: {
+      reminderId: string;
+      userId: string;
+      channel: 'push' | 'email';
+      cycle: string;
+    }) => Promise<void>;
+  },
+  now: Date = new Date(),
+): Promise<{ enqueued: number }> {
+  // `nextDueOn` is a calendar date at UTC midnight; `now` is an instant. Compare
+  // them directly and the lead window opens `offset` hours early -- in Chicago a
+  // 0-lead reminder emailed at 7pm the night before it was due. Reduce `now` to
+  // the house day first, so both sides of every comparison below are day-aligned.
+  const today = startOfDayUtc(now, await getHouseTimezone());
 
   // Cap our look-ahead window to the largest active leadTimeDays (bounded for sanity).
   const aggregateLeadTime = await prisma.reminder.aggregate({
@@ -28,7 +37,11 @@ export async function handleRemindersTick(deps: {
   // around the same time, we use the earliest nextDueOn for the cycle key.
   const dueTargets = await prisma.reminderTarget.findMany({
     where: {
-      nextDueOn: { lte: new Date(now.getTime() + maxLead * DAY_MS) },
+      // Anchored to the house day, matching the gate below. Anchoring the
+      // pre-filter to `now` instead makes it NARROWER than the gate in any
+      // positive-offset zone (where today > now), silently dropping reminders
+      // the gate would have admitted.
+      nextDueOn: { lte: new Date(today.getTime() + maxLead * DAY_MS) },
       // Filter to kind=REMINDER — chores share the same recurrence + targets
       // model but are ambient (no notifications fire). The /chores UI is the
       // user's surface for completing them.
@@ -72,8 +85,8 @@ export async function handleRemindersTick(deps: {
   let enqueued = 0;
   for (const r of grouped.values()) {
     const cycle = `reminder-${r.id}-${r.nextDueOn.toISOString().slice(0, 10)}`;
-    const notifyAt = new Date(r.nextDueOn.getTime() - r.leadTimeDays * DAY_MS);
-    if (notifyAt.getTime() > now.getTime()) continue; // not yet within lead window
+    const notifyOn = new Date(r.nextDueOn.getTime() - r.leadTimeDays * DAY_MS);
+    if (notifyOn.getTime() > today.getTime()) continue; // not yet within lead window
 
     for (const uid of r.notifyUserIds) {
       const user = await prisma.user.findUnique({

@@ -2,22 +2,23 @@ import Link from 'next/link';
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ActivityEvent } from '@/lib/dashboard/queries';
-import { formatCalendarDate } from '@/lib/format/date';
+import { formatHouseDay } from '@/lib/format/date';
 
-function relativeTime(date: Date): string {
+function relativeTime(date: Date, tz: string): string {
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
   if (seconds < 86400 * 7) return `${Math.round(seconds / 86400)}d ago`;
-  return formatCalendarDate(date);
+  return formatHouseDay(date, tz);
 }
 
 type Props = {
   activity: ActivityEvent[];
+  tz: string;
 };
 
-export function RecentActivityList({ activity }: Props) {
+export function RecentActivityList({ activity, tz }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -53,7 +54,7 @@ export function RecentActivityList({ activity }: Props) {
                     )}
                   </div>
                   <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                    {relativeTime(event.occurredAt)}
+                    {relativeTime(event.occurredAt, tz)}
                   </span>
                 </li>
               );

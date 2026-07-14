@@ -1,3 +1,5 @@
+import { startOfDayUtc } from '@/lib/time/tz';
+
 /**
  * Format a calendar date (conceptually a date, not a timestamp).
  * Calendar dates are stored as UTC midnight and should always display
@@ -27,6 +29,24 @@ export function formatCalendarDate(
     month,
     day: 'numeric',
   });
+}
+
+/**
+ * Format an INSTANT (`completedOn`, `receivedAt`, `occurredAt`, `new Date()`) as
+ * the calendar day it fell on **in the house timezone**.
+ *
+ * This is the mirror of `formatCalendarDate`, and the two are not
+ * interchangeable. Handing an instant to `formatCalendarDate` renders its *UTC*
+ * day -- and 8:00 PM in Chicago is already tomorrow in UTC, so evening events
+ * displayed a day late. An instant has no day of its own; you have to say "in
+ * which timezone", and for us that is always the house.
+ */
+export function formatHouseDay(
+  instant: Date,
+  tz: string,
+  month: 'short' | 'long' = 'short',
+): string {
+  return formatCalendarDate(startOfDayUtc(instant, tz), month);
 }
 
 /**

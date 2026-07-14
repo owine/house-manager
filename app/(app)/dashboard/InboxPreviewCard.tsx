@@ -1,10 +1,10 @@
 import { Inbox } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCalendarDate } from '@/lib/format/date';
+import { formatHouseDay } from '@/lib/format/date';
 import type { InboxRow } from '@/lib/incoming-email/queries';
 
-type Props = { emails: InboxRow[] };
+type Props = { emails: InboxRow[]; tz: string };
 
 /**
  * Dashboard widget: shows up to 5 untriaged incoming emails so the user
@@ -14,7 +14,7 @@ type Props = { emails: InboxRow[] };
  * Each row links into the inbox detail page; the sidebar already carries
  * the unread count via the `inbox` badge.
  */
-export function InboxPreviewCard({ emails }: Props) {
+export function InboxPreviewCard({ emails, tz }: Props) {
   if (emails.length === 0) return null;
 
   return (
@@ -41,7 +41,7 @@ export function InboxPreviewCard({ emails }: Props) {
                   </p>
                 </div>
                 <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                  {formatCalendarDate(e.receivedAt)}
+                  {formatHouseDay(e.receivedAt, tz)}
                 </span>
               </Link>
             </li>
