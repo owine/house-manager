@@ -17,14 +17,17 @@ import { SeasonalChecklistCard } from './SeasonalChecklistCard';
 import { UpcomingRemindersCard } from './UpcomingRemindersCard';
 
 export default async function Dashboard() {
-  const [session, stats, activity, reminders, checklists, inbox, tz] = await Promise.all([
+  // Resolved once, up front: quickStats needs it as an argument and the two
+  // date-rendering children need it as a prop, and every consumer on this page
+  // must agree on which day "today" is.
+  const tz = await getHouseTimezone();
+  const [session, stats, activity, reminders, checklists, inbox] = await Promise.all([
     auth(),
-    quickStats(await getHouseTimezone()),
+    quickStats(tz),
     recentActivity(10),
     upcomingReminders(5),
     listChecklists(),
     listInboxEmails({ tab: 'untriaged', take: 5 }),
-    getHouseTimezone(),
   ]);
 
   return (
