@@ -241,3 +241,55 @@ describe('handleChoreAutoCompleteTick', () => {
     expect(updatedTarget.nextDueOn.getTime()).toBeGreaterThan(YESTERDAY.getTime());
   });
 });
+
+describe('handleChoreAutoCompleteTick cadence', () => {
+  // The tick stamps completedOn = endOfCalendarDayInTz(nextDueOn, tz), which in
+  // Chicago is 04:59:59.999Z the NEXT UTC day -- an INSTANT. Seeding
+  // computeNextDueOn with it means addInterval adds `every * DAY_MS` to a value
+  // that is already ~5 hours into the next day, and toUtcMidnight then rounds
+  // that UP a day. A 7-day chore advances 8 days.
+  //
+  // And because the next cycle re-seeds from the already-shifted nextDueOn, the
+  // drift COMPOUNDS: Mon -> Tue -> Wed -> Thu -> Fri -> Sat -> Sun, forever.
+  it('advances a weekly chore by exactly 7 days, and does not drift over repeated cycles', async () => {
+    const FIRST_DUE = new Date(Date.UTC(2026, 6, 13)); // Mon Jul 13 2026
+    const r = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Weekly chore',
+        kind: 'CHORE',
+        autoComplete: true,
+        active: true,
+        recurrence: { kind: 'interval', every: 7, unit: 'day' },
+        notifyUserIds: [],
+        targets: { create: [{ itemId, nextDueOn: FIRST_DUE }] },
+      },
+      include: { targets: true },
+    });
+    const targetId = r.targets[0]?.id as string;
+
+    const seen: string[] = [];
+    // Walk six cycles. Tick on the day AFTER each due date so the chore is
+    // strictly overdue and gets picked up.
+    for (let cycle = 0; cycle < 6; cycle++) {
+      const t = await ctx.prisma.reminderTarget.findUniqueOrThrow({ where: { id: targetId } });
+      // 10:00 UTC on the day after `nextDueOn` -> 05:00 Chicago, safely "tomorrow".
+      const tickAt = new Date(t.nextDueOn.getTime() + 86_400_000 + 10 * 3_600_000);
+      await handleChoreAutoCompleteTick(tickAt);
+      const after = await ctx.prisma.reminderTarget.findUniqueOrThrow({ where: { id: targetId } });
+      const advancedBy = (after.nextDueOn.getTime() - t.nextDueOn.getTime()) / 86_400_000;
+      seen.push(`${after.nextDueOn.toISOString().slice(0, 10)} (+${advancedBy}d)`);
+      expect(advancedBy).toBe(7);
+    }
+
+    // Every occurrence must still land on a Monday. Under the drift they marched
+    // Tue, Wed, Thu, Fri, Sat, Sun.
+    expect(seen).toEqual([
+      '2026-07-20 (+7d)',
+      '2026-07-27 (+7d)',
+      '2026-08-03 (+7d)',
+      '2026-08-10 (+7d)',
+      '2026-08-17 (+7d)',
+      '2026-08-24 (+7d)',
+    ]);
+  });
+});

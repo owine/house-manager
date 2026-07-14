@@ -4,10 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { TargetInput } from '@/lib/targets/schema';
-import { utcMidnight } from '@/lib/time/tz';
+import { startOfDayUtc } from '@/lib/time/tz';
 import { withWeeklyAnchor } from './anchor';
 import { computeNextDueOn } from './recurrence';
 import {
@@ -190,6 +191,11 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
     (rest as Record<string, unknown>).autoComplete = false;
   }
 
+  // Fallback seed for a target that has no due date yet. `utcMidnight(new Date())`
+  // gave the UTC day, not the house day, so a reminder created at 8pm Chicago was
+  // seeded due TOMORROW.
+  const houseToday = startOfDayUtc(new Date(), await getHouseTimezone());
+
   const data: Record<string, unknown> = { ...rest };
   if ('description' in parsed.data) data.description = description || null;
   if (notifyUserIds !== undefined) data.notifyUserIds = notifyUserIds;
@@ -205,9 +211,9 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
         orderBy: { nextDueOn: 'asc' },
         select: { nextDueOn: true },
       });
-      seedDueOn = earliest?.nextDueOn ?? utcMidnight(new Date());
+      seedDueOn = earliest?.nextDueOn ?? houseToday;
     }
-    data.recurrence = withWeeklyAnchor(recurrence, seedDueOn ?? new Date());
+    data.recurrence = withWeeklyAnchor(recurrence, seedDueOn ?? houseToday);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -249,7 +255,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               itemId: null,
               systemId: null,
               lastCompletedOn: seed?.lastCompletedOn ?? null,
-              nextDueOn: seed?.nextDueOn ?? nextDueOn ?? utcMidnight(new Date()),
+              nextDueOn: seed?.nextDueOn ?? nextDueOn ?? houseToday,
             },
           });
         }
@@ -304,7 +310,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               orderBy: { nextDueOn: 'asc' },
               select: { nextDueOn: true },
             });
-            seedNextDueOn = anyExisting?.nextDueOn ?? utcMidnight(new Date());
+            seedNextDueOn = anyExisting?.nextDueOn ?? houseToday;
           }
           await tx.reminderTarget.createMany({
             data: toAdd.map((t) => ({
@@ -414,8 +420,15 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
   }
 
   const now = new Date();
+  // `now` is an instant; `nextDueOn` and `performedOn` are calendar dates. Reduce
+  // it to the house day once, here, and use that for both. Seeding
+  // computeNextDueOn with the raw instant anchored an evening completion to
+  // TOMORROW (8pm Chicago is already the next UTC day), so an "every 30 days"
+  // reminder came back on day 31. `completedOn` / `lastCompletedOn` stay as
+  // instants -- those are genuinely instants.
+  const today = startOfDayUtc(now, await getHouseTimezone());
   const recurrence = parseRecurrence(reminder.recurrence);
-  const nextDueOn = computeNextDueOn(recurrence, now);
+  const nextDueOn = computeNextDueOn(recurrence, today);
 
   const completionToServiceRecord = new Map<string, string>();
 
@@ -447,7 +460,11 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
         // stays consistent post-Task-2.
         const sr = await tx.serviceRecord.create({
           data: {
-            performedOn: now,
+            // A calendar date, like every other performedOn. Written as an instant
+            // it filed an evening completion under TOMORROW -- and, because
+            // /service filters `performedOn: { lte: <UTC midnight> }`, silently
+            // excluded the record from a date range that should contain it.
+            performedOn: today,
             summary: serviceRecord.summary,
             notes: serviceRecord.notes || null,
             cost: serviceRecord.cost,

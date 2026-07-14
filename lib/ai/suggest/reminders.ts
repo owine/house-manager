@@ -178,7 +178,10 @@ export async function saveAcceptedReminders(input: {
   }
   const validated = parsedAll.data;
 
-  const today = new Date();
+  // Seed the recurrence from the HOUSE day. A raw instant anchored an
+  // evening-created reminder to tomorrow (8pm Chicago is already the next UTC
+  // day), so its first occurrence landed a day late.
+  const today = startOfDayUtc(new Date(), await getHouseTimezone());
   const itemId = input.itemId;
 
   const savedIds = await prisma.$transaction(async (tx) => {
