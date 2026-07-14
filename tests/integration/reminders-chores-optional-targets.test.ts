@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 // Mirror reminders-auth.test.ts: per-test session via a mutable currentUserId.
 let currentUserId: string | null = null;
@@ -149,7 +154,7 @@ describe('chore reconciliation', () => {
       kind: 'REMINDER',
       targets: [],
       recurrence: { kind: 'interval', every: 60, unit: 'day' },
-      nextDueOn: new Date(),
+      nextDueOn: todayCal(),
     });
     expect(r.ok).toBe(false);
   });

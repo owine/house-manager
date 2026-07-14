@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 
@@ -110,7 +115,7 @@ describe('IncomingEmail schema', () => {
 
   it('enforces createdServiceRecordId uniqueness (one email per ServiceRecord)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 'tune-up' },
+      data: { performedOn: todayCal(), summary: 'tune-up' },
     });
     await ctx.prisma.incomingEmail.create({
       data: {
@@ -149,7 +154,7 @@ describe('IncomingEmail schema', () => {
       },
     });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 's' },
+      data: { performedOn: todayCal(), summary: 's' },
     });
     const a = await ctx.prisma.attachment.create({
       data: {
@@ -168,7 +173,7 @@ describe('IncomingEmail schema', () => {
 
   it('clears createdServiceRecordId when the linked ServiceRecord is deleted (SetNull)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 's' },
+      data: { performedOn: todayCal(), summary: 's' },
     });
     const email = await ctx.prisma.incomingEmail.create({
       data: {

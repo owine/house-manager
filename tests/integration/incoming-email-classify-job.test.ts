@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let filesDir = '';
 vi.mock('@/lib/env', () => ({
@@ -316,7 +321,7 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
       usage: {},
     };
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 'manual draft' },
+      data: { performedOn: todayCal(), summary: 'manual draft' },
     });
     const e = await ctx.prisma.incomingEmail.create({
       data: {

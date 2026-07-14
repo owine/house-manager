@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -55,7 +60,7 @@ describe('ServiceRecordTarget multi-target', () => {
 
   it('rejects a target row with both itemId and systemId set (XOR CHECK)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 'XOR violation parent' },
+      data: { performedOn: todayCal(), summary: 'XOR violation parent' },
     });
     await expect(
       ctx.prisma.$executeRaw`
@@ -67,7 +72,7 @@ describe('ServiceRecordTarget multi-target', () => {
 
   it('rejects a target row with neither itemId nor systemId set (XOR CHECK)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 'XOR violation parent (none)' },
+      data: { performedOn: todayCal(), summary: 'XOR violation parent (none)' },
     });
     await expect(
       ctx.prisma.$executeRaw`
@@ -80,7 +85,7 @@ describe('ServiceRecordTarget multi-target', () => {
   it('rejects duplicate (serviceRecordId, itemId, systemId) (unique constraint)', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        performedOn: new Date(),
+        performedOn: todayCal(),
         summary: 'Duplicate target parent',
         targets: { create: [{ itemId }] },
       },

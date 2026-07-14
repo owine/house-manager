@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -109,12 +114,12 @@ describe('ReminderTarget multi-target', () => {
         title: 'Duplicate target parent',
         recurrence: { kind: 'interval', days: 60 },
         notifyUserIds: [],
-        targets: { create: [{ itemId, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId, nextDueOn: todayCal() }] },
       },
     });
     await expect(
       ctx.prisma.reminderTarget.create({
-        data: { reminderId: r.id, itemId, nextDueOn: new Date() },
+        data: { reminderId: r.id, itemId, nextDueOn: todayCal() },
       }),
     ).rejects.toThrow();
   });

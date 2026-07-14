@@ -206,7 +206,9 @@ async function classifyOne(id: string): Promise<void> {
         rowId: row.id,
         vendorId,
         targets,
-        performedOn: aiPerformedOn ?? row.receivedAt,
+        // `receivedAt` is an instant. Reduce it to the house day, or an email
+        // received at 8pm Chicago files the service record under TOMORROW.
+        performedOn: aiPerformedOn ?? startOfDayUtc(row.receivedAt, await getHouseTimezone()),
         summary: result.summary ?? fallbackSummary(row.subject),
         notes: result.scope ?? AUTO_NOTE,
       });
@@ -365,7 +367,7 @@ async function heuristicFallback(
       rowId: row.id,
       vendorId: result.vendorId,
       targets: result.targets,
-      performedOn: row.receivedAt,
+      performedOn: startOfDayUtc(row.receivedAt, await getHouseTimezone()),
       summary: fallbackSummary(row.subject),
       notes: AUTO_NOTE,
     });

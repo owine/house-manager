@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(async () => ({ user: { id: 'u1', name: 'Test' } })),
@@ -282,7 +287,7 @@ describe('createServiceRecordFromEmail', () => {
   it('rejects when the email already has a draft', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { performedOn: new Date(), summary: 's' },
+      data: { performedOn: todayCal(), summary: 's' },
     });
     const e = await ctx.prisma.incomingEmail.create({
       data: {

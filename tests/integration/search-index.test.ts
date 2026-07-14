@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_INDEX_NAME } from '@/lib/search/client';
 import { INDEX_SETTINGS } from '@/lib/search/schema';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 vi.mock('@/lib/env', () => ({
   getEnv: vi.fn(() => ({
@@ -85,7 +90,7 @@ describe('handleSearchIndex', () => {
         title: 'Filter',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [],
-        targets: { create: [{ itemId: item.id, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId: item.id, nextDueOn: todayCal() }] },
       },
     });
     await ctx.meili.tasks.waitForTask(
@@ -114,7 +119,7 @@ describe('handleSearchIndex', () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
         summary: 'Annual maintenance',
-        performedOn: new Date(),
+        performedOn: todayCal(),
         targets: {
           create: [{ itemId: item.id }, { systemId: system.id }],
         },
@@ -138,7 +143,7 @@ describe('handleSearchIndex', () => {
         title: 'r1',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [],
-        targets: { create: [{ itemId: item.id, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId: item.id, nextDueOn: todayCal() }] },
       },
     });
     await ctx.meili.tasks.waitForTask(
