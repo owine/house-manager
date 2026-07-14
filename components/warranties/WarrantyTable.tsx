@@ -38,7 +38,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
 });
 
-export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
+export function WarrantyTable({ warranties, tz }: { warranties: WarrantyRow[]; tz: string }) {
   if (warranties.length === 0) {
     return <p className="text-sm text-muted-foreground">no warranties recorded.</p>;
   }
@@ -72,7 +72,7 @@ export function WarrantyTable({ warranties }: { warranties: WarrantyRow[] }) {
             <TableCell>{formatCalendarDate(warranty.startsOn)}</TableCell>
             <TableCell>{formatCalendarDate(warranty.endsOn)}</TableCell>
             <TableCell>
-              <WarrantyStatusBadge endsOn={warranty.endsOn} />
+              <WarrantyStatusBadge endsOn={warranty.endsOn} tz={tz} />
             </TableCell>
             <TableCell className="text-right">
               {warranty.cost != null ? currencyFmt.format(warranty.cost.toNumber()) : '—'}

@@ -7,6 +7,7 @@ import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
 import { WarrantyStatusBadge } from '@/components/warranties/WarrantyStatusBadge';
 import { formatCalendarDate } from '@/lib/format/date';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getWarranty } from '@/lib/warranties/queries';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -36,7 +37,7 @@ export default async function WarrantyDetailPage({ params }: { params: Params })
       <Card className="mb-6">
         <CardContent className="pt-6">
           <div className="mb-4">
-            <WarrantyStatusBadge endsOn={warranty.endsOn} />
+            <WarrantyStatusBadge endsOn={warranty.endsOn} tz={await getHouseTimezone()} />
           </div>
 
           <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">

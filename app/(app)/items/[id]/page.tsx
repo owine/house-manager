@@ -6,6 +6,7 @@ import { ItemOverflowMenu } from '@/components/items/ItemOverflowMenu';
 import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
 import { ItemVendorsSection } from '@/components/items/ItemVendorsSection';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
 import { getItem } from '@/lib/items/queries';
 import { listAllVendors } from '@/lib/vendors/queries';
@@ -41,7 +42,11 @@ export default async function ItemDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const tab = parseTab(sp.tab);
-  const [item, vendors] = await Promise.all([getItem(id), listAllVendors()]);
+  const [item, vendors, tz] = await Promise.all([
+    getItem(id),
+    listAllVendors(),
+    getHouseTimezone(),
+  ]);
   if (!item) notFound();
 
   const itemId = item.id;
@@ -88,7 +93,7 @@ export default async function ItemDetailPage({
             <ItemTabs active={tab} itemId={item.id} />
             <div className="mt-6 space-y-6">
               {tab === 'overview' && <OverviewTab item={item} />}
-              {tab === 'warranties' && <WarrantiesTab item={item} />}
+              {tab === 'warranties' && <WarrantiesTab item={item} tz={tz} />}
               {tab === 'service' && <ServiceTab item={item} />}
               {tab === 'reminders' && <RemindersTab item={item} />}
               {tab === 'notes' && <NotesTab item={item} />}
