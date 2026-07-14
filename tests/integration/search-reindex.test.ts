@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_INDEX_NAME } from '@/lib/search/client';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 vi.mock('@/lib/env', () => ({
   getEnv: vi.fn(() => ({
@@ -62,7 +67,7 @@ describe('handleSearchReindex', () => {
         title: 'r1',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [],
-        targets: { create: [{ itemId: items[0].id, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId: items[0].id, nextDueOn: todayCal() }] },
       },
     });
     await ctx.prisma.reminder.create({
@@ -70,7 +75,7 @@ describe('handleSearchReindex', () => {
         title: 'r2',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [],
-        targets: { create: [{ itemId: items[1].id, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId: items[1].id, nextDueOn: todayCal() }] },
       },
     });
     await ctx.prisma.vendor.create({ data: { name: 'ACME' } });

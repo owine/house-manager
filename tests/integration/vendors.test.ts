@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 
@@ -36,7 +41,7 @@ describe('Vendor CRUD', () => {
   it('hard-deletes vendor and SetNulls related ServiceRecord.vendorId', async () => {
     const v = await ctx.prisma.vendor.create({ data: { name: 'Doomed' } });
     const sr = await ctx.prisma.serviceRecord.create({
-      data: { vendorId: v.id, performedOn: new Date(), summary: 'tune-up' },
+      data: { vendorId: v.id, performedOn: todayCal(), summary: 'tune-up' },
     });
     await ctx.prisma.vendor.delete({ where: { id: v.id } });
     const orphaned = await ctx.prisma.serviceRecord.findUnique({ where: { id: sr.id } });

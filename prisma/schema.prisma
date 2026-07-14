@@ -106,7 +106,7 @@ model System {
   name            String
   kind            String?
   location        String?
-  installDate     DateTime?
+  installDate     DateTime? @db.Date
   installCost     Decimal?   @db.Decimal(10, 2)
   notes           String?    @db.Text
   archivedAt      DateTime?
@@ -147,7 +147,7 @@ model Item {
   manufacturer    String?
   model           String?
   serialNumber    String?
-  purchaseDate    DateTime?
+  purchaseDate    DateTime? @db.Date
   purchasePrice   Decimal?   @db.Decimal(10, 2)
   metadata        Json       @default("{}")
   notes           String?    @db.Text
@@ -238,8 +238,8 @@ model Warranty {
   id              String     @id @default(cuid())
   provider        String
   policyNumber    String?
-  startsOn        DateTime
-  endsOn          DateTime
+  startsOn        DateTime @db.Date
+  endsOn          DateTime @db.Date
   coverage        String?    @db.Text
   cost            Decimal?   @db.Decimal(10, 2)
   createdAt       DateTime   @default(now())
@@ -276,7 +276,7 @@ model ServiceRecord {
   id              String     @id @default(cuid())
   vendorId        String?
   vendor          Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  performedOn     DateTime
+  performedOn     DateTime @db.Date
   cost            Decimal?   @db.Decimal(10, 2)
   selfPerformed   Boolean   @default(false)
   summary         String
@@ -492,7 +492,7 @@ model ReminderTarget {
   itemId          String?
   systemId        String?
   lastCompletedOn DateTime?
-  nextDueOn       DateTime
+  nextDueOn       DateTime @db.Date
 
   reminder        Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
   item            Item?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -581,7 +581,7 @@ model Checklist {
   name        String
   description String?
   schedule    Json?
-  nextDueOn   DateTime?
+  nextDueOn   DateTime? @db.Date
   active      Boolean         @default(true)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt

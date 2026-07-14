@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 // Spy on enqueueEmbed before importing the cascade module — the helper imports
 // it eagerly, so the spy has to be set up first.
@@ -63,15 +68,15 @@ describe('enqueueItemRenameCascade', () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
         summary: 'S',
-        performedOn: new Date(),
+        performedOn: todayCal(),
         targets: { create: [{ itemId: item.id }] },
       },
     });
     const w = await ctx.prisma.warranty.create({
       data: {
         provider: 'P',
-        startsOn: new Date(),
-        endsOn: new Date(),
+        startsOn: todayCal(),
+        endsOn: todayCal(),
         targets: { create: [{ itemId: item.id }] },
       },
     });
@@ -111,14 +116,14 @@ describe('enqueueVendorRenameCascade', () => {
   it('enqueues re-embed for every SERVICE_RECORD linked to the vendor', async () => {
     const vendor = await ctx.prisma.vendor.create({ data: { name: 'Acme' } });
     const sr1 = await ctx.prisma.serviceRecord.create({
-      data: { summary: 'A', performedOn: new Date(), vendorId: vendor.id },
+      data: { summary: 'A', performedOn: todayCal(), vendorId: vendor.id },
     });
     const sr2 = await ctx.prisma.serviceRecord.create({
-      data: { summary: 'B', performedOn: new Date(), vendorId: vendor.id },
+      data: { summary: 'B', performedOn: todayCal(), vendorId: vendor.id },
     });
     // Unrelated SR — must NOT be enqueued.
     await ctx.prisma.serviceRecord.create({
-      data: { summary: 'C', performedOn: new Date() },
+      data: { summary: 'C', performedOn: todayCal() },
     });
 
     await cascade.enqueueVendorRenameCascade(vendor.id);
@@ -138,15 +143,15 @@ describe('enqueueSystemRenameCascade', () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
         summary: 'Tune-up',
-        performedOn: new Date(),
+        performedOn: todayCal(),
         targets: { create: [{ systemId: sys.id }] },
       },
     });
     const w = await ctx.prisma.warranty.create({
       data: {
         provider: 'Manuf',
-        startsOn: new Date(),
-        endsOn: new Date(),
+        startsOn: todayCal(),
+        endsOn: todayCal(),
         targets: { create: [{ systemId: sys.id }] },
       },
     });

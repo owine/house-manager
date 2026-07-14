@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let queries: typeof import('@/lib/reminders/queries');
 
@@ -64,7 +69,7 @@ describe('Reminder CRUD', () => {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [userId],
-        targets: { create: [{ itemId, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId, nextDueOn: todayCal() }] },
       },
       include: { targets: true },
     });
@@ -91,7 +96,7 @@ describe('Reminder CRUD', () => {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [userId],
-        targets: { create: [{ itemId, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId, nextDueOn: todayCal() }] },
       },
       include: { targets: true },
     });
@@ -114,13 +119,13 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [userId],
         autoCreateServiceRecord: true,
-        targets: { create: [{ itemId, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId, nextDueOn: todayCal() }] },
       },
       include: { targets: true },
     });
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        performedOn: new Date(),
+        performedOn: todayCal(),
         summary: 'filter replaced',
         targets: { create: [{ itemId }] },
       },
@@ -147,13 +152,13 @@ describe('ReminderCompletion + ServiceRecord linkage', () => {
         title: 'X',
         recurrence: { kind: 'interval', days: 30 },
         notifyUserIds: [userId],
-        targets: { create: [{ itemId, nextDueOn: new Date() }] },
+        targets: { create: [{ itemId, nextDueOn: todayCal() }] },
       },
       include: { targets: true },
     });
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        performedOn: new Date(),
+        performedOn: todayCal(),
         summary: 'X',
         targets: { create: [{ itemId }] },
       },

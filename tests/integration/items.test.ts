@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -49,8 +54,8 @@ describe('Item CRUD', () => {
     const w = await ctx.prisma.warranty.create({
       data: {
         provider: 'Acme',
-        startsOn: new Date(),
-        endsOn: new Date(),
+        startsOn: todayCal(),
+        endsOn: todayCal(),
         targets: { create: [{ itemId: item.id }] },
       },
     });
@@ -67,7 +72,7 @@ describe('Item CRUD', () => {
     const item = await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        performedOn: new Date(),
+        performedOn: todayCal(),
         summary: 'x',
         targets: { create: [{ itemId: item.id }] },
       },

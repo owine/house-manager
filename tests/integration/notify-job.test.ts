@@ -115,7 +115,7 @@ describe('handleNotify', () => {
       data: {
         reminderId,
         itemId: item.id,
-        nextDueOn: new Date('2026-06-01T12:00:00Z'),
+        nextDueOn: new Date('2026-06-01T00:00:00Z'),
       },
     });
 
@@ -144,7 +144,7 @@ describe('handleNotify', () => {
       data: {
         reminderId,
         itemId: item.id,
-        nextDueOn: new Date('2026-06-02T12:00:00Z'),
+        nextDueOn: new Date('2026-06-02T00:00:00Z'),
       },
     });
 

@@ -210,11 +210,16 @@ async function buildCanonical(
       });
     }
     case 'CHECKLIST_ITEM': {
+      // NOTE: ChecklistItem has no `rationale` column. The AI's one-line rationale
+      // (proposedChecklistItemSchema) is shown in the suggestion UI and then
+      // discarded on save -- it is never persisted. Selecting it here threw
+      // PrismaClientValidationError ("Unknown field `rationale`"), so checklist
+      // items have never been embedded at all. Left as an optional field on
+      // ChecklistItemForCanonical in case the column is ever added.
       const ci = await prisma.checklistItem.findUnique({
         where: { id: entityId },
         select: {
           title: true,
-          rationale: true,
           completedAt: true,
           checklist: { select: { name: true } },
           item: { select: { name: true } },
@@ -223,7 +228,6 @@ async function buildCanonical(
       if (!ci) return null;
       return canonicalizeChecklistItem({
         title: ci.title,
-        rationale: ci.rationale,
         completed: ci.completedAt !== null,
         checklist: ci.checklist,
         item: ci.item,

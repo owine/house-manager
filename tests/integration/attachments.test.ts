@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  calDaysOut,
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  todayCal,
+} from './helpers';
 
 let ctx: IntegrationContext;
 let categoryId: string;
@@ -47,8 +53,8 @@ describe('Attachment parent FKs (multi-parent allowed)', () => {
     const w = await ctx.prisma.warranty.create({
       data: {
         provider: 'Acme',
-        startsOn: new Date(),
-        endsOn: new Date(Date.now() + 86_400_000),
+        startsOn: todayCal(),
+        endsOn: calDaysOut(1),
         targets: { create: [{ itemId }] },
       },
     });
@@ -99,7 +105,7 @@ describe('Attachment cascade', () => {
   it('cascade-deletes when the parent ServiceRecord is hard-deleted', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: {
-        performedOn: new Date(),
+        performedOn: todayCal(),
         summary: 'tune-up',
         targets: { create: [{ itemId }] },
       },
