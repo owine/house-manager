@@ -40,7 +40,14 @@ export async function handleChoreAutoCompleteTick(now: Date = new Date()): Promi
   for (const t of candidates) {
     const completedOn = endOfCalendarDayInTz(t.nextDueOn, tz);
     const recurrence = parseRecurrence(t.reminder.recurrence);
-    const nextDueOn = computeNextDueOn(recurrence, completedOn);
+    // Seed the recurrence from the calendar date the chore was DUE on, never from
+    // `completedOn`. `completedOn` is an instant -- 04:59:59.999Z the next UTC day
+    // in Chicago -- and for `interval` kinds addInterval adds `every * DAY_MS`
+    // BEFORE toUtcMidnight rounds, so those five hours push the result up a whole
+    // day. A 7-day chore advanced 8 days, and since the next cycle re-seeded from
+    // the already-shifted date, the drift COMPOUNDED: Mon -> Tue -> Wed -> ...
+    // `t.nextDueOn` is already the calendar day we want to step from.
+    const nextDueOn = computeNextDueOn(recurrence, t.nextDueOn);
 
     const advanced = await prisma.$transaction(async (tx) => {
       // Compare-and-swap: only proceed if nextDueOn is still what we selected.

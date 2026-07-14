@@ -232,3 +232,33 @@ describe('assembleReminderEvents', () => {
     expect(due?.alarmSecondsBefore).toBeNull();
   });
 });
+
+describe('completion events are bucketed by the house day', () => {
+  // `completions` are INSTANTS. They were bucketed with a local utcMidnight()
+  // helper that read them in UTC, so an evening completion landed on the wrong
+  // day -- and auto-completed chores landed wrong EVERY time, since the tick
+  // stamps completedOn = endOfCalendarDayInTz(dueOn, tz) = 04:59:59.999Z the next
+  // UTC day.
+  const TZ = 'America/Chicago';
+
+  it('dates an evening completion by the house day', () => {
+    const events = assembleReminderEvents(
+      base({ completions: [new Date('2026-07-15T01:00:00Z')] }), // 20:00 CDT Jul 14
+      NOW,
+      TZ,
+    );
+    const done = events.filter((e) => e.kind === 'completed');
+    expect(done).toHaveLength(1);
+    expect(done[0]?.date.toISOString().slice(0, 10)).toBe('2026-07-14');
+  });
+
+  it('dates an auto-completed chore on the day it was actually due', () => {
+    const events = assembleReminderEvents(
+      base({ completions: [new Date('2026-07-15T04:59:59.999Z')] }), // chore due Jul 14
+      NOW,
+      TZ,
+    );
+    const done = events.filter((e) => e.kind === 'completed');
+    expect(done[0]?.date.toISOString().slice(0, 10)).toBe('2026-07-14');
+  });
+});

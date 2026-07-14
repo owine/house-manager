@@ -1,6 +1,6 @@
 import { isSentinelDate, previewOccurrences } from '@/lib/reminders/recurrence';
 import type { Recurrence } from '@/lib/reminders/schema';
-import { isOverdue } from '@/lib/time/tz';
+import { isOverdue, startOfDayUtc } from '@/lib/time/tz';
 
 type CalendarEventKind = 'completed' | 'due' | 'projected';
 
@@ -24,11 +24,6 @@ export type AssembleInput = {
   completions: Date[]; // completedOn values, merged across targets
 };
 
-/** Normalize any timestamp to UTC midnight, matching the all-day convention in build.ts. */
-function utcMidnight(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
 const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
 
 /**
@@ -50,7 +45,11 @@ export function assembleReminderEvents(
 
   const seenDays = new Set<string>();
   for (const completedOn of input.completions) {
-    const date = utcMidnight(completedOn);
+    // `completedOn` is an INSTANT; bucket it by the day it fell on in the HOUSE.
+    // utcMidnight() read it in UTC, so an evening completion landed a day late --
+    // and auto-completed chores, stamped at 04:59:59.999Z the next UTC day, landed
+    // a day late EVERY time, systematically.
+    const date = startOfDayUtc(completedOn, tz);
     const key = isoDate(date);
     if (seenDays.has(key)) continue;
     seenDays.add(key);
@@ -66,7 +65,7 @@ export function assembleReminderEvents(
   }
 
   if (!isSentinelDate(input.nextDueOn)) {
-    const date = utcMidnight(input.nextDueOn);
+    const date = input.nextDueOn;
     events.push({
       uid: `reminder-${input.id}-${isoDate(date)}`,
       reminderId: input.id,
@@ -78,7 +77,7 @@ export function assembleReminderEvents(
     });
 
     for (const occ of previewOccurrences(input.recurrence, input.nextDueOn, 11)) {
-      const d = utcMidnight(occ);
+      const d = occ;
       events.push({
         uid: `reminder-${input.id}-proj-${isoDate(d)}`,
         reminderId: input.id,

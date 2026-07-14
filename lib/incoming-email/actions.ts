@@ -4,11 +4,13 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { targetSchema } from '@/lib/targets/schema';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 const log = getLogger('incoming-email.actions');
 
@@ -250,7 +252,13 @@ export async function createServiceRecordFromEmail(
     email.aiExtractedSummary?.trim() ||
     (trimmedSubject.length > 0 ? trimmedSubject : '(no subject)')
   ).slice(0, 200);
-  const performedOn = email.aiExtractedPerformedOn ?? email.receivedAt;
+  // `performedOn` is a calendar date. `aiExtractedPerformedOn` already is one
+  // (the model returns YYYY-MM-DD), but `receivedAt` is an INSTANT -- falling back
+  // to it raw filed an email received at 8pm Chicago under TOMORROW's date, and
+  // /service filters `performedOn: { lte: <UTC midnight> }` then silently excluded
+  // the record from a range that should contain it.
+  const performedOn =
+    email.aiExtractedPerformedOn ?? startOfDayUtc(email.receivedAt, await getHouseTimezone());
   const notes = email.aiExtractedScope ?? '[Created from inbound email — review and edit.]';
 
   const created = await prisma.$transaction(async (tx) => {
