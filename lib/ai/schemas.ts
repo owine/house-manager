@@ -169,7 +169,7 @@ export const askQuestionInputSchema = z.object({
     .refine(
       (msgs) => {
         const last = msgs[msgs.length - 1];
-        if (!last || last.role !== 'user') return false;
+        if (last?.role !== 'user') return false;
         const trimmed = last.content.trim();
         return trimmed.length >= 3 && trimmed.length <= 500;
       },
