@@ -14,8 +14,8 @@ importers:
   .:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: 0.112.2
-        version: 0.112.2(zod@4.4.3)
+        specifier: 0.112.3
+        version: 0.112.3(zod@4.4.3)
       '@auth/prisma-adapter':
         specifier: 2.11.2
         version: 2.11.2(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))
@@ -24,7 +24,7 @@ importers:
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@hookform/resolvers':
         specifier: 5.4.0
-        version: 5.4.0(react-hook-form@7.81.0(react@19.2.7))
+        version: 5.4.0(react-hook-form@7.82.0(react@19.2.7))
       '@paralleldrive/cuid2':
         specifier: 3.3.0
         version: 3.3.0
@@ -104,8 +104,8 @@ importers:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
       react-hook-form:
-        specifier: 7.81.0
-        version: 7.81.0(react@19.2.7)
+        specifier: 7.82.0
+        version: 7.82.0(react@19.2.7)
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.2.17)(react@19.2.7)(supports-color@8.1.1)
@@ -237,8 +237,8 @@ packages:
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
 
-  '@anthropic-ai/sdk@0.112.2':
-    resolution: {integrity: sha512-K195jgWWDhZSpi0fZq8m18Hjy6pbv22j46XqqOI8b74kcmZm6nMP2rU+HYU0kJFIR/dE8m2BHT37Vb/ofmrQrg==}
+  '@anthropic-ai/sdk@0.112.3':
+    resolution: {integrity: sha512-wjcozJlitVIuBEw9cj/xBuRznwkhcLmXmNzlFoeHbh4AvrDG3HGZrdvEOTTmobcbhjGkfOpKbmDTCQ4s9LQvCg==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -4801,8 +4801,8 @@ packages:
     peerDependencies:
       react: ^19.2.7
 
-  react-hook-form@7.81.0:
-    resolution: {integrity: sha512-ocbmr2p5KBMoAfj4WCUvped33lVi1Kd5DuDUvQDnB6VEAacOjPI/jMbtDdbhco4y9ct4xUuCmMY0b/C9L0QHjw==}
+  react-hook-form@7.82.0:
+    resolution: {integrity: sha512-Zw/uFZ2dO+02GHlBn7JFGn8kZJ7LdM33B/0BXOovzFay+CMhf94JMw5BVu+F1tVkUKjNvBuaE3fz5BJhga10Tg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
@@ -5703,7 +5703,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@anthropic-ai/sdk@0.112.2(zod@4.4.3)':
+  '@anthropic-ai/sdk@0.112.3(zod@4.4.3)':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.0.0
@@ -6241,10 +6241,10 @@ snapshots:
     dependencies:
       hono: 4.12.31
 
-  '@hookform/resolvers@5.4.0(react-hook-form@7.81.0(react@19.2.7))':
+  '@hookform/resolvers@5.4.0(react-hook-form@7.82.0(react@19.2.7))':
     dependencies:
       '@standard-schema/utils': 0.3.0
-      react-hook-form: 7.81.0(react@19.2.7)
+      react-hook-form: 7.82.0(react@19.2.7)
 
   '@img/colour@1.1.0': {}
 
@@ -10095,7 +10095,7 @@ snapshots:
       react: 19.2.7
       scheduler: 0.27.0
 
-  react-hook-form@7.81.0(react@19.2.7):
+  react-hook-form@7.82.0(react@19.2.7):
     dependencies:
       react: 19.2.7
 
