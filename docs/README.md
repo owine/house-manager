@@ -4,7 +4,7 @@ Self-hosted home information manager. See `superpowers/specs/2026-04-26-house-ma
 
 ## Stack
 
-- Next.js 16 (App Router, RSC) + TypeScript 6 (strict)
+- Next.js 16 (App Router, RSC) + TypeScript 7 for typechecking, 6 for the JS API (strict) — see [TypeScript toolchain](#typescript-toolchain)
 - Auth.js v5 with Authelia OIDC (database session strategy via Prisma adapter)
 - Prisma 7 + Postgres 16 + pgvector
 - Meilisearch 1.42 (unified `house` index across items, vendors, notes, services, reminders, attachments)
@@ -98,6 +98,43 @@ You don't pass these at runtime — they're baked into the image at build time.
 | `pnpm test:e2e` | Playwright E2E with mock OIDC |
 | `pnpm verify` | lint + typecheck + test:unit (run before pushing) |
 | `pnpm db:generate` / `db:migrate` / `db:deploy` / `db:seed` | Prisma |
+
+## TypeScript toolchain
+
+`package.json` runs TypeScript 6 and 7 side by side. This is deliberate — **do not
+"simplify" it back to a single `typescript` entry** (package.json is strict JSON, so
+this note can't live next to the dependencies themselves):
+
+```jsonc
+"@typescript/native": "npm:typescript@7.0.2",       // the Go port; owns bin `tsc`
+"typescript": "npm:@typescript/typescript6@6.0.2",  // shim re-exporting the TS 6 JS API
+```
+
+TypeScript 7 is the Go rewrite. It ships a compiler but **no JavaScript API**, and
+Next.js 16 loads `next.config.ts` through that API — so a plain bump to `typescript@7`
+builds fine locally but kills the dev server (`"It looks like you're trying to use
+TypeScript but do not have the required package(s) installed"`) and times out the
+Playwright `webServer`. See PR #281 for the failure and #290 for this fix.
+
+Splitting the two names gives us both:
+
+- **`tsc`** resolves to TS 7, because `typescript@7` declares `bin = {"tsc": ...}`.
+  That's what `pnpm typecheck` runs — 7.78s → 1.29s on this repo.
+- **`import ... from 'typescript'`** resolves to the TS 6 API shim. Next.js, Prisma,
+  `@auth/prisma-adapter` and shadcn all depend on that API; the shim names its own
+  binary `tsc6` precisely so it doesn't fight TS 7 over `.bin/tsc`.
+
+`tsc6` is available if you ever need the TS 6 compiler for comparison. Nothing in this
+repo currently needs it: `pnpm typecheck` is the only `tsc` invocation, and no
+first-party code imports the `typescript` JS API.
+
+Caveat: `next build` runs its **own** internal typecheck against the TS 6 API
+(~13s), so only the standalone `pnpm typecheck` gets the speedup.
+
+This alias can be deleted in favour of a plain `"typescript": "7.x"` once Next.js
+supports TS 7 natively — nothing else here blocks it. (Sibling repos that use
+typescript-eslint additionally have to wait for its TS 7.1 port; this one doesn't,
+because it lints with Biome.)
 
 ## Further docs
 
