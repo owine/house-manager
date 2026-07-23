@@ -115,7 +115,7 @@
     "shadcn": "4.13.1",
     "tailwindcss": "4.3.3",
     "testcontainers": "12.0.4",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10"
   }
