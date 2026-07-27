@@ -1,8 +1,8 @@
 'use server';
-import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { isFkViolation } from '@/lib/db-errors';
 import { enqueueVendorRenameCascade } from '@/lib/embedding/cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -95,15 +95,11 @@ export async function tryDeleteVendor(vendorId: string): Promise<TryDeleteVendor
     revalidatePath('/systems');
     return { ok: true };
   } catch (err) {
-    // pg18 emits SQLSTATE 23001 (restrict_violation) for RESTRICT-mode FK
-    // violations instead of 23503; @prisma/adapter-pg <=7.8.0 only maps 23503
-    // to P2003, so 23001 leaks through as a raw DriverAdapterError.
-    const causeCode = (err as { cause?: { code?: string } })?.cause?.code;
-    const isFkRestrict =
-      (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') ||
-      causeCode === '23001' ||
-      causeCode === '23503';
-    if (isFkRestrict) {
+    // pg18 emits SQLSTATE 23001 (restrict_violation) for RESTRICT-mode FKs and
+    // @prisma/adapter-pg has never mapped it to P2003. The shape of the
+    // unmapped error moved between 7.8.0 and 7.9.0, so the detection lives in
+    // lib/db-errors.ts and reads every known location — see the notes there.
+    if (isFkViolation(err)) {
       const [itemCount, systemCount] = await Promise.all([
         prisma.itemVendor.count({ where: { vendorId } }),
         prisma.systemVendor.count({ where: { vendorId } }),
