@@ -60,6 +60,9 @@ export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
       bySystem.set(systemKey, group);
     }
 
+    // Space-joined for the same reason UNASSIGNED is space-prefixed: reminderId
+    // is a cuid ([0-9a-z]) and toISOString() is fixed-format, so neither half
+    // can contain the separator and the two parts cannot run together.
     const entryKey = `${r.reminderId} ${r.dueOn.toISOString()}`;
     let entry = group.entries.get(entryKey);
     if (!entry) {
