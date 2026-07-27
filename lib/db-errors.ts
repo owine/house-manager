@@ -1,4 +1,12 @@
-import { Prisma } from '@prisma/client';
+// Deliberately imports nothing. This module only reads the *shape* of an error,
+// so it must not depend on the generated Prisma client — that would make its
+// unit test require `prisma generate` to have run first.
+//
+// It also avoids `instanceof Prisma.PrismaClientKnownRequestError`: under pnpm
+// two copies of @prisma/client can end up loaded, and an error constructed by
+// one will not match the class from the other. The check would then silently
+// return false — the exact silent-failure mode this module exists to prevent.
+// Reading `err.code` structurally is both narrower and more robust.
 
 /**
  * Postgres SQLSTATEs for foreign-key violations.
@@ -53,9 +61,11 @@ export function extractSqlState(err: unknown): string | undefined {
  * which must never throw.
  */
 export function isFkViolation(err: unknown): boolean {
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-    return true;
-  }
+  if (typeof err !== 'object' || err === null) return false;
+
+  // Prisma's own mapping, when the adapter managed to produce one.
+  if ((err as { code?: unknown }).code === 'P2003') return true;
+
   const sqlState = extractSqlState(err);
   return sqlState !== undefined && FK_VIOLATION_SQLSTATES.has(sqlState);
 }
