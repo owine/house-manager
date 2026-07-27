@@ -31,6 +31,8 @@ export type DigestGroup = {
   entries: DigestEntry[];
 };
 
+// Leading space cannot collide with a real System id: both System and Reminder
+// ids are cuid() (see prisma/schema.prisma), whose alphabet is [0-9a-z].
 const UNASSIGNED = ' unassigned';
 
 /**
@@ -41,7 +43,8 @@ const UNASSIGNED = ' unassigned';
  * is safe here because these are calendar dates pinned to UTC midnight.
  *
  * `daysOverdue` needs no reconciliation — the key includes `dueOn`, so every
- * row collapsing into one entry necessarily carries the same value.
+ * row collapsing into one entry necessarily carries the same value. `title` has
+ * the same invariant and is likewise taken from whichever row creates the entry.
  */
 export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
   const bySystem = new Map<

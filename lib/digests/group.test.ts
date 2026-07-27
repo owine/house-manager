@@ -118,6 +118,38 @@ describe('groupBySystem', () => {
     expect(groups[0]?.entries.map((e) => e.title)).toEqual(['Apple task', 'Zebra task']);
   });
 
+  it('sorts targets by name regardless of input order', () => {
+    const groups = groupBySystem([
+      row({ target: { kind: 'item', id: 'z', name: 'Zone Valve' } }),
+      row({ target: { kind: 'item', id: 'a', name: 'Air Handler' } }),
+      row({ target: { kind: 'item', id: 'm', name: 'Manifold' } }),
+    ]);
+    expect(groups[0]?.entries[0]?.targets.map((t) => t.name)).toEqual([
+      'Air Handler',
+      'Manifold',
+      'Zone Valve',
+    ]);
+  });
+
+  it('sorts entries by due date regardless of input order', () => {
+    const groups = groupBySystem([
+      row({ dueOn: JUN5, daysOverdue: 1, target: { kind: 'item', id: 'b', name: 'Attic' } }),
+      row({ dueOn: JUN1, daysOverdue: 3, target: { kind: 'item', id: 'a', name: 'Furnace' } }),
+    ]);
+    expect(groups[0]?.entries.map((e) => e.daysOverdue)).toEqual([3, 1]);
+  });
+
+  it('breaks a system-name tie on id so ordering is deterministic', () => {
+    // System.name has no uniqueness constraint, so two systems can share a name.
+    const B = { id: 'sys_b', name: 'Boiler' };
+    const A = { id: 'sys_a', name: 'Boiler' };
+    const groups = groupBySystem([
+      row({ system: B, target: { kind: 'item', id: '1', name: 'X' } }),
+      row({ system: A, target: { kind: 'item', id: '2', name: 'Y' } }),
+    ]);
+    expect(groups.map((g) => g.system?.id)).toEqual(['sys_a', 'sys_b']);
+  });
+
   it('does not collide two different calendar dates that are equal by value', () => {
     // Two distinct Date objects for the same day must land in the SAME entry.
     // Using the Date object itself as a Map key would make them different keys.
