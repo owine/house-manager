@@ -108,7 +108,10 @@ export function canonicalizeItem(item: ItemForCanonical): string {
 
   if (item.metadata && Object.keys(item.metadata).length > 0) {
     const meta = Object.entries(item.metadata)
-      .filter(([_, v]) => present(v))
+      // `_`-prefixed keys are internal (e.g. `_provenance` from conversational
+      // capture). They must never reach embedded text — they carry no retrieval
+      // value and would inject raw JSON into the chunk.
+      .filter(([k, v]) => !k.startsWith('_') && present(v))
       .map(([k, v]) => `  ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
     if (meta.length > 0) lines.push('Metadata:', ...meta);
   }
