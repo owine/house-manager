@@ -21,6 +21,14 @@ allowBuilds:
 # so v11 reads them — v11 stopped reading the package.json field in
 # pnpm@11.0.0. Same comparator-key syntax works in both v10 and v11.
 overrides:
-  "postcss@<8.5.12": "8.5.22"
-  "uuid@<14.0.0": "14.0.1"
+  "postcss@<8.5.12": "8.5.23"
   "@hono/node-server@<2.0.1": "2.0.11"
+  # CVE-2026-47219 (GHSA-c96f-x56v-gq3h, High) — DDoS via HTTP/2.
+  # Reaches the production image through prisma -> @prisma/dev, which is
+  # never executed at runtime (it powers `prisma dev`), but `prisma` is a
+  # runtime dependency so `pnpm prune --prod` keeps it in the image.
+  "find-my-way@<9.7.0": "9.7.0"
+  # GHSA-5qjj-4xww-7phc (Moderate) — record() issue paths can make flatten()
+  # throw for inherited Object property names. Same @prisma/dev path as
+  # find-my-way above.
+  "valibot@<1.4.2": "1.4.2"
