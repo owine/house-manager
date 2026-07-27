@@ -2,9 +2,17 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { SYSTEM_PROMPT_VERSION } from './prompts';
 
+export type SuggestionKind =
+  | 'reminders'
+  | 'checklist'
+  | 'incoming-email-extract'
+  | 'incoming-email-classify'
+  | 'ask'
+  | 'chat';
+
 export type CreateLogInput = {
   userId: string;
-  kind: 'reminders' | 'checklist' | 'incoming-email-extract' | 'incoming-email-classify' | 'ask';
+  kind: SuggestionKind;
   userPrompt: string | null;
   inventorySnapshotIds: string[];
   response: Prisma.InputJsonValue | null;
