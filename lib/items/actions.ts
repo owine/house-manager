@@ -21,7 +21,7 @@ import { createItemSchema, updateItemSchema } from './schema';
  * The offending path moves into the message instead, so the user still learns
  * which key is at fault.
  */
-function metadataFieldErrors(issues: z.core.$ZodIssue[]): Record<string, string[]> {
+function metadataFieldErrors(issues: z.ZodIssue[]): Record<string, string[]> {
   const messages = issues.map((issue) => {
     const path = issue.path.join('.');
     return path ? `${path}: ${issue.message}` : issue.message;
