@@ -92,7 +92,7 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
   if (!lastMessage) return { ok: false, formError: 'Empty conversation' };
   const question = lastMessage.content.trim();
 
-  const rl = await checkRateLimit(userId);
+  const rl = await checkRateLimit(userId, 'ask');
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -104,7 +104,7 @@ export async function askQuestion(input: unknown): Promise<ActionResult<AskQuest
       model: ANTHROPIC_MODEL,
       retrievedChunkIds: [],
     });
-    return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
+    return { ok: false, formError: `Hourly limit reached (${rl.used}/${rl.limit}).` };
   }
 
   // Step 2 — embed the question.

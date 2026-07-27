@@ -51,7 +51,7 @@ export async function proposeReminders(input: {
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
   const userId = session.user.id;
 
-  const rl = await checkRateLimit(userId);
+  const rl = await checkRateLimit(userId, 'reminders');
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -66,7 +66,7 @@ export async function proposeReminders(input: {
       { event: 'ai.suggest', kind: 'reminders', userId, ok: false, errorReason: 'user_rate_limit' },
       'rate-limited',
     );
-    return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
+    return { ok: false, formError: `Hourly limit reached (${rl.used}/${rl.limit}).` };
   }
 
   // `today` is rendered into the prompt as a UTC day (`toISOString().slice(0,10)`)

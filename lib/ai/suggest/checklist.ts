@@ -74,7 +74,7 @@ export async function proposeChecklist(
     appendingTo = found;
   }
 
-  const rl = await checkRateLimit(userId);
+  const rl = await checkRateLimit(userId, 'checklist');
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -89,7 +89,7 @@ export async function proposeChecklist(
       { event: 'ai.suggest', kind: 'checklist', userId, ok: false, errorReason: 'user_rate_limit' },
       'rate-limited',
     );
-    return { ok: false, formError: `Hourly limit reached (${rl.used}/10).` };
+    return { ok: false, formError: `Hourly limit reached (${rl.used}/${rl.limit}).` };
   }
 
   // `today` is rendered into the prompt as a UTC day (`toISOString().slice(0,10)`)
