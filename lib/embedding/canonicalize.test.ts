@@ -74,6 +74,18 @@ describe('canonicalizeItem', () => {
     expect(text).not.toContain('_provenance');
     expect(text).not.toContain('inferred');
   });
+
+  it('omits the Metadata header entirely when every key is reserved', () => {
+    const text = canonicalizeItem({
+      name: 'Kitchen Pendant',
+      category: { name: 'Lighting' },
+      metadata: {
+        _provenance: { wattage: 'inferred' },
+      },
+    });
+
+    expect(text).not.toContain('Metadata:');
+  });
 });
 
 describe('canonicalizeNote', () => {

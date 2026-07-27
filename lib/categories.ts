@@ -1,12 +1,30 @@
 import { z } from 'zod';
 
+import { isReservedMetadataKey, RESERVED_METADATA_PREFIX } from './embedding/reserved-keys';
+
 // Freeform metadata for unknown categories or `other` — accepts any
 // key/value of a few primitive types. Items predating a schema upgrade
 // keep working because their stored `metadata` blob still parses here.
-const freeformMetadataSchema = z.record(
-  z.string(),
-  z.union([z.string(), z.number(), z.boolean(), z.null()]),
-);
+//
+// Keys starting with `RESERVED_METADATA_PREFIX` are rejected: that prefix is
+// reserved for internal bookkeeping (e.g. `_provenance`, written directly via
+// Prisma by conversational capture, never through this schema) and
+// `canonicalizeItem` silently drops such keys from embedded text. Without
+// this guard a user typing `{"_notes": "..."}` here would save successfully
+// but become unfindable via search/Ask with no indication why.
+const freeformMetadataSchema = z
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  .superRefine((value, ctx) => {
+    for (const key of Object.keys(value)) {
+      if (isReservedMetadataKey(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `"${key}" is reserved (keys starting with "${RESERVED_METADATA_PREFIX}" are for internal use only)`,
+          path: [key],
+        });
+      }
+    }
+  });
 
 /**
  * Per-category metadata config.
