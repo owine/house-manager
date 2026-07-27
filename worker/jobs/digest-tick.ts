@@ -47,11 +47,13 @@ async function maybeSend(
     select: { id: true },
   });
   const logId = log.id;
+  // One row per ReminderTarget: a multi-target reminder appears several times.
   const rows =
     kind === 'overdue'
       ? await getOverdueForUser(userId, timezone)
       : await getWeeklyForUser(userId, timezone);
-  // Task 3 replaces this flatMap with passing `groups` straight through.
+  // Temporary: flattens groups back to a flat list so digestEmail's template
+  // stays untouched. System headings land in a follow-up commit.
   const items = groupBySystem(rows).flatMap((g) => g.entries);
   if (items.length === 0) {
     await prisma.digestLog.update({

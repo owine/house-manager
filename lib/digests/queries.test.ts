@@ -5,6 +5,7 @@ import {
   teardownIntegration,
 } from './../../tests/integration/helpers';
 import type { DigestRow } from './group';
+import { groupBySystem } from './group';
 
 let ctx: IntegrationContext;
 let userId: string;
@@ -311,5 +312,45 @@ describe('system attribution', () => {
     const rows = await getOverdueForUser(userId, TZ, NOW);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.system).toBeNull();
+  });
+
+  it('collapses a single reminder with three same-system targets into one entry', async () => {
+    // The bug this whole commit fixes: one ReminderTarget row per target means
+    // the query legitimately returns three rows here. Only groupBySystem
+    // collapses them -- so this test asserts both halves.
+    const system = await ctx.prisma.system.create({ data: { name: 'Plumbing' } });
+    const itemA = await ctx.prisma.item.create({
+      data: { name: 'Sink', categoryId, systemId: system.id },
+    });
+    const itemB = await ctx.prisma.item.create({
+      data: { name: 'Shower', categoryId, systemId: system.id },
+    });
+    const itemC = await ctx.prisma.item.create({
+      data: { name: 'Toilet', categoryId, systemId: system.id },
+    });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Multi-target overdue',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: {
+          create: [
+            { itemId: itemA.id, nextDueOn: YESTERDAY },
+            { itemId: itemB.id, nextDueOn: YESTERDAY },
+            { itemId: itemC.id, nextDueOn: YESTERDAY },
+          ],
+        },
+      },
+    });
+
+    // The query still returns one row per ReminderTarget...
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(3);
+
+    // ...but grouping collapses them into a single entry listing all three.
+    const entries = groupBySystem(rows).flatMap((g) => g.entries);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.targets.map((t) => t.name).sort()).toEqual(['Shower', 'Sink', 'Toilet']);
   });
 });
