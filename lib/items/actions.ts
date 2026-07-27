@@ -12,6 +12,23 @@ import { enqueueSearchIndex } from '@/lib/search/client';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
 import { createItemSchema, updateItemSchema } from './schema';
 
+/**
+ * Collapse a metadata validation failure onto the `metadata` field.
+ *
+ * The freeform metadata UI registers a single `metadata` textarea, so a nested
+ * key like `metadata.dims` matches no field: RHF would nest the error where
+ * FormMessage cannot read it and the form would fail silently (issue #304).
+ * The offending path moves into the message instead, so the user still learns
+ * which key is at fault.
+ */
+function metadataFieldErrors(issues: z.ZodIssue[]): Record<string, string[]> {
+  const messages = issues.map((issue) => {
+    const path = issue.path.join('.');
+    return path ? `${path}: ${issue.message}` : issue.message;
+  });
+  return { metadata: messages };
+}
+
 export async function createItem(input: unknown): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
@@ -28,13 +45,7 @@ export async function createItem(input: unknown): Promise<ActionResult<{ id: str
     parsed.data.metadata ?? {},
   );
   if (!metadataResult.success) {
-    const fieldErrors: Record<string, string[]> = {};
-    for (const issue of metadataResult.error.issues) {
-      const key = ['metadata', ...issue.path].join('.');
-      if (!fieldErrors[key]) fieldErrors[key] = [];
-      fieldErrors[key].push(issue.message);
-    }
-    return { ok: false, fieldErrors };
+    return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues) };
   }
 
   const category = await prisma.category.findUnique({ where: { slug: parsed.data.categorySlug } });
@@ -84,13 +95,7 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
     if (slug) {
       const metadataResult = metadataSchemaFor(slug).safeParse(metadata);
       if (!metadataResult.success) {
-        const fieldErrors: Record<string, string[]> = {};
-        for (const issue of metadataResult.error.issues) {
-          const key = ['metadata', ...issue.path].join('.');
-          if (!fieldErrors[key]) fieldErrors[key] = [];
-          fieldErrors[key].push(issue.message);
-        }
-        return { ok: false, fieldErrors };
+        return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues) };
       }
       data.metadata = metadataResult.data as object;
     }
