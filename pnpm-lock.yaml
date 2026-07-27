@@ -15,8 +15,8 @@ importers:
   .:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: 0.114.0
-        version: 0.114.0(zod@4.4.3)
+        specifier: 0.115.0
+        version: 0.115.0(zod@4.4.3)
       '@auth/prisma-adapter':
         specifier: 2.11.3
         version: 2.11.3(@prisma/client@7.9.0(@typescript/typescript6@6.0.2)(prisma@7.9.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(@typescript/typescript6@6.0.2)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)))
@@ -66,8 +66,8 @@ importers:
         specifier: 2.3.6
         version: 2.3.6(supports-color@8.1.1)
       ical-generator:
-        specifier: 11.0.0
-        version: 11.0.0(@types/node@25.9.5)(luxon@3.7.2)(rrule@2.8.1)
+        specifier: 11.1.0
+        version: 11.1.0(@types/node@25.9.5)(luxon@3.7.2)(rrule@2.8.1)
       lucide-react:
         specifier: 1.26.0
         version: 1.26.0(react@19.2.8)
@@ -141,8 +141,8 @@ importers:
         specifier: 1.4.0
         version: 1.4.0
       unpdf:
-        specifier: 1.7.0
-        version: 1.7.0
+        specifier: 1.8.0
+        version: 1.8.0(@napi-rs/canvas@1.0.2)
       web-push:
         specifier: 3.6.7
         version: 3.6.7(supports-color@8.1.1)
@@ -241,8 +241,8 @@ packages:
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
 
-  '@anthropic-ai/sdk@0.114.0':
-    resolution: {integrity: sha512-zRFGTVMFEm77gt70Q0B+CDRKa9AcguydCcp6bD/dXWv8UkfsVFqCbaqU8+4B/pob3+Vy434LgtrBmwSvxfKr3g==}
+  '@anthropic-ai/sdk@0.115.0':
+    resolution: {integrity: sha512-BJrFIVyjNuU8lfDyIJTvlRYzgQg+zEl78BxE7fq8esULsGz9IRQvGtW5spq3tydmtjQb/GFdooKGdGsetpx+lQ==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -3815,8 +3815,8 @@ packages:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
 
-  ical-generator@11.0.0:
-    resolution: {integrity: sha512-OScZbXduIbjqtJzq0WLyPpAuKnc106+l28wszD+Wi2O9jXn76NVBfr4Ksv2XFyQn4JNZ9vWr5xAac0uT/FhVag==}
+  ical-generator@11.1.0:
+    resolution: {integrity: sha512-/CSyXcelySK5qYAUxXnwzhAi1UPVnapnVMXqkRQ+L0RXHCFtzqLm92o5PD0ZRhaWBCtkS0hP8YIxMrSRZ+8Zug==}
     engines: {node: 22 || >=24.0.0}
     peerDependencies:
       '@touch4it/ical-timezones': '>=1.6.0'
@@ -5752,10 +5752,11 @@ packages:
     resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
     engines: {node: '>= 10.0.0'}
 
-  unpdf@1.7.0:
-    resolution: {integrity: sha512-MiDhbougTETOvbw/x3hnNr18jzFFrlSitevfO/BHInvtUx68R3Fke9A36GLQfN1LpG1NiJZaV4oPvjioPk9vKQ==}
+  unpdf@1.8.0:
+    resolution: {integrity: sha512-jQlkckbe5nKxRHQdbvo9IKHlU6Cjq00UlxxB8lrCIxvS2o5IbAL1wM+4a1Yc3+BIohg9p5AsoaftwO+G4Aq/qQ==}
+    engines: {node: '>=22'}
     peerDependencies:
-      '@napi-rs/canvas': ^0.1.69
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
     peerDependenciesMeta:
       '@napi-rs/canvas':
         optional: true
@@ -6045,7 +6046,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@anthropic-ai/sdk@0.114.0(zod@4.4.3)':
+  '@anthropic-ai/sdk@0.115.0(zod@4.4.3)':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.0.0
@@ -9333,7 +9334,7 @@ snapshots:
 
   human-signals@8.0.1: {}
 
-  ical-generator@11.0.0(@types/node@25.9.5)(luxon@3.7.2)(rrule@2.8.1):
+  ical-generator@11.1.0(@types/node@25.9.5)(luxon@3.7.2)(rrule@2.8.1):
     optionalDependencies:
       '@types/node': 25.9.5
       luxon: 3.7.2
@@ -11581,7 +11582,9 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  unpdf@1.7.0: {}
+  unpdf@1.8.0(@napi-rs/canvas@1.0.2):
+    optionalDependencies:
+      '@napi-rs/canvas': 1.0.2
 
   unpipe@1.0.0: {}
 
