@@ -49,10 +49,10 @@ function Body({ data }: { data: DigestEmailData }): ReactNode {
         {h1}
       </h1>
       {data.groups.map((g) => (
-        // Bare 'unassigned' (not group.ts's space-prefixed ' unassigned' sentinel)
-        // is fine here: this is only a React key on a one-shot static render, not
-        // a data map key, so a theoretical collision with a cuid System.id has no
-        // observable consequence.
+        // Any stable string works for the null-system group: this is a React key
+        // on a one-shot static render, so it needs uniqueness among siblings and
+        // nothing more. It is deliberately unrelated to group.ts's internal Map
+        // key, which carries a collision-safety requirement this does not.
         <div key={g.system?.id ?? 'unassigned'} style={{ marginTop: '20px' }}>
           <h2
             style={{
