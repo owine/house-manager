@@ -49,7 +49,11 @@ function Body({ data }: { data: DigestEmailData }): ReactNode {
         {h1}
       </h1>
       {data.groups.map((g) => (
-        <section key={g.system?.id ?? 'unassigned'} style={{ marginTop: '20px' }}>
+        // Bare 'unassigned' (not group.ts's space-prefixed ' unassigned' sentinel)
+        // is fine here: this is only a React key on a one-shot static render, not
+        // a data map key, so a theoretical collision with a cuid System.id has no
+        // observable consequence.
+        <div key={g.system?.id ?? 'unassigned'} style={{ marginTop: '20px' }}>
           <h2
             style={{
               margin: '0 0 4px 0',
@@ -90,7 +94,7 @@ function Body({ data }: { data: DigestEmailData }): ReactNode {
               </li>
             ))}
           </ul>
-        </section>
+        </div>
       ))}
     </>
   );
