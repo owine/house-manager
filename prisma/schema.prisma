@@ -47,6 +47,7 @@ model User {
   notificationLogs NotificationLog[]
   digestLogs DigestLog[]
   aiSuggestionLogs AISuggestionLog[]
+  chatSessions ChatSession[]
 
   @@map("users")
 }
@@ -699,6 +700,7 @@ enum ChatProposalStatus {
 model ChatSession {
   id        String        @id @default(cuid())
   userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -756,6 +758,7 @@ model ChatProposal {
   //   1. Scope it to the touched fields. Snapshotting the whole row would drag
   //      in Decimal columns (purchasePrice, installCost, cost), which
   //      serialize into Json as strings and silently break the diff render.
+  //      No proposal kind touches a Decimal field today; keep it that way.
   //   2. Store calendar dates as YYYY-MM-DD strings, matching the payload's
   //      own wire format. A Date written to a Json column reads back as an
   //      ISO string, and formatCalendarDate takes a CalendarDate, not a
