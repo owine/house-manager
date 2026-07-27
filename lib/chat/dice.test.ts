@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { diceSimilarity, NOTE_DEDUP_THRESHOLD } from './dice';
 
+describe('NOTE_DEDUP_THRESHOLD', () => {
+  // Every other assertion here is relative to this constant, so a silent change
+  // to it would pass the whole suite. Task 10 imports this exact number to
+  // decide whether a note is a duplicate — pin the value itself.
+  it('is 0.5', () => {
+    expect(NOTE_DEDUP_THRESHOLD).toBe(0.5);
+  });
+});
+
 describe('diceSimilarity', () => {
   it('scores identical titles 1', () => {
     expect(diceSimilarity('Lightbulbs', 'Lightbulbs')).toBe(1);
