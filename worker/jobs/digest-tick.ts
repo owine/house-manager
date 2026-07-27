@@ -52,10 +52,8 @@ async function maybeSend(
     kind === 'overdue'
       ? await getOverdueForUser(userId, timezone)
       : await getWeeklyForUser(userId, timezone);
-  // Temporary: flattens groups back to a flat list so digestEmail's template
-  // stays untouched. System headings land in a follow-up commit.
-  const items = groupBySystem(rows).flatMap((g) => g.entries);
-  if (items.length === 0) {
+  const groups = groupBySystem(rows);
+  if (groups.length === 0) {
     await prisma.digestLog.update({
       where: { id: logId },
       data: { status: 'skipped', errorReason: 'nothing to report' },
@@ -65,7 +63,7 @@ async function maybeSend(
   // `timezone` scopes the queries above (which "today" the overdue/weekly window
   // is anchored to); the template renders each due date from its stored calendar
   // date, so it needs no tz.
-  const { subject, html, text } = digestEmail({ mode: kind, items, appUrl });
+  const { subject, html, text } = digestEmail({ mode: kind, groups, appUrl });
   const r = await sendEmail(userEmail, { subject, text, html });
   await prisma.digestLog.update({
     where: { id: logId },

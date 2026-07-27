@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { DigestGroup, DigestTarget } from '@/lib/digests/group';
 import { formatCalendarDate } from '@/lib/format/date';
 import type { CalendarDate } from '@/lib/time/tz';
 import { EMAIL_TOKENS, Layout } from '../layout';
@@ -6,21 +7,9 @@ import { renderEmail } from '../render';
 
 const T = EMAIL_TOKENS;
 
-type DigestItemTarget =
-  | { kind: 'item'; id: string; name: string }
-  | { kind: 'system'; id: string; name: string };
-
-type DigestItem = {
-  reminderId: string;
-  title: string;
-  dueOn: CalendarDate;
-  daysOverdue: number;
-  targets: DigestItemTarget[];
-};
-
 export type DigestEmailData = {
   mode: 'overdue' | 'weekly';
-  items: DigestItem[]; // template never re-sorts; query owns order
+  groups: DigestGroup[]; // template never re-sorts; group.ts owns order
   appUrl: string;
 };
 
@@ -40,7 +29,7 @@ function pluralize(n: number, singular: string): string {
   return n === 1 ? singular : `${singular}s`;
 }
 
-function targetHref(t: DigestItemTarget, appUrl: string): string {
+function targetHref(t: DigestTarget, appUrl: string): string {
   return t.kind === 'item' ? `${appUrl}/items/${t.id}` : `${appUrl}/systems/${t.id}`;
 }
 
@@ -59,32 +48,50 @@ function Body({ data }: { data: DigestEmailData }): ReactNode {
       >
         {h1}
       </h1>
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-        {data.items.map((it) => (
-          <li key={it.reminderId} style={{ borderTop: `1px solid ${T.line}`, padding: '12px 0' }}>
-            <a
-              href={`${data.appUrl}/reminders/${it.reminderId}`}
-              style={{ color: T.accent, fontWeight: 500, textDecoration: 'none' }}
-            >
-              {it.title}
-            </a>
-            <div style={{ color: T.inkMuted, fontSize: '14px', marginTop: '4px' }}>
-              {it.targets.map((t, i) => (
-                <span key={`${t.kind}-${t.id}`}>
-                  {i > 0 ? ', ' : ''}
-                  <a href={targetHref(t, data.appUrl)} style={{ color: T.inkMuted }}>
-                    {t.name}
-                  </a>
-                </span>
-              ))}
-              {it.targets.length > 0 ? ' · ' : ''}
-              {data.mode === 'overdue'
-                ? `${it.daysOverdue}d overdue`
-                : `due ${formatDue(it.dueOn)}`}
-            </div>
-          </li>
-        ))}
-      </ul>
+      {data.groups.map((g) => (
+        <section key={g.system?.id ?? 'unassigned'} style={{ marginTop: '20px' }}>
+          <h2
+            style={{
+              margin: '0 0 4px 0',
+              fontSize: '15px',
+              lineHeight: 1.3,
+              color: T.ink,
+              fontWeight: 600,
+            }}
+          >
+            {g.system?.name ?? 'Unassigned'}
+          </h2>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {g.entries.map((it) => (
+              <li
+                key={`${it.reminderId}-${it.dueOn.toISOString()}`}
+                style={{ borderTop: `1px solid ${T.line}`, padding: '12px 0' }}
+              >
+                <a
+                  href={`${data.appUrl}/reminders/${it.reminderId}`}
+                  style={{ color: T.accent, fontWeight: 500, textDecoration: 'none' }}
+                >
+                  {it.title}
+                </a>
+                <div style={{ color: T.inkMuted, fontSize: '14px', marginTop: '4px' }}>
+                  {it.targets.map((t, i) => (
+                    <span key={`${t.kind}-${t.id}`}>
+                      {i > 0 ? ', ' : ''}
+                      <a href={targetHref(t, data.appUrl)} style={{ color: T.inkMuted }}>
+                        {t.name}
+                      </a>
+                    </span>
+                  ))}
+                  {it.targets.length > 0 ? ' · ' : ''}
+                  {data.mode === 'overdue'
+                    ? `${it.daysOverdue}d overdue`
+                    : `due ${formatDue(it.dueOn)}`}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </>
   );
 }
@@ -93,31 +100,34 @@ function buildText(data: DigestEmailData): string {
   const lines: string[] = [];
   lines.push(data.mode === 'overdue' ? 'Overdue reminders' : 'Reminders due this week');
   lines.push('');
-  for (const it of data.items) {
-    const badge =
-      data.mode === 'overdue' ? `${it.daysOverdue}d overdue` : `due ${formatDue(it.dueOn)}`;
-    const targetNames = it.targets.map((t) => t.name).join(', ');
-    lines.push(`- ${it.title}${targetNames ? ` (${targetNames})` : ''} — ${badge}`);
-    lines.push(`  ${data.appUrl}/reminders/${it.reminderId}`);
-    for (const t of it.targets) {
-      lines.push(`  ${targetHref(t, data.appUrl)}`);
+  for (const g of data.groups) {
+    lines.push(g.system?.name ?? 'Unassigned');
+    for (const it of g.entries) {
+      const badge =
+        data.mode === 'overdue' ? `${it.daysOverdue}d overdue` : `due ${formatDue(it.dueOn)}`;
+      const targetNames = it.targets.map((t) => t.name).join(', ');
+      lines.push(`  - ${it.title}${targetNames ? ` (${targetNames})` : ''} — ${badge}`);
+      lines.push(`    ${data.appUrl}/reminders/${it.reminderId}`);
+      for (const t of it.targets) {
+        lines.push(`    ${targetHref(t, data.appUrl)}`);
+      }
+      lines.push('');
     }
-    lines.push('');
   }
   lines.push(`Manage notification settings: ${data.appUrl}/settings`);
   return lines.join('\n');
 }
 
 export function digestEmail(data: DigestEmailData): DigestEmailResult {
-  if (data.items.length === 0) {
-    throw new Error('digestEmail requires non-empty items; handler should have skipped');
+  if (data.groups.length === 0) {
+    throw new Error('digestEmail requires non-empty groups; handler should have skipped');
   }
   // Normalize trailing slashes once at the entry point — same pattern as reminder.tsx.
   const normalized: DigestEmailData = {
     ...data,
     appUrl: data.appUrl.replace(/\/+$/, ''),
   };
-  const count = normalized.items.length;
+  const count = new Set(normalized.groups.flatMap((g) => g.entries.map((e) => e.reminderId))).size;
   const subject =
     normalized.mode === 'overdue'
       ? `Overdue: ${count} ${pluralize(count, 'reminder')}`
