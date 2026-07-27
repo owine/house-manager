@@ -90,8 +90,8 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
       pg-boss:
-        specifier: 12.26.2
-        version: 12.26.2
+        specifier: 12.26.3
+        version: 12.26.3
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -4902,8 +4902,8 @@ packages:
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
 
-  pg-boss@12.26.2:
-    resolution: {integrity: sha512-ErbfHaZIzpXNnzmm17Qlu1Eyh1fpbMI7zK5YTFcQVJfAVVKRrjdmiEGFXWyVETRntcBvzNiUzlvu3GFBvVuYIQ==}
+  pg-boss@12.26.3:
+    resolution: {integrity: sha512-slpR0zeMXzX3c+gAI6035XzJfNfUYndCdvxudJojB2S1LZEMxT31xBBEVm7shEcJQ35Vj2ik+w2Hf7lmLuvrZQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -10469,7 +10469,7 @@ snapshots:
 
   perfect-debounce@2.1.0: {}
 
-  pg-boss@12.26.2:
+  pg-boss@12.26.3:
     dependencies:
       cron-parser: 5.6.2
       pg: 8.22.0
