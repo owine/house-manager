@@ -1,4 +1,4 @@
-import { isReservedMetadataKey } from './reserved-keys';
+import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
 
 // Canonical text builders for each entity type. The output is what gets
 // embedded by Voyage AND what the Ask LLM sees as context. Two design rules:
