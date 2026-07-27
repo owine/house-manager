@@ -47,6 +47,8 @@ export const proposalPayloadSchema = z.discriminatedUnion('kind', [
     kind: z.literal('UPDATE_NOTE'),
     noteId: z.string().min(1),
     title: pString.optional(),
+    // `body` is required, not optional like `title` — intentional. UPDATE_NOTE
+    // replaces the body wholesale; there is no title-only proposal shape.
     body: noteBody,
   }),
   z.object({
@@ -131,11 +133,13 @@ export const chatTurnInputSchema = z.object({
       (msgs) => {
         const last = msgs[msgs.length - 1];
         if (last?.role !== 'user') return false;
-        const trimmed = last.content.trim();
-        return trimmed.length >= 3 && trimmed.length <= 8000;
+        // No upper bound here: chatMessageSchema.content already caps at
+        // .max(8000), so trimmed.length can never exceed that — an explicit
+        // `<= 8000` check would be unreachable dead code.
+        return last.content.trim().length >= 3;
       },
       {
-        message: 'Last message must be from the user, between 3 and 8000 characters',
+        message: 'Last message must be from the user and at least 3 characters',
         path: ['messages'],
       },
     ),

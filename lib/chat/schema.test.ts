@@ -39,6 +39,66 @@ describe('proposalPayloadSchema', () => {
     if (r.kind !== 'CREATE_NOTE') throw new Error('wrong kind');
     expect(r.body.source).toBe('inferred');
   });
+
+  it('accepts a well-formed UPDATE_NOTE payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'UPDATE_NOTE',
+      noteId: 'note-1',
+      body: { value: 'Replacement body text', source: 'user' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a well-formed UPDATE_ITEM payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'UPDATE_ITEM',
+      itemId: 'item-1',
+      location: { value: 'Garage', source: 'inferred' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a well-formed UPDATE_SYSTEM payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'UPDATE_SYSTEM',
+      systemId: 'system-1',
+      notes: { value: 'Filter replaced', source: 'user' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a well-formed CREATE_SERVICE_RECORD payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_SERVICE_RECORD',
+      summary: { value: 'Furnace tune-up', source: 'user' },
+      performedOn: { value: '2026-07-15', source: 'user' },
+      selfPerformed: false,
+      targets: [{ itemId: null, systemId: 'system-1' }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects CREATE_SERVICE_RECORD with no targets', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_SERVICE_RECORD',
+      summary: { value: 'Furnace tune-up', source: 'user' },
+      performedOn: { value: '2026-07-15', source: 'user' },
+      selfPerformed: false,
+      targets: [],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects CREATE_SERVICE_RECORD with a non-ISO performedOn', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_SERVICE_RECORD',
+      summary: { value: 'Furnace tune-up', source: 'user' },
+      performedOn: { value: '3rd July 2026', source: 'user' },
+      selfPerformed: false,
+      targets: [{ itemId: null, systemId: 'system-1' }],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe('parseStoredPayload', () => {

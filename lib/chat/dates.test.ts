@@ -26,6 +26,11 @@ describe('parseCalendarDate', () => {
     expect(parseCalendarDate('2026-02-30')).toBeNull();
     expect(parseCalendarDate('')).toBeNull();
   });
+
+  it('accepts a real leap day and rejects a fake one', () => {
+    expect(parseCalendarDate('2024-02-29')?.toISOString()).toBe('2024-02-29T00:00:00.000Z');
+    expect(parseCalendarDate('2025-02-29')).toBeNull();
+  });
 });
 
 describe('resolveAnchorDay', () => {
