@@ -1,23 +1,25 @@
+import type { FieldValues, UseFormSetError } from 'react-hook-form';
 import { describe, expect, it, vi } from 'vitest';
 import { applyActionFieldErrors } from './helpers';
 
 // `setError` is the only thing the helper touches, so a spy is the whole
-// harness — no form, no DOM, no RHF instance needed.
-function spy() {
-  return vi.fn();
+// harness — no form, no DOM, no RHF instance needed. The cast lives here,
+// once, instead of at every call site, so no `any` or ignore comments are
+// needed anywhere below.
+function spy(): UseFormSetError<FieldValues> {
+  return vi.fn() as unknown as UseFormSetError<FieldValues>;
 }
 
 describe('applyActionFieldErrors', () => {
   it('returns false and calls nothing when there are no fieldErrors', () => {
     const setError = spy();
-    // biome-ignore lint/suspicious/noExplicitAny: spy stands in for UseFormSetError
-    expect(applyActionFieldErrors(setError as any, { ok: false })).toBe(false);
+    expect(applyActionFieldErrors(setError, { ok: false })).toBe(false);
     expect(setError).not.toHaveBeenCalled();
   });
 
   it('sets a flat key on its own field and reports applied', () => {
     const setError = spy();
-    const applied = applyActionFieldErrors(setError as any, {
+    const applied = applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { name: ['Required'] },
     });
@@ -31,7 +33,7 @@ describe('applyActionFieldErrors', () => {
   // while rendering nothing, which suppressed the caller's fallback toast.
   it('mirrors a dotted key to root and still reports applied', () => {
     const setError = spy();
-    const applied = applyActionFieldErrors(setError as any, {
+    const applied = applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { 'metadata.dims': ['Invalid input'] },
     });
@@ -49,7 +51,7 @@ describe('applyActionFieldErrors', () => {
 
   it('sets a flat key on its field and a dotted key on both its path and root', () => {
     const setError = spy();
-    applyActionFieldErrors(setError as any, {
+    applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { name: ['Required'], 'metadata.dims': ['Invalid input'] },
     });
@@ -63,11 +65,14 @@ describe('applyActionFieldErrors', () => {
       type: 'server',
       message: 'Invalid input',
     });
+    // Guards against a mutation that also mirrors the flat key to root: name,
+    // metadata.dims, and root — no more.
+    expect(setError).toHaveBeenCalledTimes(3);
   });
 
   it('joins several dotted messages into one root message', () => {
     const setError = spy();
-    applyActionFieldErrors(setError as any, {
+    applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { 'metadata.a': ['First'], 'metadata.b': ['Second'] },
     });
@@ -82,7 +87,7 @@ describe('applyActionFieldErrors', () => {
   // which would overwrite anything we put there.
   it('leaves root to the caller when formError is present, and returns false', () => {
     const setError = spy();
-    const applied = applyActionFieldErrors(setError as any, {
+    const applied = applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { 'metadata.dims': ['Invalid input'] },
       formError: 'Something went wrong',
@@ -101,7 +106,7 @@ describe('applyActionFieldErrors', () => {
 
   it('skips a key whose messages array is empty', () => {
     const setError = spy();
-    const applied = applyActionFieldErrors(setError as any, {
+    const applied = applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { name: [] },
     });
@@ -112,7 +117,7 @@ describe('applyActionFieldErrors', () => {
 
   it('uses only the first message when a key has several', () => {
     const setError = spy();
-    applyActionFieldErrors(setError as any, {
+    applyActionFieldErrors(setError, {
       ok: false,
       fieldErrors: { name: ['First', 'Second'] },
     });
