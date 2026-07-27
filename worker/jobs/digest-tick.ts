@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { groupBySystem } from '@/lib/digests/group';
 import { getOverdueForUser, getWeeklyForUser } from '@/lib/digests/queries';
 import { digestEmail } from '@/lib/email/templates/digest';
 import { getEnv } from '@/lib/env';
@@ -46,10 +47,12 @@ async function maybeSend(
     select: { id: true },
   });
   const logId = log.id;
-  const items =
+  const rows =
     kind === 'overdue'
       ? await getOverdueForUser(userId, timezone)
       : await getWeeklyForUser(userId, timezone);
+  // Task 3 replaces this flatMap with passing `groups` straight through.
+  const items = groupBySystem(rows).flatMap((g) => g.entries);
   if (items.length === 0) {
     await prisma.digestLog.update({
       where: { id: logId },
