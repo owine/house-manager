@@ -4,14 +4,15 @@ import {
   setupIntegration,
   teardownIntegration,
 } from './../../tests/integration/helpers';
-import type { DigestItem } from './queries';
+import type { DigestRow } from './group';
+import { groupBySystem } from './group';
 
 let ctx: IntegrationContext;
 let userId: string;
 let categoryId: string;
 let itemId: string;
-let getOverdueForUser: (userId: string, tz: string, now?: Date) => Promise<DigestItem[]>;
-let getWeeklyForUser: (userId: string, tz: string, now?: Date) => Promise<DigestItem[]>;
+let getOverdueForUser: (userId: string, tz: string, now?: Date) => Promise<DigestRow[]>;
+let getWeeklyForUser: (userId: string, tz: string, now?: Date) => Promise<DigestRow[]>;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
@@ -70,8 +71,7 @@ describe('getOverdueForUser', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toBe('Overdue thing');
     expect(rows[0]?.daysOverdue).toBeGreaterThan(0);
-    expect(rows[0]?.targets).toHaveLength(1);
-    expect(rows[0]?.targets[0]).toMatchObject({ kind: 'item', id: itemId, name: 'TestItem' });
+    expect(rows[0]?.target).toMatchObject({ kind: 'item', id: itemId, name: 'TestItem' });
   });
 
   it('excludes inactive reminders', async () => {
@@ -258,5 +258,99 @@ describe('getWeeklyForUser', () => {
     const tokyoFire = new Date('2026-07-13T23:00:00Z');
     const rows = await getOverdueForUser(userId, 'Asia/Tokyo', tokyoFire);
     expect(rows[0]?.daysOverdue).toBe(1);
+  });
+});
+
+describe('system attribution', () => {
+  it('attributes an item-targeted row to its item.system', async () => {
+    const system = await ctx.prisma.system.create({ data: { name: 'HVAC' } });
+    const systemItem = await ctx.prisma.item.create({
+      data: { name: 'Furnace', categoryId, systemId: system.id },
+    });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'System item overdue',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId: systemItem.id, nextDueOn: YESTERDAY }] },
+      },
+    });
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.system).toMatchObject({ id: system.id, name: 'HVAC' });
+    expect(rows[0]?.target).toMatchObject({ kind: 'item', id: systemItem.id });
+  });
+
+  it('attributes a system-targeted row to itself', async () => {
+    const system = await ctx.prisma.system.create({ data: { name: 'Well pump' } });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'System-targeted overdue',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ systemId: system.id, nextDueOn: YESTERDAY }] },
+      },
+    });
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.system).toMatchObject({ id: system.id, name: 'Well pump' });
+    expect(rows[0]?.target).toMatchObject({ kind: 'system', id: system.id });
+  });
+
+  it('yields system: null for an item with no systemId', async () => {
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Unassigned item overdue',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId, nextDueOn: YESTERDAY }] },
+      },
+    });
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.system).toBeNull();
+  });
+
+  it('collapses a single reminder with three same-system targets into one entry', async () => {
+    // The bug this whole commit fixes: one ReminderTarget row per target means
+    // the query legitimately returns three rows here. Only groupBySystem
+    // collapses them -- so this test asserts both halves.
+    const system = await ctx.prisma.system.create({ data: { name: 'Plumbing' } });
+    const itemA = await ctx.prisma.item.create({
+      data: { name: 'Sink', categoryId, systemId: system.id },
+    });
+    const itemB = await ctx.prisma.item.create({
+      data: { name: 'Shower', categoryId, systemId: system.id },
+    });
+    const itemC = await ctx.prisma.item.create({
+      data: { name: 'Toilet', categoryId, systemId: system.id },
+    });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Multi-target overdue',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: {
+          create: [
+            { itemId: itemA.id, nextDueOn: YESTERDAY },
+            { itemId: itemB.id, nextDueOn: YESTERDAY },
+            { itemId: itemC.id, nextDueOn: YESTERDAY },
+          ],
+        },
+      },
+    });
+
+    // The query still returns one row per ReminderTarget...
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(3);
+
+    // ...but grouping collapses them into a single entry listing all three.
+    const entries = groupBySystem(rows).flatMap((g) => g.entries);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.targets.map((t) => t.name).sort()).toEqual(['Shower', 'Sink', 'Toilet']);
   });
 });

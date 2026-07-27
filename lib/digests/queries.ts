@@ -1,13 +1,6 @@
 import { prisma } from '@/lib/db';
-import { type CalendarDate, startOfDayUtc } from '@/lib/time/tz';
-
-export type DigestItem = {
-  reminderId: string;
-  title: string;
-  dueOn: CalendarDate;
-  daysOverdue: number; // 0 if not yet overdue
-  targets: Array<{ kind: 'item' | 'system'; id: string; name: string }>;
-};
+import type { DigestRow } from '@/lib/digests/group';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 function daysBetween(later: Date, earlier: Date): number {
   return Math.floor((later.getTime() - earlier.getTime()) / (24 * 60 * 60 * 1000));
@@ -19,7 +12,7 @@ async function findAndProject(
   sort: 'asc' | 'desc',
   now: Date,
   timezone: string,
-): Promise<DigestItem[]> {
+): Promise<DigestRow[]> {
   const targets = await prisma.reminderTarget.findMany({
     where: {
       nextDueOn: where,
@@ -27,7 +20,13 @@ async function findAndProject(
     },
     include: {
       reminder: { select: { id: true, title: true } },
-      item: { select: { id: true, name: true } },
+      item: {
+        select: {
+          id: true,
+          name: true,
+          system: { select: { id: true, name: true } },
+        },
+      },
       system: { select: { id: true, name: true } },
     },
     orderBy: { nextDueOn: sort },
@@ -46,12 +45,16 @@ async function findAndProject(
         : t.system != null
           ? { kind: 'system' as const, id: t.system.id, name: t.system.name }
           : null;
+    // A system-targeted row attributes to itself; an item-targeted row to its
+    // parent; anything else is Unassigned.
+    const system = t.system ?? t.item?.system ?? null;
     return {
       reminderId: t.reminder.id,
       title: t.reminder.title,
       dueOn: t.nextDueOn,
       daysOverdue: Math.max(0, daysBetween(today, t.nextDueOn)),
-      targets: target ? [target] : [],
+      target,
+      system,
     };
   });
 }
@@ -60,7 +63,7 @@ export async function getOverdueForUser(
   userId: string,
   timezone: string,
   now: Date = new Date(),
-): Promise<DigestItem[]> {
+): Promise<DigestRow[]> {
   const start = startOfDayUtc(now, timezone);
   return findAndProject(userId, { lt: start }, 'asc', now, timezone);
 }
@@ -69,7 +72,7 @@ export async function getWeeklyForUser(
   userId: string,
   timezone: string,
   now: Date = new Date(),
-): Promise<DigestItem[]> {
+): Promise<DigestRow[]> {
   // The window opens at the start of the house day, not at the firing instant.
   // Anchoring it to `now` put today's UTC-midnight due dates in the *past*, so
   // they were dropped here -- and since due-today is correctly not overdue, they
