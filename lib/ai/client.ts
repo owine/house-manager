@@ -35,3 +35,10 @@ export function getAnthropic(): Anthropic {
 
 export const ANTHROPIC_MODEL = 'claude-haiku-4-5' as const;
 export const ANTHROPIC_MAX_TOKENS = 2048;
+
+// Chat turns return a reply plus up to several proposals carrying note bodies,
+// which does not fit in ANTHROPIC_MAX_TOKENS. `messages.parse` throws on a
+// truncated response, so an undersized ceiling loses the whole turn — which is
+// exactly the large-dump case conversational capture exists to handle.
+// Passed per call site; every existing caller keeps ANTHROPIC_MAX_TOKENS.
+export const ANTHROPIC_CHAT_MAX_TOKENS = 4096;
