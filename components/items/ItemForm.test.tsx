@@ -52,14 +52,20 @@ function makeAction(result: ActionResult<{ id: string }>) {
 
 /**
  * Build the rejection the server would really return for a reserved
- * `_`-prefixed metadata key, by running the REAL freeformMetadataSchema rather
- * than hand-writing the expected message. If that rule changes, this follows it.
+ * `_`-prefixed metadata key.
  *
- * The key/message shaping mirrors `metadataFieldErrors` in lib/items/actions.ts:
- * one `metadata` key, with any offending path folded into the message. It is a
- * copy rather than a call because that helper is file-local — the action's own
- * output shape is pinned separately by
- * tests/integration/items-metadata-errors.test.ts.
+ * The `issue.path` half is genuine: it runs the REAL freeformMetadataSchema
+ * via `metadataSchemaFor`, so it tracks whatever that rule actually does — it
+ * fails against the old per-key `path: [key]` behaviour and passes once the
+ * schema emits a single root-level issue.
+ *
+ * The key/message shaping is a hand-copied DUPLICATE of `metadataFieldErrors`
+ * in lib/items/actions.ts, not a call into it (that helper is file-local). So
+ * a regression there — dropping the `metadata` key, or reintroducing a dotted
+ * one — would NOT be caught here. Two integration tests cover that seam by
+ * calling the real actions end to end:
+ * `items-metadata-errors.test.ts` (the key is never dotted) and
+ * `items-metadata-reserved-key.test.ts` (the reserved-key rejection).
  */
 function makeReservedKeyRejection(): ActionResult<{ id: string }> {
   const result = metadataSchemaFor('other').safeParse({ _notes: 'x' });
