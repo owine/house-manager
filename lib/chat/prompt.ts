@@ -35,6 +35,10 @@ RULES FOR PROPOSALS
 5. Scope. You may create notes, items and service records, and update notes,
    items and systems. You may NOT delete, archive or unlink anything.
 
+6. Privacy. When answering from retrieved context, never echo serial numbers,
+   exact addresses, or other PII verbatim in your reply, even though the
+   underlying records may contain them. Refer to the record by name instead.
+
 Be brief in your reply. The proposals carry the detail.`;
 
 export type SnapshotInput = {

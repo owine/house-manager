@@ -435,6 +435,52 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     expect(await ctx.prisma.note.count()).toBe(2);
   });
 
+  it('two concurrent applyProposal calls on the same CREATE_NOTE: exactly one succeeds, exactly one note is created', async () => {
+    // Regression test for the non-atomic PENDING -> ACCEPTED transition:
+    // loadOwnedProposal reads status, business logic runs, and only THEN
+    // does the terminal write happen — a naive `prisma.chatProposal.update`
+    // keyed on `id` alone lets two near-simultaneous callers both pass the
+    // status check before either writes back, producing two notes for one
+    // proposal. `Promise.all` (not sequential awaits) is essential here —
+    // sequential calls would pass even with the bug, since the first call's
+    // write completes and flips status before the second call ever reads it.
+    const proposal = await createProposal({
+      kind: 'CREATE_NOTE',
+      payload: {
+        kind: 'CREATE_NOTE',
+        title: { value: 'Concurrent note', source: 'user' },
+        body: { value: 'Body', source: 'user' },
+        itemId: null,
+      },
+    });
+
+    const [first, second] = await Promise.all([
+      applyProposal(proposal.id),
+      applyProposal(proposal.id),
+    ]);
+
+    const results = [first, second];
+    const succeeded = results.filter((r) => r.ok);
+    const failed = results.filter((r) => !r.ok);
+    expect(succeeded).toHaveLength(1);
+    expect(failed).toHaveLength(1);
+    if (failed[0]?.ok !== false) throw new Error('expected a failure');
+    // Whichever call loses the race sees a rejection either way: it may lose
+    // at the CAS `updateMany` itself ("already handled") or, if the winner's
+    // whole request completes first, at the early status read at the top of
+    // applyProposal ("is accepted and cannot be applied"). Both are correct
+    // — the assertion that matters is the counts below: exactly one note,
+    // exactly one ACCEPTED proposal.
+    expect(failed[0].formError).toMatch(/already handled|accepted and cannot/i);
+
+    // seeded note-1 + exactly one new note from whichever call won the race.
+    expect(await ctx.prisma.note.count()).toBe(2);
+
+    const updated = await ctx.prisma.chatProposal.findUniqueOrThrow({ where: { id: proposal.id } });
+    expect(updated.status).toBe('ACCEPTED');
+    expect(updated.appliedEntityId).not.toBeNull();
+  });
+
   it('an unparseable stored payload yields INVALID rather than throwing', async () => {
     const proposal = await createProposal({
       kind: 'CREATE_NOTE',

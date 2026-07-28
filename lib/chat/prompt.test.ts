@@ -13,6 +13,11 @@ describe('CHAT_SYSTEM_PROMPT', () => {
   it('instructs short topic-scoped notes', () => {
     expect(CHAT_SYSTEM_PROMPT).toMatch(/##/);
   });
+
+  it('forbids echoing PII from retrieved context', () => {
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/serial numbers?/i);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/PII/);
+  });
 });
 
 describe('buildSnapshotBlock', () => {

@@ -614,19 +614,68 @@ function checkFreshness(
   return { ok: true };
 }
 
-/** Mark a proposal terminal (STALE / ORPHANED) and surface its message. Never throws. */
+/**
+ * Mark a proposal terminal (STALE / ORPHANED) and surface its message. Never
+ * throws. CAS'd from PENDING (`updateMany`, not `update`) so a concurrent
+ * caller that already moved this row (e.g. won the `claimForApply` race
+ * below, or itself raced this same terminal transition) can't be clobbered
+ * back to STALE/ORPHANED after it already progressed. A count of 0 here just
+ * means someone else got there first — the formError we return is still
+ * correct for *this* caller's request, so we don't need to branch on it.
+ */
 async function markTerminal(
   id: string,
   outcome: { status: TerminalStatus; formError: string },
 ): Promise<ActionResult<never>> {
-  await prisma.chatProposal.update({ where: { id }, data: { status: outcome.status } });
+  await prisma.chatProposal.updateMany({
+    where: { id, status: 'PENDING' },
+    data: { status: outcome.status },
+  });
   return { ok: false, formError: outcome.formError };
 }
+
+/**
+ * Compare-and-swap claim of a PENDING proposal for `applyProposal`. This —
+ * not the read-then-write shape the docstring on `applyProposal` used to
+ * imply — is the actual idempotency guard: `updateMany` is atomic at the
+ * database level, so of any number of concurrent callers racing the same
+ * `id`, exactly one can ever see `count === 1`. Every `apply<Kind>` helper
+ * must call this immediately before its entity write (create/update) and
+ * MUST NOT perform that write if it returns false.
+ */
+async function claimForApply(id: string): Promise<boolean> {
+  const claimed = await prisma.chatProposal.updateMany({
+    where: { id, status: 'PENDING' },
+    data: { status: 'ACCEPTED' },
+  });
+  return claimed.count === 1;
+}
+
+/**
+ * Undo a `claimForApply` claim after the entity write it guarded failed.
+ * Ordering rationale (see `applyProposal` docstring): the claim flips status
+ * to ACCEPTED *before* the entity write runs, so a write failure would
+ * otherwise leave the proposal permanently ACCEPTED with no
+ * `appliedEntityId` — indistinguishable in the UI from "applied" but with
+ * nothing to show. Reverting to PENDING makes the failure retryable instead.
+ * CAS'd from ACCEPTED for symmetry with the claim, though in practice only
+ * the caller that won the claim can ever reach this.
+ */
+async function releaseClaim(id: string): Promise<void> {
+  await prisma.chatProposal.updateMany({
+    where: { id, status: 'ACCEPTED' },
+    data: { status: 'PENDING' },
+  });
+}
+
+const ALREADY_HANDLED = 'This proposal was already handled.';
 
 async function applyCreateNote(
   id: string,
   payload: Extract<ProposalPayload, { kind: 'CREATE_NOTE' }>,
 ): Promise<ActionResult<{ id: string }>> {
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   let note: { id: string };
   try {
     note = await prisma.note.create({
@@ -639,6 +688,7 @@ async function applyCreateNote(
     });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: create note failed');
+    await releaseClaim(id);
     return { ok: false, formError: 'Could not create the note — it may reference a deleted item.' };
   }
 
@@ -647,7 +697,7 @@ async function applyCreateNote(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: note.id, appliedAt: new Date() },
+    data: { appliedEntityId: note.id, appliedAt: new Date() },
   });
 
   revalidatePath('/notes');
@@ -675,6 +725,8 @@ async function applyUpdateNote(
   const fresh = checkFreshness(row, baseUpdatedAt);
   if (!fresh.ok) return markTerminal(id, fresh);
 
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   try {
     await prisma.note.update({
       where: { id: payload.noteId },
@@ -685,6 +737,7 @@ async function applyUpdateNote(
     });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: update note failed');
+    await releaseClaim(id);
     return { ok: false, formError: 'Could not update the note.' };
   }
 
@@ -693,7 +746,7 @@ async function applyUpdateNote(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: payload.noteId, appliedAt: new Date() },
+    data: { appliedEntityId: payload.noteId, appliedAt: new Date() },
   });
 
   revalidatePath('/notes');
@@ -709,6 +762,8 @@ async function applyCreateItem(
   id: string,
   payload: Extract<ProposalPayload, { kind: 'CREATE_ITEM' }>,
 ): Promise<ActionResult<{ id: string }>> {
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   const provenance = extractProvenance(payload);
   let item: { id: string };
   try {
@@ -727,6 +782,7 @@ async function applyCreateItem(
     });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: create item failed');
+    await releaseClaim(id);
     return {
       ok: false,
       formError: 'Could not create the item — it may reference a deleted category.',
@@ -738,7 +794,7 @@ async function applyCreateItem(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: item.id, appliedAt: new Date() },
+    data: { appliedEntityId: item.id, appliedAt: new Date() },
   });
 
   revalidatePath('/items');
@@ -760,6 +816,8 @@ async function applyUpdateItem(
   const fresh = checkFreshness(row, baseUpdatedAt);
   if (!fresh.ok) return markTerminal(id, fresh);
 
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   const provenance = extractProvenance(payload);
   const data: Record<string, unknown> = {
     metadata: mergeProvenanceMetadata(row?.metadata, provenance),
@@ -778,6 +836,7 @@ async function applyUpdateItem(
     await prisma.item.update({ where: { id: payload.itemId }, data });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: update item failed');
+    await releaseClaim(id);
     return { ok: false, formError: 'Could not update the item.' };
   }
 
@@ -792,11 +851,12 @@ async function applyUpdateItem(
   // Wrapped here, not fixed at source: unlike enqueueEmbed/enqueueSearchIndex,
   // lib/embedding/cascade.ts does NOT guard its own prisma.*.findMany calls
   // against a DB error. This call runs after the item update already
-  // succeeded but before status flips to ACCEPTED — an uncaught throw here
-  // would leave the item renamed while the proposal still reads PENDING,
-  // letting a retry apply (and rename) it a second time. Fixing cascade.ts
-  // itself would also change lib/items/actions.ts and lib/systems/actions.ts
-  // and belongs in its own change.
+  // succeeded and after `claimForApply` has flipped status to ACCEPTED — an
+  // uncaught throw here must not undo that claim (the item write itself did
+  // land), so it's caught and logged as non-fatal rather than routed through
+  // `releaseClaim`. Fixing cascade.ts itself would also change
+  // lib/items/actions.ts and lib/systems/actions.ts and belongs in its own
+  // change.
   try {
     await enqueueItemRenameCascade(payload.itemId);
   } catch (err) {
@@ -808,7 +868,7 @@ async function applyUpdateItem(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: payload.itemId, appliedAt: new Date() },
+    data: { appliedEntityId: payload.itemId, appliedAt: new Date() },
   });
 
   revalidatePath('/items');
@@ -831,6 +891,8 @@ async function applyUpdateSystem(
   const fresh = checkFreshness(row, baseUpdatedAt);
   if (!fresh.ok) return markTerminal(id, fresh);
 
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   const provenance = extractProvenance(payload);
   const data: Record<string, unknown> = {
     metadata: mergeProvenanceMetadata(row?.metadata, provenance),
@@ -849,6 +911,7 @@ async function applyUpdateSystem(
     await prisma.system.update({ where: { id: payload.systemId }, data });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: update system failed');
+    await releaseClaim(id);
     return { ok: false, formError: 'Could not update the system.' };
   }
 
@@ -859,7 +922,9 @@ async function applyUpdateSystem(
   // Wrapped here, not fixed at source: see the comment on the equivalent
   // enqueueItemRenameCascade call in applyUpdateItem — cascade.ts does not
   // guard its own DB calls, and this fires after the system update already
-  // succeeded but before status flips to ACCEPTED.
+  // succeeded and after `claimForApply` has flipped status to ACCEPTED, so a
+  // throw here is caught and logged rather than routed through
+  // `releaseClaim`.
   try {
     await enqueueSystemRenameCascade(payload.systemId);
   } catch (err) {
@@ -871,7 +936,7 @@ async function applyUpdateSystem(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: payload.systemId, appliedAt: new Date() },
+    data: { appliedEntityId: payload.systemId, appliedAt: new Date() },
   });
 
   revalidatePath('/systems');
@@ -901,6 +966,8 @@ async function applyCreateServiceRecord(
     return { ok: false, formError: 'This proposal has an invalid date and cannot be applied.' };
   }
 
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
   let record: { id: string };
   try {
     record = await prisma.serviceRecord.create({
@@ -920,6 +987,7 @@ async function applyCreateServiceRecord(
     });
   } catch (err) {
     logger.warn({ err, proposalId: id }, 'chat.apply: create service record failed');
+    await releaseClaim(id);
     return {
       ok: false,
       formError: 'Could not create the service record — a target may have been deleted.',
@@ -931,7 +999,7 @@ async function applyCreateServiceRecord(
 
   await prisma.chatProposal.update({
     where: { id },
-    data: { status: 'ACCEPTED', appliedEntityId: record.id, appliedAt: new Date() },
+    data: { appliedEntityId: record.id, appliedAt: new Date() },
   });
 
   revalidatePath('/service');
@@ -950,6 +1018,18 @@ async function applyCreateServiceRecord(
  * the row, fire that kind's side effects, and flip status to ACCEPTED.
  * Never throws — every failure mode (missing/stale target, unparseable
  * payload, Prisma constraint error) returns `formError` instead.
+ *
+ * Idempotency: the read of `proposal.status` below is NOT the guard — two
+ * calls racing the same `id` can both read PENDING here before either
+ * writes back. The actual guard is `claimForApply`'s CAS `updateMany`
+ * (`where: { id, status: 'PENDING' }`), called by each `apply<Kind>` helper
+ * immediately before its entity write. Ordering: claim -> entity write ->
+ * (on failure) `releaseClaim` back to PENDING, so a write failure never
+ * leaves the proposal stuck ACCEPTED with nothing to show for it — it's
+ * simply retryable, same as if the claim had never happened. The status
+ * check here is retained as a cheap early-exit that also produces a more
+ * specific message (e.g. "this proposal is rejected") for the common,
+ * non-racing case; the CAS is what makes the transition actually safe.
  */
 export async function applyProposal(proposalId: unknown): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
@@ -962,8 +1042,6 @@ export async function applyProposal(proposalId: unknown): Promise<ActionResult<{
   const proposal = await loadOwnedProposal(id, session.user.id);
   if (!proposal) return { ok: false, formError: 'Proposal not found' };
 
-  // Idempotency guard — an ACCEPTED proposal cannot apply twice, and a
-  // REJECTED/STALE/ORPHANED/INVALID one cannot apply at all.
   if (proposal.status !== 'PENDING') {
     return {
       ok: false,
@@ -973,10 +1051,16 @@ export async function applyProposal(proposalId: unknown): Promise<ActionResult<{
 
   const payload = parseStoredPayload(proposal.payload);
   if (!payload) {
-    await prisma.chatProposal.update({ where: { id }, data: { status: 'INVALID' } });
+    const claimed = await prisma.chatProposal.updateMany({
+      where: { id, status: 'PENDING' },
+      data: { status: 'INVALID' },
+    });
     return {
       ok: false,
-      formError: 'This proposal predates a schema change and can no longer be applied.',
+      formError:
+        claimed.count === 1
+          ? 'This proposal predates a schema change and can no longer be applied.'
+          : ALREADY_HANDLED,
     };
   }
 
@@ -1000,6 +1084,13 @@ export async function applyProposal(proposalId: unknown): Promise<ActionResult<{
  * Reject a proposal. PENDING or STALE only — an ACCEPTED proposal must never
  * be rejectable (that would mislabel a change that was actually applied),
  * and REJECTED/ORPHANED/INVALID are already terminal.
+ *
+ * Same CAS discipline as `applyProposal`: the status read above is only for
+ * a friendly per-status message. The actual transition is the `updateMany`
+ * below, keyed on `id` AND `status IN (PENDING, STALE)` together — a
+ * concurrent reject/apply/refresh that already moved the row away from
+ * those statuses makes this a no-op (`count === 0`), reported back as
+ * "already handled" rather than silently claiming success.
  */
 export async function rejectProposal(proposalId: unknown): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
@@ -1019,7 +1110,12 @@ export async function rejectProposal(proposalId: unknown): Promise<ActionResult<
     };
   }
 
-  await prisma.chatProposal.update({ where: { id }, data: { status: 'REJECTED' } });
+  const claimed = await prisma.chatProposal.updateMany({
+    where: { id, status: { in: ['PENDING', 'STALE'] } },
+    data: { status: 'REJECTED' },
+  });
+  if (claimed.count === 0) return { ok: false, formError: ALREADY_HANDLED };
+
   return { ok: true, data: { id } };
 }
 
@@ -1030,6 +1126,14 @@ export async function rejectProposal(proposalId: unknown): Promise<ActionResult<
  * Deliberately does NOT auto-apply — the record changed underneath and the
  * user has not yet seen the new state. Returns the full refreshed proposal
  * so the card can re-render without a separate query.
+ *
+ * Same CAS discipline as `applyProposal`/`rejectProposal`: every terminal
+ * write below is an `updateMany` keyed on `id` AND `status: 'STALE'`
+ * (the exact status this function confirmed above), not a bare `update`.
+ * `captureBeforeState` itself is a plain read with no side effect, so it's
+ * safe to run before claiming — only the write that follows it needs the
+ * guard. `count === 0` means a concurrent reject/apply/refresh already
+ * moved the row out of STALE first.
  */
 export async function refreshProposal(
   proposalId: unknown,
@@ -1053,36 +1157,49 @@ export async function refreshProposal(
 
   const payload = parseStoredPayload(proposal.payload);
   if (!payload) {
-    await prisma.chatProposal.update({ where: { id }, data: { status: 'INVALID' } });
+    const claimed = await prisma.chatProposal.updateMany({
+      where: { id, status: 'STALE' },
+      data: { status: 'INVALID' },
+    });
     return {
       ok: false,
-      formError: 'This proposal predates a schema change and can no longer be applied.',
+      formError:
+        claimed.count === 1
+          ? 'This proposal predates a schema change and can no longer be applied.'
+          : ALREADY_HANDLED,
     };
   }
 
   const { baseUpdatedAt, beforeSnapshot } = await captureBeforeState(payload);
   if (baseUpdatedAt === null) {
-    await prisma.chatProposal.update({ where: { id }, data: { status: 'ORPHANED' } });
-    return { ok: false, formError: 'The record this refers to was deleted.' };
+    const claimed = await prisma.chatProposal.updateMany({
+      where: { id, status: 'STALE' },
+      data: { status: 'ORPHANED' },
+    });
+    return {
+      ok: false,
+      formError: claimed.count === 1 ? 'The record this refers to was deleted.' : ALREADY_HANDLED,
+    };
   }
 
-  const updated = await prisma.chatProposal.update({
-    where: { id },
+  const claimed = await prisma.chatProposal.updateMany({
+    where: { id, status: 'STALE' },
     data: { status: 'PENDING', baseUpdatedAt, beforeSnapshot: beforeSnapshot ?? undefined },
   });
+  if (claimed.count === 0) return { ok: false, formError: ALREADY_HANDLED };
 
   return {
     ok: true,
     data: {
       proposal: {
-        id: updated.id,
-        kind: updated.kind,
-        targetType: updated.targetType,
-        targetId: updated.targetId,
-        payload: updated.payload as unknown as ProposalPayload,
-        status: updated.status,
-        baseUpdatedAt: updated.baseUpdatedAt,
-        beforeSnapshot: updated.beforeSnapshot,
+        id: proposal.id,
+        kind: proposal.kind,
+        targetType: proposal.targetType,
+        targetId: proposal.targetId,
+        payload: proposal.payload as unknown as ProposalPayload,
+        status: 'PENDING',
+        baseUpdatedAt,
+        beforeSnapshot,
       },
     },
   };
