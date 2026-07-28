@@ -26,6 +26,14 @@ env:
   PNPM_VERSION: 11.17.0
   # renovate: datasource=node-version depName=node
   NODE_VERSION: 24.18.0
+  # Silence the Prisma CLI's "Update available" banner. Not cosmetic:
+  # `migrate-check` captures stderr (`2>&1`) into the variable it greps for
+  # schema drift, and the banner isn't in that step's allow-list, so it lands
+  # in `residual` and fails the job. Whichever Prisma invocation wins the
+  # version-check race prints it, so dropping this reintroduces an INTERMITTENT
+  # failure, not an obvious one. Workflow-wide because unit/integration/e2e
+  # shell out to Prisma too.
+  PRISMA_HIDE_UPDATE_MESSAGE: 'true'
 
 jobs:
   # Detect whether any image-affecting paths changed. Used to gate the
