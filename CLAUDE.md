@@ -268,9 +268,17 @@ generated on macOS will diff on every subsequent run.
 
 ## Conventions
 
-- **Dependency pinning:** tilde-pinned to patch (`~x.y.z`); `.npmrc` enforces
-  `save-prefix=~`. Renovate drives updates. Verify a dep is on its current major and
-  actively maintained before adding it.
+- **Dependency pinning:** every dep is pinned to an exact version (`x.y.z`, no range
+  prefix) — as are `engines` and `packageManager`. `.npmrc` enforces `save-exact=true`,
+  and the shared Renovate preset (`github>owine/renovate-config`) uses
+  `rangeStrategy: "pin"`. Renovate drives updates; don't hand-edit versions or
+  reintroduce `~`/`^`. Verify a dep is on its current major and actively maintained
+  before adding it.
+- **`.npmrc` supply-chain settings:** `minimum-release-age=10080` quarantines newly
+  published versions for 7 days, so a Renovate PR can sit un-mergeable until the window
+  clears — that's the fence working, not a stuck bot. `prefer-frozen-lockfile=true` makes
+  a stale `pnpm-lock.yaml` fail CI rather than silently self-repair, which is why a
+  long-lived branch should be rebased before merge.
 - **Env:** `lib/env.ts` exports a lazy Zod-validated `getEnv()`. Lazy is deliberate —
   eager validation breaks tests at import time.
 - **Logging:** secrets are scrubbed centrally in `lib/logger.ts` + `lib/log-scrub.ts`
