@@ -1,5 +1,6 @@
 import type { ChatProposalKind, ChatProposalStatus, Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { enqueueItemRenameCascade } from '@/lib/embedding/cascade';
 import { signInAs } from '../ai/_mock-auth';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from '../helpers';
 
@@ -13,7 +14,12 @@ import { type IntegrationContext, setupIntegration, teardownIntegration } from '
 // the real cascade run against seeded children) means the "fires the rename
 // cascade" assertions don't depend on which child rows happen to exist.
 
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+const revalidateCalls: string[] = [];
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn((path: string) => {
+    revalidateCalls.push(path);
+  }),
+}));
 
 vi.mock('@/lib/auth', async () => {
   const { currentUserId } = await import('../ai/_mock-auth');
@@ -131,6 +137,7 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     embedCalls.length = 0;
     searchCalls.length = 0;
     cascadeCalls.length = 0;
+    revalidateCalls.length = 0;
     await seed();
   });
 
@@ -163,6 +170,9 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     // spy, not the embeddings table (no worker runs here).
     expect(embedCalls).toContainEqual({ type: 'NOTE', id: note.id });
     expect(searchCalls).toContainEqual({ kind: 'note', id: note.id, op: 'upsert' });
+    expect(revalidateCalls).toEqual(
+      expect.arrayContaining(['/notes', '/dashboard', '/items/item-1', '/ask']),
+    );
   });
 
   it('applies UPDATE_NOTE against the fresh baseUpdatedAt', async () => {
@@ -186,6 +196,9 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     const note = await ctx.prisma.note.findUniqueOrThrow({ where: { id: 'note-1' } });
     expect(note.body).toBe('Updated bulb list.');
     expect(embedCalls).toContainEqual({ type: 'NOTE', id: 'note-1' });
+    expect(revalidateCalls).toEqual(
+      expect.arrayContaining(['/notes', '/notes/note-1', '/dashboard', '/ask']),
+    );
   });
 
   it('applies CREATE_ITEM, merging _provenance into metadata', async () => {
@@ -218,6 +231,7 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     expect(searchCalls).toContainEqual({ kind: 'item', id: item.id, op: 'upsert' });
     // Create kinds never cascade — nothing points at a brand-new id yet.
     expect(cascadeCalls).toHaveLength(0);
+    expect(revalidateCalls).toEqual(expect.arrayContaining(['/items', '/dashboard', '/ask']));
   });
 
   it('applies UPDATE_ITEM and fires enqueueItemRenameCascade in addition to index + embed', async () => {
@@ -247,6 +261,43 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     expect(embedCalls).toContainEqual({ type: 'ITEM', id: 'item-1' });
     expect(searchCalls).toContainEqual({ kind: 'item', id: 'item-1', op: 'upsert' });
     expect(cascadeCalls).toContainEqual({ fn: 'item', id: 'item-1' });
+    expect(revalidateCalls).toEqual(
+      expect.arrayContaining(['/items', '/items/item-1', '/dashboard', '/ask']),
+    );
+  });
+
+  it('UPDATE_ITEM still applies (ACCEPTED) when the rename cascade throws', async () => {
+    // enqueueItemRenameCascade / enqueueSystemRenameCascade (lib/embedding/
+    // cascade.ts) run raw prisma.*.findMany with no try/catch of their own —
+    // unlike enqueueEmbed/enqueueSearchIndex, which swallow their own
+    // errors. The cascade call fires AFTER the item update already
+    // succeeded but BEFORE status flips to ACCEPTED, so an uncaught throw
+    // here would leave the item renamed while the proposal still reads
+    // PENDING. applyUpdateItem must catch it locally.
+    vi.mocked(enqueueItemRenameCascade).mockRejectedValueOnce(new Error('cascade db error'));
+
+    const existing = await ctx.prisma.item.findUniqueOrThrow({ where: { id: 'item-1' } });
+    const proposal = await createProposal({
+      kind: 'UPDATE_ITEM',
+      targetType: 'ITEM',
+      targetId: 'item-1',
+      baseUpdatedAt: existing.updatedAt,
+      beforeSnapshot: { serialNumber: existing.serialNumber },
+      payload: {
+        kind: 'UPDATE_ITEM',
+        itemId: 'item-1',
+        serialNumber: { value: 'SN-CASCADE-FAIL', source: 'user' },
+      },
+    });
+
+    const result = await applyProposal(proposal.id);
+    expect(result.ok).toBe(true);
+
+    const item = await ctx.prisma.item.findUniqueOrThrow({ where: { id: 'item-1' } });
+    expect(item.serialNumber).toBe('SN-CASCADE-FAIL');
+
+    const updated = await ctx.prisma.chatProposal.findUniqueOrThrow({ where: { id: proposal.id } });
+    expect(updated.status).toBe('ACCEPTED');
   });
 
   it('applies UPDATE_SYSTEM: fires enqueueSystemRenameCascade only, no index or embed', async () => {
@@ -274,6 +325,7 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
     expect(cascadeCalls).toContainEqual({ fn: 'system', id: 'sys-1' });
     expect(searchCalls).toHaveLength(0);
     expect(embedCalls).toHaveLength(0);
+    expect(revalidateCalls).toEqual(expect.arrayContaining(['/systems', '/systems/sys-1', '/ask']));
   });
 
   it('applies CREATE_SERVICE_RECORD with nested targets, storing performedOn as the correct UTC day', async () => {
@@ -303,6 +355,9 @@ describe('applyProposal / rejectProposal / refreshProposal', () => {
 
     expect(embedCalls).toContainEqual({ type: 'SERVICE_RECORD', id: record.id });
     expect(searchCalls).toContainEqual({ kind: 'service', id: record.id, op: 'upsert' });
+    expect(revalidateCalls).toEqual(
+      expect.arrayContaining(['/service', '/dashboard', '/items/item-1', '/ask']),
+    );
   });
 
   it('baseUpdatedAt mismatch yields STALE and performs no write', async () => {

@@ -663,6 +663,11 @@ async function applyUpdateNote(
   payload: Extract<ProposalPayload, { kind: 'UPDATE_NOTE' }>,
   baseUpdatedAt: Date | null,
 ): Promise<ActionResult<{ id: string }>> {
+  // Deliberate v1 limitation: `UPDATE_NOTE`'s payload carries no `itemId`
+  // (see proposalPayloadSchema), so a note can never be re-targeted here —
+  // only its title/body are ever proposed. That's intentional: this kind
+  // exists to replace a duplicate note's body, not to move it between
+  // items. Only the note's own (unchanged) itemId is revalidated below.
   const row = await prisma.note.findUnique({
     where: { id: payload.noteId },
     select: { updatedAt: true, itemId: true },
@@ -783,7 +788,23 @@ async function applyUpdateItem(
   // UPDATE_ITEM apply (not just renames) is safe and cheap. Omitting it
   // compiles fine and silently leaves every child note/service-record/
   // warranty embedding carrying the item's old name.
-  await enqueueItemRenameCascade(payload.itemId);
+  //
+  // Wrapped here, not fixed at source: unlike enqueueEmbed/enqueueSearchIndex,
+  // lib/embedding/cascade.ts does NOT guard its own prisma.*.findMany calls
+  // against a DB error. This call runs after the item update already
+  // succeeded but before status flips to ACCEPTED — an uncaught throw here
+  // would leave the item renamed while the proposal still reads PENDING,
+  // letting a retry apply (and rename) it a second time. Fixing cascade.ts
+  // itself would also change lib/items/actions.ts and lib/systems/actions.ts
+  // and belongs in its own change.
+  try {
+    await enqueueItemRenameCascade(payload.itemId);
+  } catch (err) {
+    logger.warn(
+      { err, proposalId: id, itemId: payload.itemId },
+      'chat.apply: item rename cascade failed (non-fatal)',
+    );
+  }
 
   await prisma.chatProposal.update({
     where: { id },
@@ -834,7 +855,19 @@ async function applyUpdateSystem(
   // UPDATE_SYSTEM fires the rename cascade ONLY. System is in neither
   // SEARCH_KINDS nor EmbeddingEntityType — it is not itself indexed or
   // embedded, only its name flows into child entities' embeds.
-  await enqueueSystemRenameCascade(payload.systemId);
+  //
+  // Wrapped here, not fixed at source: see the comment on the equivalent
+  // enqueueItemRenameCascade call in applyUpdateItem — cascade.ts does not
+  // guard its own DB calls, and this fires after the system update already
+  // succeeded but before status flips to ACCEPTED.
+  try {
+    await enqueueSystemRenameCascade(payload.systemId);
+  } catch (err) {
+    logger.warn(
+      { err, proposalId: id, systemId: payload.systemId },
+      'chat.apply: system rename cascade failed (non-fatal)',
+    );
+  }
 
   await prisma.chatProposal.update({
     where: { id },
@@ -852,6 +885,12 @@ async function applyCreateServiceRecord(
   id: string,
   payload: Extract<ProposalPayload, { kind: 'CREATE_SERVICE_RECORD' }>,
 ): Promise<ActionResult<{ id: string }>> {
+  // Deliberate v1 gap: `CREATE_SERVICE_RECORD`'s payload carries no
+  // `vendorId` (see proposalPayloadSchema), so a chat-proposed service
+  // record can never name a vendor — it's always written with vendorId
+  // null. Unlike the UPDATE_NOTE limitation above, this one is a real
+  // capability gap, not by design; closing it needs a vendor snapshot,
+  // model instructions, and validation, which is its own scope.
   const performedOn = parseCalendarDate(payload.performedOn.value);
   // Already validated against the union at propose time (validateProposal's
   // checkDate) — a null here would mean the stored payload was tampered
