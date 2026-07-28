@@ -26,15 +26,13 @@ env:
   PNPM_VERSION: 11.17.0
   # renovate: datasource=node-version depName=node
   NODE_VERSION: 24.18.0
-  # Silence the Prisma CLI's "Update available x -> y" banner. Not cosmetic:
+  # Silence the Prisma CLI's "Update available" banner. Not cosmetic:
   # `migrate-check` captures stderr (`2>&1`) into the variable it greps for
-  # schema drift, and the banner's box-drawing lines aren't in that step's
-  # allow-list, so they land in `residual` and fail the job. Which invocation
-  # prints the banner is a race (the checkpoint client caches after its first
-  # check), so this surfaced as an intermittent failure rather than a hard one
-  # — it broke `main` on 359ea50 the day after Prisma 7.9.1 shipped against our
-  # pinned 7.9.0. Set workflow-wide because unit/integration/e2e shell out to
-  # Prisma too. https://www.prisma.io/docs/orm/reference/environment-variables-reference
+  # schema drift, and the banner isn't in that step's allow-list, so it lands
+  # in `residual` and fails the job. Whichever Prisma invocation wins the
+  # version-check race prints it, so dropping this reintroduces an INTERMITTENT
+  # failure, not an obvious one. Workflow-wide because unit/integration/e2e
+  # shell out to Prisma too.
   PRISMA_HIDE_UPDATE_MESSAGE: 'true'
 
 jobs:
