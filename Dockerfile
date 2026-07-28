@@ -8,6 +8,13 @@ FROM node:24.18.0-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a
 ARG PNPM_VERSION=11.17.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 WORKDIR /app
+# Set here, not just in the runtime stage: `next build` runs in the build stage
+# (which inherits from base), and the runtime stage is a fresh FROM that never
+# sees it. With this only on runtime, telemetry stayed ENABLED for every image
+# build — "Attention: Next.js now collects completely anonymous telemetry" is
+# visible in build-image CI logs. The runtime copy is still needed separately:
+# runtime does not inherit from base.
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # --- deps stage: install all deps (including dev) for build ---
 FROM base AS deps
