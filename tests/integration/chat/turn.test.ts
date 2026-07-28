@@ -239,6 +239,67 @@ describe('chatTurn', () => {
     expect(log.errorReason).toBeTruthy();
   });
 
+  it('embed failure: ok=false, still persists the session + both messages, zero proposals', async () => {
+    state.parseResponse = simpleReplyFixture; // must not be reached
+    embedTextsMock.mockRejectedValueOnce(new Error('voyage unavailable'));
+
+    const result = await chatTurn(turnInput('this will fail to embed'));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.formError).toBeTruthy();
+    // The Anthropic mock must never be reached — embedding failed first.
+    expect(parseMock).not.toHaveBeenCalled();
+
+    const session = await ctx.prisma.chatSession.findFirstOrThrow({ where: { userId } });
+    const messages = await ctx.prisma.chatMessage.findMany({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(messages.map((m) => m.role)).toEqual(['USER', 'ASSISTANT']);
+    expect(messages[0].content).toBe('this will fail to embed');
+
+    const assistantMessage = messages[1];
+    expect(assistantMessage.aiSuggestionLogId).not.toBeNull();
+    const log = await ctx.prisma.aISuggestionLog.findUniqueOrThrow({
+      where: { id: assistantMessage.aiSuggestionLogId ?? '' },
+    });
+    expect(log.errorReason).toBe('embed_failed');
+
+    expect(await ctx.prisma.chatProposal.count()).toBe(0);
+  });
+
+  it('ASK_ENABLED=false: short-circuits before embedding, writes nothing', async () => {
+    state.askEnabled = false;
+    state.parseResponse = simpleReplyFixture;
+
+    const result = await chatTurn(turnInput('this should never reach the model'));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.formError).toMatch(/not enabled/i);
+    expect(embedTextsMock).not.toHaveBeenCalled();
+    expect(parseMock).not.toHaveBeenCalled();
+
+    expect(await ctx.prisma.chatSession.count()).toBe(0);
+    expect(await ctx.prisma.chatMessage.count()).toBe(0);
+    expect(await ctx.prisma.aISuggestionLog.count()).toBe(0);
+  });
+
+  it('rejects a message over 8000 chars with fieldErrors, persists nothing', async () => {
+    const tooLong = 'x'.repeat(8001);
+
+    const result = await chatTurn(turnInput(tooLong));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.fieldErrors).toBeTruthy();
+    expect(embedTextsMock).not.toHaveBeenCalled();
+    expect(parseMock).not.toHaveBeenCalled();
+    expect(await ctx.prisma.chatSession.count()).toBe(0);
+    expect(await ctx.prisma.chatMessage.count()).toBe(0);
+  });
+
   it('rate limit: blocks the 41st chat turn in an hour; ask usage does not count', async () => {
     // Ask usage must not count against the chat budget.
     await ctx.prisma.aISuggestionLog.createMany({

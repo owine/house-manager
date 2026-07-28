@@ -13,7 +13,7 @@ import { getEnv } from '@/lib/env';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
-import { parseCalendarDate, resolveAnchorDay } from './dates';
+import { resolveAnchorDay } from './dates';
 import { findDuplicateNote, type NoteTitle } from './dedup';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT, type SnapshotInput } from './prompt';
 import { getChatSession } from './queries';
@@ -83,37 +83,6 @@ function targetFor(p: ProposalPayload): { targetType: string; targetId: string |
       return { targetType: 'SYSTEM', targetId: p.systemId };
     case 'CREATE_SERVICE_RECORD':
       return { targetType: 'SERVICE_RECORD', targetId: null };
-  }
-}
-
-/**
- * Re-derive every calendar-date field's stored string through
- * `parseCalendarDate` rather than trusting the model's raw string verbatim.
- * `validateProposal` already confirmed each date parses; this pins the exact
- * stored representation to OUR parse of it, never a bare `new Date`.
- */
-function normalizeProposalDates(p: ProposalPayload): ProposalPayload {
-  switch (p.kind) {
-    case 'CREATE_SERVICE_RECORD': {
-      const d = parseCalendarDate(p.performedOn.value);
-      if (!d) return p; // unreachable: validateProposal already rejected this
-      return { ...p, performedOn: { ...p.performedOn, value: d.toISOString().slice(0, 10) } };
-    }
-    case 'CREATE_ITEM':
-    case 'UPDATE_ITEM': {
-      if (!p.purchaseDate) return p;
-      const d = parseCalendarDate(p.purchaseDate.value);
-      if (!d) return p;
-      return { ...p, purchaseDate: { ...p.purchaseDate, value: d.toISOString().slice(0, 10) } };
-    }
-    case 'UPDATE_SYSTEM': {
-      if (!p.installDate) return p;
-      const d = parseCalendarDate(p.installDate.value);
-      if (!d) return p;
-      return { ...p, installDate: { ...p.installDate, value: d.toISOString().slice(0, 10) } };
-    }
-    default:
-      return p;
   }
 }
 
@@ -331,7 +300,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     questionEmbedding = first;
   } catch (err) {
     logger.error({ err, userId }, 'voyage embed failed');
-    await createSuggestionLog({
+    const log = await createSuggestionLog({
       userId,
       kind: 'chat',
       userPrompt: turnText,
@@ -340,7 +309,21 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       errorReason: 'embed_failed',
       model: ANTHROPIC_MODEL,
     });
-    return { ok: false, formError: 'Could not process your message. Try again.' };
+    // Same reasoning as the Anthropic-failure branch below: this is a
+    // conversation thread the user keeps looking at, not a one-shot
+    // question. Without persisting here, the user's own message would
+    // vanish from the thread on reload — they'd see an error toast, reload,
+    // and their text would be gone.
+    const errorReply = 'Could not process your message. Try again.';
+    await persistTurn({
+      userId,
+      sessionId,
+      turnText,
+      replyText: errorReply,
+      logId: log.id,
+      proposals: [],
+    });
+    return { ok: false, formError: errorReply };
   }
   const chunks = await retrieveTopK(questionEmbedding, { k: RETRIEVAL_K });
   const retrievedChunkIds = chunks.map((c) => c.embeddingId);
@@ -473,7 +456,6 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       }
     }
 
-    p = normalizeProposalDates(p);
     const { targetType, targetId } = targetFor(p);
     const { baseUpdatedAt, beforeSnapshot } = await captureBeforeState(p);
 
