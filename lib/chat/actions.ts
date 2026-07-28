@@ -1,6 +1,8 @@
 'use server';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import type { ChatProposalKind, Prisma } from '@prisma/client';
+import type { ChatProposal, ChatProposalKind, Prisma } from '@prisma/client';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
 import { createSuggestionLog } from '@/lib/ai/log';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
@@ -8,12 +10,15 @@ import { classifyAnthropicError, userFacingMessage } from '@/lib/ai/suggest/_sha
 import { retrieveTopK } from '@/lib/ask/retrieve';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueItemRenameCascade, enqueueSystemRenameCascade } from '@/lib/embedding/cascade';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { embedTexts } from '@/lib/embedding/voyage';
 import { getEnv } from '@/lib/env';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
-import { resolveAnchorDay } from './dates';
+import { enqueueSearchIndex } from '@/lib/search/client';
+import { parseCalendarDate, resolveAnchorDay } from './dates';
 import { findDuplicateNote, type NoteTitle } from './dedup';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT, type SnapshotInput } from './prompt';
 import { getChatSession } from './queries';
@@ -22,6 +27,7 @@ import {
   chatTurnInputSchema,
   chatTurnOutputSchema,
   type ProposalPayload,
+  parseStoredPayload,
   proposalPayloadSchema,
 } from './schema';
 import { deriveSessionTitle } from './title';
@@ -515,5 +521,530 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   return {
     ok: true,
     data: { sessionId: finalSessionId, messageId: assistantMessageId, reply, proposals },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Apply / reject / refresh
+// ─────────────────────────────────────────────────────────────────────────
+
+const proposalIdSchema = z.string().min(1);
+
+/**
+ * Proposals are reachable by id and the entities they write are house-global
+ * — the ownership check is folded into the query itself (message -> session
+ * -> userId) rather than fetched-then-compared, so a proposal belonging to
+ * another user is indistinguishable from a missing one, same discipline as
+ * `getChatSession`.
+ */
+async function loadOwnedProposal(id: string, userId: string): Promise<ChatProposal | null> {
+  return prisma.chatProposal.findFirst({
+    where: { id, message: { session: { userId } } },
+  });
+}
+
+/** Loose object guard for a Json column read back as `Prisma.JsonValue`. */
+function asRecord(json: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  return json && typeof json === 'object' && !Array.isArray(json)
+    ? (json as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * Pull `{ field: source }` out of every provenanced (`{ value, source }`)
+ * field on a payload. Non-provenanced keys (ids, booleans, arrays) don't
+ * match the shape and are skipped automatically — this is why the same
+ * helper works unmodified across CREATE_ITEM / UPDATE_ITEM / UPDATE_SYSTEM,
+ * whose provenanced fields differ.
+ */
+function extractProvenance(payload: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(payload)) {
+    if (val && typeof val === 'object' && 'value' in val && 'source' in val) {
+      out[key] = (val as { source: string }).source;
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge new field-provenance into a row's existing `metadata`, preserving
+ * both non-provenance metadata keys and prior provenance entries for fields
+ * this proposal doesn't touch. New entries win on conflict — a field the
+ * model re-proposes gets its freshest provenance.
+ */
+function mergeProvenanceMetadata(
+  existingMetadata: Prisma.JsonValue | null | undefined,
+  newProvenance: Record<string, string>,
+): Prisma.InputJsonValue {
+  const existing = asRecord(existingMetadata);
+  const existingProvenance = asRecord(existing._provenance as Prisma.JsonValue) as Record<
+    string,
+    string
+  >;
+  return {
+    ...existing,
+    _provenance: { ...existingProvenance, ...newProvenance },
+  } as Prisma.InputJsonValue;
+}
+
+type TerminalStatus = 'STALE' | 'ORPHANED';
+
+/**
+ * Re-read an update target's `updatedAt`, comparing it against the
+ * proposal's `baseUpdatedAt`. Null row -> ORPHANED (deleted underneath);
+ * mismatched `updatedAt` -> STALE (changed underneath). Neither is logged as
+ * an error — both are expected, user-facing outcomes of concurrent editing.
+ */
+function checkFreshness(
+  row: { updatedAt: Date } | null,
+  baseUpdatedAt: Date | null,
+): { ok: true } | { ok: false; status: TerminalStatus; formError: string } {
+  if (!row) {
+    return { ok: false, status: 'ORPHANED', formError: 'The record this refers to was deleted.' };
+  }
+  if (baseUpdatedAt && row.updatedAt.getTime() !== baseUpdatedAt.getTime()) {
+    return {
+      ok: false,
+      status: 'STALE',
+      formError:
+        'This record changed since the proposal was made. Refresh it to review the new values.',
+    };
+  }
+  return { ok: true };
+}
+
+/** Mark a proposal terminal (STALE / ORPHANED) and surface its message. Never throws. */
+async function markTerminal(
+  id: string,
+  outcome: { status: TerminalStatus; formError: string },
+): Promise<ActionResult<never>> {
+  await prisma.chatProposal.update({ where: { id }, data: { status: outcome.status } });
+  return { ok: false, formError: outcome.formError };
+}
+
+async function applyCreateNote(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'CREATE_NOTE' }>,
+): Promise<ActionResult<{ id: string }>> {
+  let note: { id: string };
+  try {
+    note = await prisma.note.create({
+      data: {
+        title: payload.title.value,
+        body: payload.body.value,
+        itemId: payload.itemId,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: create note failed');
+    return { ok: false, formError: 'Could not create the note — it may reference a deleted item.' };
+  }
+
+  await enqueueSearchIndex('note', note.id, 'upsert');
+  await enqueueEmbed('NOTE', note.id);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: note.id, appliedAt: new Date() },
+  });
+
+  revalidatePath('/notes');
+  revalidatePath('/dashboard');
+  if (payload.itemId) revalidatePath(`/items/${payload.itemId}`);
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: note.id } };
+}
+
+async function applyUpdateNote(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'UPDATE_NOTE' }>,
+  baseUpdatedAt: Date | null,
+): Promise<ActionResult<{ id: string }>> {
+  const row = await prisma.note.findUnique({
+    where: { id: payload.noteId },
+    select: { updatedAt: true, itemId: true },
+  });
+  const fresh = checkFreshness(row, baseUpdatedAt);
+  if (!fresh.ok) return markTerminal(id, fresh);
+
+  try {
+    await prisma.note.update({
+      where: { id: payload.noteId },
+      data: {
+        body: payload.body.value,
+        ...(payload.title !== undefined ? { title: payload.title.value } : {}),
+      },
+    });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: update note failed');
+    return { ok: false, formError: 'Could not update the note.' };
+  }
+
+  await enqueueSearchIndex('note', payload.noteId, 'upsert');
+  await enqueueEmbed('NOTE', payload.noteId);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: payload.noteId, appliedAt: new Date() },
+  });
+
+  revalidatePath('/notes');
+  revalidatePath(`/notes/${payload.noteId}`);
+  revalidatePath('/dashboard');
+  if (row?.itemId) revalidatePath(`/items/${row.itemId}`);
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: payload.noteId } };
+}
+
+async function applyCreateItem(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'CREATE_ITEM' }>,
+): Promise<ActionResult<{ id: string }>> {
+  const provenance = extractProvenance(payload);
+  let item: { id: string };
+  try {
+    item = await prisma.item.create({
+      data: {
+        name: payload.name.value,
+        categoryId: payload.categoryId,
+        manufacturer: payload.manufacturer?.value ?? null,
+        model: payload.model?.value ?? null,
+        serialNumber: payload.serialNumber?.value ?? null,
+        location: payload.location?.value ?? null,
+        purchaseDate: payload.purchaseDate ? parseCalendarDate(payload.purchaseDate.value) : null,
+        metadata: mergeProvenanceMetadata(null, provenance),
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: create item failed');
+    return {
+      ok: false,
+      formError: 'Could not create the item — it may reference a deleted category.',
+    };
+  }
+
+  await enqueueSearchIndex('item', item.id, 'upsert');
+  await enqueueEmbed('ITEM', item.id);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: item.id, appliedAt: new Date() },
+  });
+
+  revalidatePath('/items');
+  revalidatePath('/dashboard');
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: item.id } };
+}
+
+async function applyUpdateItem(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'UPDATE_ITEM' }>,
+  baseUpdatedAt: Date | null,
+): Promise<ActionResult<{ id: string }>> {
+  const row = await prisma.item.findUnique({
+    where: { id: payload.itemId },
+    select: { updatedAt: true, metadata: true },
+  });
+  const fresh = checkFreshness(row, baseUpdatedAt);
+  if (!fresh.ok) return markTerminal(id, fresh);
+
+  const provenance = extractProvenance(payload);
+  const data: Record<string, unknown> = {
+    metadata: mergeProvenanceMetadata(row?.metadata, provenance),
+  };
+  if (payload.name !== undefined) data.name = payload.name.value;
+  if (payload.manufacturer !== undefined) data.manufacturer = payload.manufacturer.value;
+  if (payload.model !== undefined) data.model = payload.model.value;
+  if (payload.serialNumber !== undefined) data.serialNumber = payload.serialNumber.value;
+  if (payload.location !== undefined) data.location = payload.location.value;
+  if (payload.notes !== undefined) data.notes = payload.notes.value;
+  if (payload.purchaseDate !== undefined) {
+    data.purchaseDate = parseCalendarDate(payload.purchaseDate.value);
+  }
+
+  try {
+    await prisma.item.update({ where: { id: payload.itemId }, data });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: update item failed');
+    return { ok: false, formError: 'Could not update the item.' };
+  }
+
+  await enqueueSearchIndex('item', payload.itemId, 'upsert');
+  await enqueueEmbed('ITEM', payload.itemId);
+  // Unconditional — no `if (nameChanged)` guard. The embed worker hashes
+  // canonical text and skips no-op re-embeds, so calling this on every
+  // UPDATE_ITEM apply (not just renames) is safe and cheap. Omitting it
+  // compiles fine and silently leaves every child note/service-record/
+  // warranty embedding carrying the item's old name.
+  await enqueueItemRenameCascade(payload.itemId);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: payload.itemId, appliedAt: new Date() },
+  });
+
+  revalidatePath('/items');
+  revalidatePath(`/items/${payload.itemId}`);
+  revalidatePath('/dashboard');
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: payload.itemId } };
+}
+
+async function applyUpdateSystem(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'UPDATE_SYSTEM' }>,
+  baseUpdatedAt: Date | null,
+): Promise<ActionResult<{ id: string }>> {
+  const row = await prisma.system.findUnique({
+    where: { id: payload.systemId },
+    select: { updatedAt: true, metadata: true },
+  });
+  const fresh = checkFreshness(row, baseUpdatedAt);
+  if (!fresh.ok) return markTerminal(id, fresh);
+
+  const provenance = extractProvenance(payload);
+  const data: Record<string, unknown> = {
+    metadata: mergeProvenanceMetadata(row?.metadata, provenance),
+  };
+  if (payload.name !== undefined) data.name = payload.name.value;
+  if (payload.kindLabel !== undefined) data.kind = payload.kindLabel.value;
+  if (payload.location !== undefined) data.location = payload.location.value;
+  if (payload.notes !== undefined) data.notes = payload.notes.value;
+  if (payload.installDate !== undefined) {
+    data.installDate = parseCalendarDate(payload.installDate.value);
+  }
+
+  try {
+    // Deliberately bypasses updateSystemWithIdSchema — it does not accept
+    // `metadata`, and this path writes it directly via prisma.system.update.
+    await prisma.system.update({ where: { id: payload.systemId }, data });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: update system failed');
+    return { ok: false, formError: 'Could not update the system.' };
+  }
+
+  // UPDATE_SYSTEM fires the rename cascade ONLY. System is in neither
+  // SEARCH_KINDS nor EmbeddingEntityType — it is not itself indexed or
+  // embedded, only its name flows into child entities' embeds.
+  await enqueueSystemRenameCascade(payload.systemId);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: payload.systemId, appliedAt: new Date() },
+  });
+
+  revalidatePath('/systems');
+  revalidatePath(`/systems/${payload.systemId}`);
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: payload.systemId } };
+}
+
+async function applyCreateServiceRecord(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'CREATE_SERVICE_RECORD' }>,
+): Promise<ActionResult<{ id: string }>> {
+  const performedOn = parseCalendarDate(payload.performedOn.value);
+  // Already validated against the union at propose time (validateProposal's
+  // checkDate) — a null here would mean the stored payload was tampered
+  // with or corrupted, not a normal user path. Fail closed rather than
+  // fall back to `new Date()`, which would violate the calendar-date rule.
+  if (!performedOn) {
+    logger.warn({ proposalId: id }, 'chat.apply: performedOn failed to parse');
+    return { ok: false, formError: 'This proposal has an invalid date and cannot be applied.' };
+  }
+
+  let record: { id: string };
+  try {
+    record = await prisma.serviceRecord.create({
+      data: {
+        summary: payload.summary.value,
+        performedOn,
+        notes: payload.notes?.value ?? null,
+        selfPerformed: payload.selfPerformed,
+        targets: {
+          create: payload.targets.map((t) => ({
+            itemId: t.itemId ?? null,
+            systemId: t.systemId ?? null,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: create service record failed');
+    return {
+      ok: false,
+      formError: 'Could not create the service record — a target may have been deleted.',
+    };
+  }
+
+  await enqueueSearchIndex('service', record.id, 'upsert');
+  await enqueueEmbed('SERVICE_RECORD', record.id);
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'ACCEPTED', appliedEntityId: record.id, appliedAt: new Date() },
+  });
+
+  revalidatePath('/service');
+  revalidatePath('/dashboard');
+  for (const t of payload.targets) {
+    if (t.itemId) revalidatePath(`/items/${t.itemId}`);
+    if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
+  }
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: record.id } };
+}
+
+/**
+ * Apply one PENDING proposal: re-validate freshness for update kinds, write
+ * the row, fire that kind's side effects, and flip status to ACCEPTED.
+ * Never throws — every failure mode (missing/stale target, unparseable
+ * payload, Prisma constraint error) returns `formError` instead.
+ */
+export async function applyProposal(proposalId: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+
+  const parsedId = proposalIdSchema.safeParse(proposalId);
+  if (!parsedId.success) return { ok: false, formError: 'Invalid proposal id' };
+  const id = parsedId.data;
+
+  const proposal = await loadOwnedProposal(id, session.user.id);
+  if (!proposal) return { ok: false, formError: 'Proposal not found' };
+
+  // Idempotency guard — an ACCEPTED proposal cannot apply twice, and a
+  // REJECTED/STALE/ORPHANED/INVALID one cannot apply at all.
+  if (proposal.status !== 'PENDING') {
+    return {
+      ok: false,
+      formError: `This proposal is ${proposal.status.toLowerCase()} and cannot be applied.`,
+    };
+  }
+
+  const payload = parseStoredPayload(proposal.payload);
+  if (!payload) {
+    await prisma.chatProposal.update({ where: { id }, data: { status: 'INVALID' } });
+    return {
+      ok: false,
+      formError: 'This proposal predates a schema change and can no longer be applied.',
+    };
+  }
+
+  switch (payload.kind) {
+    case 'CREATE_NOTE':
+      return applyCreateNote(id, payload);
+    case 'UPDATE_NOTE':
+      return applyUpdateNote(id, payload, proposal.baseUpdatedAt);
+    case 'CREATE_ITEM':
+      return applyCreateItem(id, payload);
+    case 'UPDATE_ITEM':
+      return applyUpdateItem(id, payload, proposal.baseUpdatedAt);
+    case 'UPDATE_SYSTEM':
+      return applyUpdateSystem(id, payload, proposal.baseUpdatedAt);
+    case 'CREATE_SERVICE_RECORD':
+      return applyCreateServiceRecord(id, payload);
+  }
+}
+
+/**
+ * Reject a proposal. PENDING or STALE only — an ACCEPTED proposal must never
+ * be rejectable (that would mislabel a change that was actually applied),
+ * and REJECTED/ORPHANED/INVALID are already terminal.
+ */
+export async function rejectProposal(proposalId: unknown): Promise<ActionResult<{ id: string }>> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+
+  const parsedId = proposalIdSchema.safeParse(proposalId);
+  if (!parsedId.success) return { ok: false, formError: 'Invalid proposal id' };
+  const id = parsedId.data;
+
+  const proposal = await loadOwnedProposal(id, session.user.id);
+  if (!proposal) return { ok: false, formError: 'Proposal not found' };
+
+  if (proposal.status !== 'PENDING' && proposal.status !== 'STALE') {
+    return {
+      ok: false,
+      formError: `This proposal is ${proposal.status.toLowerCase()} and cannot be rejected.`,
+    };
+  }
+
+  await prisma.chatProposal.update({ where: { id }, data: { status: 'REJECTED' } });
+  return { ok: true, data: { id } };
+}
+
+/**
+ * The only way out of STALE. Re-reads the target, recomputes `baseUpdatedAt`
+ * + `beforeSnapshot` from that single read (same discipline as
+ * `captureBeforeState` at propose time), and sets status back to PENDING.
+ * Deliberately does NOT auto-apply — the record changed underneath and the
+ * user has not yet seen the new state. Returns the full refreshed proposal
+ * so the card can re-render without a separate query.
+ */
+export async function refreshProposal(
+  proposalId: unknown,
+): Promise<ActionResult<{ proposal: ChatTurnProposal }>> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
+
+  const parsedId = proposalIdSchema.safeParse(proposalId);
+  if (!parsedId.success) return { ok: false, formError: 'Invalid proposal id' };
+  const id = parsedId.data;
+
+  const proposal = await loadOwnedProposal(id, session.user.id);
+  if (!proposal) return { ok: false, formError: 'Proposal not found' };
+
+  if (proposal.status !== 'STALE') {
+    return {
+      ok: false,
+      formError: `This proposal is ${proposal.status.toLowerCase()}, not stale.`,
+    };
+  }
+
+  const payload = parseStoredPayload(proposal.payload);
+  if (!payload) {
+    await prisma.chatProposal.update({ where: { id }, data: { status: 'INVALID' } });
+    return {
+      ok: false,
+      formError: 'This proposal predates a schema change and can no longer be applied.',
+    };
+  }
+
+  const { baseUpdatedAt, beforeSnapshot } = await captureBeforeState(payload);
+  if (baseUpdatedAt === null) {
+    await prisma.chatProposal.update({ where: { id }, data: { status: 'ORPHANED' } });
+    return { ok: false, formError: 'The record this refers to was deleted.' };
+  }
+
+  const updated = await prisma.chatProposal.update({
+    where: { id },
+    data: { status: 'PENDING', baseUpdatedAt, beforeSnapshot: beforeSnapshot ?? undefined },
+  });
+
+  return {
+    ok: true,
+    data: {
+      proposal: {
+        id: updated.id,
+        kind: updated.kind,
+        targetType: updated.targetType,
+        targetId: updated.targetId,
+        payload: updated.payload as unknown as ProposalPayload,
+        status: updated.status,
+        baseUpdatedAt: updated.baseUpdatedAt,
+        beforeSnapshot: updated.beforeSnapshot,
+      },
+    },
   };
 }
