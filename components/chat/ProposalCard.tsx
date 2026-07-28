@@ -142,7 +142,11 @@ export function ProposalCard({
   const [proposal, setProposal] = useState(initialProposal);
   const [pending, startTransition] = useTransition();
 
-  const rows = buildRows(proposal.payload, proposal.beforeSnapshot);
+  // INVALID means the stored payload no longer parses against the current
+  // union (components/chat/proposal-mapping.ts substitutes a blank stub so
+  // the type still checks out) — there is nothing meaningful to diff, skip rows.
+  const rows =
+    proposal.status === 'INVALID' ? [] : buildRows(proposal.payload, proposal.beforeSnapshot);
   const kindLabel = KIND_LABELS[proposal.kind];
   const terminalMessage = TERMINAL_MESSAGES[proposal.status];
 
