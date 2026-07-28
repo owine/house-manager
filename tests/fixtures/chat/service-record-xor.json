@@ -1,0 +1,33 @@
+{
+  "id": "msg_test_service_record_xor",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 140,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Logged the service visits.",
+    "proposals": [
+      {
+        "kind": "CREATE_SERVICE_RECORD",
+        "summary": { "value": "Serviced both", "source": "user" },
+        "performedOn": { "value": "2026-07-01", "source": "user" },
+        "selfPerformed": false,
+        "targets": [{ "itemId": "item-1", "systemId": "sys-1" }]
+      },
+      {
+        "kind": "CREATE_SERVICE_RECORD",
+        "summary": { "value": "Serviced nothing", "source": "user" },
+        "performedOn": { "value": "2026-07-01", "source": "user" },
+        "selfPerformed": false,
+        "targets": [{ "itemId": null, "systemId": null }]
+      }
+    ]
+  }
+}

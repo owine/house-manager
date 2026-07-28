@@ -1,0 +1,25 @@
+{
+  "id": "msg_test_dedup_note",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 80,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Noted the bulb types for each room.",
+    "proposals": [
+      {
+        "kind": "CREATE_NOTE",
+        "title": { "value": "Light bulbs", "source": "user" },
+        "body": { "value": "Kitchen pendants take 9W A19 bulbs.", "source": "user" },
+        "itemId": null
+      }
+    ]
+  }
+}

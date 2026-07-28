@@ -1,0 +1,24 @@
+{
+  "id": "msg_test_hallucinated_id",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 60,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Updated the widget's serial number.",
+    "proposals": [
+      {
+        "kind": "UPDATE_ITEM",
+        "itemId": "item-nope",
+        "serialNumber": { "value": "SN-12345", "source": "user" }
+      }
+    ]
+  }
+}

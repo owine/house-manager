@@ -47,6 +47,7 @@ model User {
   notificationLogs NotificationLog[]
   digestLogs DigestLog[]
   aiSuggestionLogs AISuggestionLog[]
+  chatSessions ChatSession[]
 
   @@map("users")
 }
@@ -109,6 +110,7 @@ model System {
   installDate     DateTime? @db.Date
   installCost     Decimal?   @db.Decimal(10, 2)
   notes           String?    @db.Text
+  metadata        Json       @default("{}")
   archivedAt      DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -629,6 +631,7 @@ model AISuggestionLog {
   createdAt            DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+  chatMessages ChatMessage[]
 
   @@index([userId, createdAt])
   @@index([createdAt])
@@ -669,4 +672,104 @@ model Embedding {
   @@index([entityType, entityId])
   @@index([contentHash])
   @@map("embeddings")
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+enum ChatProposalKind {
+  CREATE_NOTE
+  UPDATE_NOTE
+  CREATE_ITEM
+  UPDATE_ITEM
+  UPDATE_SYSTEM
+  CREATE_SERVICE_RECORD
+}
+
+enum ChatProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  STALE      // target changed underneath; recompute the diff and re-confirm
+  ORPHANED   // target row was deleted
+  INVALID    // stored payload no longer parses against the current union
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@index([updatedAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  role      ChatRole
+  content   String   @db.Text
+
+  aiSuggestionLogId String?
+  aiSuggestionLog   AISuggestionLog? @relation(fields: [aiSuggestionLogId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  proposals ChatProposal[]
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+model ChatProposal {
+  id        String   @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  kind       ChatProposalKind
+  targetType String?
+  // Polymorphic, deliberately no FK — same trade-off as `Embedding`, and the
+  // same cost: no cascade on entity delete. Apply re-reads the target and marks
+  // the proposal ORPHANED on a miss.
+  targetId   String?
+
+  payload    Json
+
+  status     ChatProposalStatus @default(PENDING)
+  // Snapshot of the target row's `updatedAt` at propose time. Optimistic
+  // concurrency for the update kinds; null for the create kinds.
+  baseUpdatedAt DateTime?
+  // The target row's current values for ONLY the fields this proposal
+  // touches, captured in the SAME read that produced baseUpdatedAt. This is
+  // the "before" half of the diff. Null for the create kinds. Refreshed by
+  // refreshProposal when a proposal goes STALE.
+  //
+  // Two rules, both load-bearing:
+  //   1. Scope it to the touched fields. Snapshotting the whole row would drag
+  //      in Decimal columns (purchasePrice, installCost, cost), which
+  //      serialize into Json as strings and silently break the diff render.
+  //      No proposal kind touches a Decimal field today; keep it that way.
+  //   2. Store calendar dates as YYYY-MM-DD strings, matching the payload's
+  //      own wire format. A Date written to a Json column reads back as an
+  //      ISO string, and formatCalendarDate takes a CalendarDate, not a
+  //      string — passing the raw value through would not typecheck.
+  beforeSnapshot Json?
+
+  appliedEntityId String?
+  appliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([messageId])
+  @@index([status])
+  @@map("chat_proposals")
 }

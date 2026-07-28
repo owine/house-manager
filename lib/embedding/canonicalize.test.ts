@@ -57,6 +57,35 @@ describe('canonicalizeItem', () => {
     expect(out).not.toContain('SECRET');
     expect(out).not.toContain('serialNumber');
   });
+
+  it('omits underscore-prefixed metadata keys from canonical text', () => {
+    // ItemForCanonical requires `category: { name }` — NOT `categoryName`.
+    // See lib/embedding/canonicalize.ts:16-27.
+    const text = canonicalizeItem({
+      name: 'Kitchen Pendant',
+      category: { name: 'Lighting' },
+      metadata: {
+        wattage: '9W',
+        _provenance: { wattage: 'inferred' },
+      },
+    });
+
+    expect(text).toContain('wattage: 9W');
+    expect(text).not.toContain('_provenance');
+    expect(text).not.toContain('inferred');
+  });
+
+  it('omits the Metadata header entirely when every key is reserved', () => {
+    const text = canonicalizeItem({
+      name: 'Kitchen Pendant',
+      category: { name: 'Lighting' },
+      metadata: {
+        _provenance: { wattage: 'inferred' },
+      },
+    });
+
+    expect(text).not.toContain('Metadata:');
+  });
 });
 
 describe('canonicalizeNote', () => {

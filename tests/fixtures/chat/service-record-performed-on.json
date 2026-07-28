@@ -1,0 +1,26 @@
+{
+  "id": "msg_test_service_record_performed_on",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 90,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Logged the filter replacement on the 3rd.",
+    "proposals": [
+      {
+        "kind": "CREATE_SERVICE_RECORD",
+        "summary": { "value": "Replaced furnace filter", "source": "user" },
+        "performedOn": { "value": "2026-07-03", "source": "user" },
+        "selfPerformed": true,
+        "targets": [{ "itemId": "item-1", "systemId": null }]
+      }
+    ]
+  }
+}

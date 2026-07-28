@@ -1,3 +1,5 @@
+import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
+
 // Canonical text builders for each entity type. The output is what gets
 // embedded by Voyage AND what the Ask LLM sees as context. Two design rules:
 //
@@ -108,7 +110,10 @@ export function canonicalizeItem(item: ItemForCanonical): string {
 
   if (item.metadata && Object.keys(item.metadata).length > 0) {
     const meta = Object.entries(item.metadata)
-      .filter(([_, v]) => present(v))
+      // Reserved (`_`-prefixed) keys are internal (e.g. `_provenance` from
+      // conversational capture). They must never reach embedded text — they
+      // carry no retrieval value and would inject raw JSON into the chunk.
+      .filter(([k, v]) => !isReservedMetadataKey(k) && present(v))
       .map(([k, v]) => `  ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
     if (meta.length > 0) lines.push('Metadata:', ...meta);
   }

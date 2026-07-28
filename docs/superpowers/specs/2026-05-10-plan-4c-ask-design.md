@@ -351,6 +351,9 @@ The Admin `/admin/ai` page (already exists from Plan 4b) renders Ask stats next 
 
 Reuse the per-user rate limiter from Plan 4b (`lib/ai/rate-limit.ts`). Same daily budget — Ask calls and Suggest calls share a single bucket so a runaway loop in either feature throttles both. Limit is configurable via env (current value documented in the limiter module).
 
+> **Superseded:** the shared-bucket behaviour above was replaced by per-kind rate limits
+> (conversational-capture Task 2). See `docs/superpowers/specs/2026-07-26-conversational-capture-design.md`.
+
 ## Privacy
 
 - Embeddings are stored in *our* Postgres. Voyage sees chunk text once per upsert and doesn't retain (per their data-use policy; cite in plan).
