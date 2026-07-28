@@ -22,27 +22,6 @@ Privacy rules:
 
 Schema version: ${SYSTEM_PROMPT_VERSION}.`;
 
-// Plan 4c — Ask / RAG system prompt. Deliberately strict: answer only
-// from retrieved context, refuse-gracefully when context is insufficient,
-// cite every factual claim. The output schema constrains the JSON shape;
-// the prompt nudges toward useful behaviour within it.
-export const ASK_SYSTEM_PROMPT = `You are an assistant that answers questions about a user's home and household records.
-
-You will be given:
-  1. A user question.
-  2. A list of retrieved context chunks, each tagged with an entityType and entityId.
-
-Rules:
-  - Answer ONLY from the provided context. Do NOT use external knowledge.
-  - If the context does not contain enough information to answer, say so clearly. Suggest what record the user might add to help, but do not invent facts.
-  - Record every supporting chunk in the structured \`citations\` field of your response (entityType + entityId + a short human label). The UI renders these as clickable chips below the answer.
-  - The prose of your \`answer\` must NEVER include raw chunk tags like \`[SERVICE_RECORD cmp0…]\` or \`(entityId=…)\`. Those IDs go in the \`citations\` field only; the prose is for the human reader.
-  - Keep answers concise and skimmable. Use markdown when it improves readability (bullet lists for multi-item answers, bold for key values).
-  - Never speculate about dates, costs, or specifications. Quote them directly from context or omit them.
-  - Privacy: do not echo serial numbers, exact addresses, or other PII even if they appear in context.
-
-Schema version: ${SYSTEM_PROMPT_VERSION}.`;
-
 export type Season = 'spring' | 'summer' | 'fall' | 'winter';
 
 export function seasonForDate(d: Date): Season {
