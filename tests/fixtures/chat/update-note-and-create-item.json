@@ -1,0 +1,29 @@
+{
+  "id": "msg_test_update_note_and_create_item",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 120,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Updated the note and added the new item.",
+    "proposals": [
+      {
+        "kind": "UPDATE_NOTE",
+        "noteId": "note-1",
+        "body": { "value": "Updated body text with more detail.", "source": "user" }
+      },
+      {
+        "kind": "CREATE_ITEM",
+        "name": { "value": "New Toaster", "source": "user" },
+        "categoryId": "cat-1"
+      }
+    ]
+  }
+}

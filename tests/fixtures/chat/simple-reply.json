@@ -1,0 +1,18 @@
+{
+  "id": "msg_test_simple_reply",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-4-5",
+  "content": [],
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 4200,
+    "output_tokens": 20,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 4000
+  },
+  "parsed_output": {
+    "reply": "Got it, thanks for letting me know.",
+    "proposals": []
+  }
+}
