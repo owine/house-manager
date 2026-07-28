@@ -69,6 +69,26 @@ describe('validateProposal', () => {
     if (!r.ok) expect(r.reason).toMatch(/date/i);
   });
 
+  // `service_record_targets` carries a hand-written XOR CHECK constraint that
+  // Prisma cannot regenerate. Both ids are valid here — the rejection must come
+  // from the XOR rule, not from a snapshot miss. Letting this through would
+  // throw a Prisma constraint error from inside a server action, violating the
+  // never-throw skeleton.
+  it('rejects a service-record target naming both an item and a system', () => {
+    const r = validateProposal(
+      {
+        kind: 'CREATE_SERVICE_RECORD',
+        summary: { value: 'Flush', source: 'user' },
+        performedOn: { value: '2026-07-03', source: 'user' },
+        selfPerformed: true,
+        targets: [{ itemId: 'item-1', systemId: 'sys-1' }],
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/exactly one/i);
+  });
+
   it('allows a null itemId on CREATE_NOTE (house-general knowledge)', () => {
     const r = validateProposal(
       {
