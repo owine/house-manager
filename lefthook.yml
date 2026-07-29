@@ -2,8 +2,19 @@ pre-commit:
   parallel: true
   commands:
     biome:
+      # `--write` applies Biome's *safe* fixes (formatting + safe lint rules) and
+      # `stage_fixed` re-stages what it touched, so a formatting deviation no
+      # longer aborts the commit — it is corrected in place. Unsafe fixes still
+      # require an explicit `--unsafe` and are never applied here, so anything
+      # that survives to a failure is a genuine lint error worth blocking on.
+      #
+      # This was check-only until a run of agent-authored commits kept dying on
+      # pure formatting (a collapsed generic signature, a wrapped array literal).
+      # `parallel: true` interleaves command output, which made those failures
+      # easy to miss entirely — see CLAUDE.md § "Never `--no-verify`".
       glob: '*.{ts,tsx,js,jsx,json}'
-      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm exec biome check --staged --no-errors-on-unmatched {staged_files}
+      run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm exec biome check --write --staged --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
     typecheck:
       glob: '*.{ts,tsx}'
       run: eval "$(fnm env)" && fnm use --silent-if-unchanged && pnpm typecheck

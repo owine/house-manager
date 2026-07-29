@@ -7,6 +7,16 @@
     "github>owine/renovate-config:docker",
     "github>owine/renovate-config:alpine"
   ],
+  "dockerfile": {
+    "description": "Un-ignore test directories for the dockerfile manager only. `github>owine/renovate-config` -> default.json -> config:best-practices -> config:recommended -> :ignoreModulesAndTests sets a top-level ignorePaths that includes `**/tests/**`, which silently hid tests/e2e/visual.Dockerfile from its introduction in #171 until #323 found it pinned to a Playwright image two minors behind the npm client — the container failed at browser launch with `Executable doesn't exist`. An untracked file produces no PR, no error, and no Dependency Dashboard entry, so nothing ever reports it. This re-lists the inherited paths minus the three test-directory globs. It is manager-scoped on purpose: a top-level ignorePaths would replace the preset's list for EVERY manager, so npm and github-actions would start scanning fixture manifests under tests/. Kept local rather than pushed to the shared preset — un-ignoring test dirs fleet-wide off one data point is too broad.",
+    "ignorePaths": [
+      "**/node_modules/**",
+      "**/bower_components/**",
+      "**/vendor/**",
+      "**/examples/**",
+      "**/__fixtures__/**"
+    ]
+  },
   "customManagers": [
     {
       "description": "Track pinned Alpine apk packages via Repology. IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24)",
@@ -32,6 +42,11 @@
       "description": "GitGuardian (action + ggshield CLI) must stay version-consistent",
       "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
       "groupName": "gitguardian"
+    },
+    {
+      "description": "The Playwright npm client and the visual-harness base image must stay version-consistent — a mismatch makes the container fail at browser launch with 'Executable doesn't exist'. Deliberately excludes @axe-core/playwright, which versions independently.",
+      "matchPackageNames": ["@playwright/test", "mcr.microsoft.com/playwright"],
+      "groupName": "playwright"
     }
   ]
 }

@@ -41,8 +41,13 @@ pnpm exec vitest run lib/reminders -t "monthly weekday"   # by test name
 pnpm test:e2e:local tests/e2e/signin.spec.ts              # one Playwright spec
 ```
 
-Note `pnpm test:unit` passes directory args, so appending a path *widens* the run
-rather than narrowing it — invoke `vitest` directly for a single file.
+Note `pnpm test:unit` and `pnpm test:integration` both pass directory args, so
+appending a path *widens* the run rather than narrowing it — invoke `vitest`
+directly for a single file:
+
+```bash
+pnpm exec vitest run tests/integration/notify-job.test.ts   # one integration file
+```
 
 **CI vs local.** CI runs a lean gate: lint, typecheck, migrate-check, ggshield, unit,
 integration, and only `@critical` e2e. The **full** e2e suite and the coverage floor are
