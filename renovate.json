@@ -32,6 +32,11 @@
       "description": "GitGuardian (action + ggshield CLI) must stay version-consistent",
       "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
       "groupName": "gitguardian"
+    },
+    {
+      "description": "The Playwright npm client and the visual-harness base image must stay version-consistent — a mismatch makes the container fail at browser launch with 'Executable doesn't exist'. Deliberately excludes @axe-core/playwright, which versions independently.",
+      "matchPackageNames": ["@playwright/test", "mcr.microsoft.com/playwright"],
+      "groupName": "playwright"
     }
   ]
 }
