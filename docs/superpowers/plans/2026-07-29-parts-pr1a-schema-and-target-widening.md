@@ -18,7 +18,15 @@ Three facts that will otherwise cost you hours:
 
 1. **`pnpm test:unit` and `pnpm test:integration` pass directory arguments**, so appending a path *widens* the run instead of narrowing it. To run one file, invoke vitest directly: `pnpm exec vitest run tests/integration/parts-constraints.test.ts`.
 2. **`git commit` can fail silently behind the Biome pre-commit hook.** After every commit, verify HEAD actually moved with `git log --oneline -1`. Never use `--no-verify`.
-3. **The dev database is disposable.** If a migration blocks, reset and reseed (`pnpm exec prisma migrate reset --force`) rather than doing checksum surgery.
+3. **`prisma migrate reset` and bare `migrate dev` are both unusable here.** Prisma 7.9 detects agentic sessions and refuses destructive commands without `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`; a task prompt is not user consent, so **ask the human** rather than setting it. And `migrate dev` is interactive — it aborts on a non-TTY and prompts y/N on destructive-unique warnings. Use this instead, which is better anyway:
+
+   ```bash
+   pnpm exec prisma migrate dev --create-only --name <name>   # generate, don't apply
+   # ... hand-append the custom SQL ...
+   pnpm exec prisma migrate deploy                            # apply the FINAL file
+   ```
+
+   Applying after editing means the recorded checksum matches the file you actually shipped, so there is no checksum drift to reconcile.
 
 `prisma migrate diff` cannot regenerate any of the hand-written SQL in Task 2. Eyeball the generated migration for dropped CHECK constraints and dropped `NULLS NOT DISTINCT` indexes every time you regenerate.
 
@@ -145,8 +153,10 @@ git log --oneline -1   # confirm HEAD moved
 
 ```bash
 docker compose up -d db meilisearch
-pnpm db:migrate --name parts
+pnpm exec prisma migrate dev --create-only --name parts
 ```
+
+`--create-only` generates the migration without applying it, so you can append the custom SQL *before* it runs and the checksum matches the final file.
 
 - [ ] **Step 2: Read the generated SQL and check for damage**
 
@@ -199,13 +209,20 @@ CREATE UNIQUE INDEX "sr_targets_record_item_system_part_key"
 
 - [ ] **Step 4: Apply and confirm no drift**
 
+Use **the same command CI's `migrate-check` job runs** (`.github/workflows/ci.yml:173`). The `--from-schema-datamodel` / `--to-schema-datasource` flags do not exist in Prisma 7:
+
 ```bash
-pnpm exec prisma migrate reset --force   # dev DB is disposable
-pnpm exec prisma migrate diff --from-schema-datamodel prisma/schema.prisma \
-  --to-schema-datasource prisma/schema.prisma --exit-code
+pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma
 ```
 
-Expected: exit code 0 (no drift). A non-zero exit means the schema and the migration disagree — almost always a `map:` name mismatch from Task 1 Step 4.
+Expected output is **exactly one** known difference and nothing else:
+
+```
+[*] Changed the `embeddings` table
+  [-] Removed index on columns (embedding)
+```
+
+That is the IVFFlat pgvector index, which Prisma cannot represent, so `migrate diff` always reports it as removed. CI filters that one line out and fails on any residual. Anything else in the output is real drift — almost always a `map:` name mismatch from Task 1 Step 4.
 
 - [ ] **Step 5: Commit**
 
