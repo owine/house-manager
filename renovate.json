@@ -17,9 +17,19 @@
       "**/__fixtures__/**"
     ]
   },
+  "regex": {
+    "description": "Same un-ignore as the `dockerfile` block above, applied to the custom regex manager. NOT redundant with it: managers are separate config namespaces, so un-ignoring test dirs for `dockerfile` does nothing for this one. The Alpine apk manager below matches `/Dockerfile$/`, which also matches tests/e2e/visual.Dockerfile, yet it inherits the preset's `**/tests/**` ignore independently. No live impact today — the visual harness pins no apk packages — but adding one there would be silently untracked, reproducing the #171 -> #323 failure exactly. The key is `regex`, not `custom.regex`: that is the name Renovate's own schema registers this manager under for config scoping, and `ignorePaths` is rejected inline on a customManagers entry. **The two ignorePaths lists must stay in sync** — editing one does not propagate to the other.",
+    "ignorePaths": [
+      "**/node_modules/**",
+      "**/bower_components/**",
+      "**/vendor/**",
+      "**/examples/**",
+      "**/__fixtures__/**"
+    ]
+  },
   "customManagers": [
     {
-      "description": "Track pinned Alpine apk packages via Repology. IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24)",
+      "description": "Track pinned Alpine apk packages via Repology. IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24). Its test-directory un-ignore lives in the top-level `regex` block, not here — custom managers reject an inline `ignorePaths`.",
       "customType": "regex",
       "managerFilePatterns": ["/Dockerfile$/"],
       "matchStringsStrategy": "any",
