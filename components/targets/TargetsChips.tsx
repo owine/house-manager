@@ -7,10 +7,11 @@ export interface TargetSummary {
   itemId: string | null;
   systemId: string | null;
   /**
-   * Optional `systemId` on an item target — when set, lets the chip renderer
-   * dedupe item chips that belong to a system already in the same target
-   * set (showing the system implies its items, so the item chips become
-   * noise). Callers that don't have system context just omit it.
+   * Optional `systemId` on an item target — when set, feeds
+   * `dropSystemCoveredItems` (lib/reminders/target-coverage.ts), which drops
+   * item chips whose parent system is already in the same target set
+   * (showing the system implies its items, so the item chips become noise).
+   * Callers that don't have system context just omit it.
    */
   item: { id: string; name: string; systemId?: string | null } | null;
   system: { id: string; name: string } | null;
