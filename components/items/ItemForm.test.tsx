@@ -97,6 +97,68 @@ describe('ItemForm silent-failure regression (#304)', () => {
     await screen.findByText(/dims: Invalid input/);
   });
 
+  // Found while writing the reserved-key test below, and far worse than it:
+  // the "reset metadata when the category changes" effect also fired on MOUNT,
+  // so opening any item's edit form and saving without touching anything
+  // submitted `metadata: {}` and destroyed every stored spec value.
+  //
+  // It hid because the shadcn Select for the discriminator keeps its own
+  // uncontrolled value — the form still looked populated while the payload was
+  // empty. So this test asserts on the SUBMITTED PAYLOAD, not on the rendered
+  // inputs. A render-level assertion would have passed against the bug.
+  it('does not wipe stored metadata when an edit form is opened and saved untouched', async () => {
+    const action = makeAction({ ok: true, data: { id: 'i1' } });
+    const user = userEvent.setup();
+    const metadata = { applianceType: 'refrigerator', capacityCuFt: 25, color: 'stainless' };
+
+    render(
+      <ItemForm
+        categories={[{ id: 'c2', slug: 'appliance', name: 'Appliance', icon: null, sortOrder: 0 }]}
+        defaultValues={{ id: 'i1', name: 'Fridge', categorySlug: 'appliance', metadata }}
+        action={action}
+        submitLabel="Save item"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save item' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+
+    expect(action.mock.calls[0]?.[0]).toMatchObject({ metadata });
+  });
+
+  // The mirror image of the above, and a worse bug: `freeformMetadataSchema`
+  // REJECTS reserved keys, but the textarea used to pre-fill from the stored
+  // blob verbatim. So an item captured by the AI (which writes `_provenance`
+  // directly via Prisma) in `other` or an unregistered category could not be
+  // saved at all — validation failed on a field the user never touched, with
+  // no way to tell why short of deleting a key they didn't know existed.
+  it('excludes reserved keys from the freeform metadata textarea', () => {
+    render(
+      <ItemForm
+        categories={categories}
+        defaultValues={{
+          name: 'Backyard String Lights',
+          categorySlug: 'other',
+          metadata: {
+            _provenance: { name: 'user', model: 'user', location: 'inferred' },
+            bulbBase: 'E26',
+          },
+        }}
+        action={makeAction({ ok: true, data: { id: 'i1' } })}
+        submitLabel="Save item"
+      />,
+    );
+
+    const textarea = screen.getByLabelText(/Metadata \(JSON\)/) as HTMLTextAreaElement;
+
+    expect(textarea.value).not.toContain('_provenance');
+    expect(textarea.value).not.toContain('inferred');
+    // The user's own keys must survive — the filter is on the prefix, not a
+    // blanket wipe of the blob.
+    expect(textarea.value).toContain('bulbBase');
+    expect(textarea.value).toContain('E26');
+  });
+
   it('surfaces the server-side reserved-key rejection on the metadata field', async () => {
     const action = makeAction(makeReservedKeyRejection());
     const user = userEvent.setup();

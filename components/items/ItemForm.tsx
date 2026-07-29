@@ -2,7 +2,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Category } from '@prisma/client';
 import { useRouter } from 'next/navigation';
-import { useEffect, useTransition } from 'react';
+import { useEffect, useRef, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
@@ -86,11 +86,24 @@ export function ItemForm({
   const formError = (errors as { root?: { message?: string } }).root?.message;
   const watchedCategorySlug = watch('categorySlug');
 
-  // Reset metadata when category changes so previous-category values don't leak.
+  // Reset metadata when the category *changes* so previous-category values
+  // don't leak.
+  //
+  // The ref guard is load-bearing. A useEffect keyed on a watched value also
+  // fires on mount, and `watchedCategorySlug` is populated from `defaultValues`
+  // on the first render — so the previous `!== undefined` check passed
+  // immediately and wiped the stored metadata of every item opened in the edit
+  // form. An untouched save then submitted `metadata: {}`, destroying
+  // applianceType, capacities, colour, everything.
+  //
+  // It went unnoticed because the shadcn Select for the discriminator holds its
+  // own uncontrolled value, so the form still *looked* populated on screen while
+  // the submitted payload was empty. See the regression test in ItemForm.test.tsx.
+  const prevCategorySlug = useRef(watchedCategorySlug);
   useEffect(() => {
-    if (watchedCategorySlug !== undefined) {
-      setValue('metadata', {});
-    }
+    if (prevCategorySlug.current === watchedCategorySlug) return;
+    prevCategorySlug.current = watchedCategorySlug;
+    setValue('metadata', {});
   }, [watchedCategorySlug, setValue]);
 
   const onSubmit = handleSubmit((data) => {

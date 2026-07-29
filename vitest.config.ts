@@ -21,6 +21,11 @@ export default defineConfig({
       'lib/**/*.test.tsx',
       'worker/**/*.test.ts',
       'components/**/*.test.tsx',
+      // Colocated tests for route-group components (tabs, cards). `app/**` is
+      // deliberately absent from `coverage.include` below, so adding tests here
+      // exercises app code without pulling 42 untested page.tsx files into the
+      // coverage denominator and sinking the floor.
+      'app/**/*.test.tsx',
     ],
     // Integration suites need long timeouts for Testcontainers cold start.
     // The unit-only run uses --testTimeout via the script, but defaults are

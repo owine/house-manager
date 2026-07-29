@@ -13,7 +13,7 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "test": "vitest run",
-    "test:unit": "vitest run tests/unit lib worker/jobs components",
+    "test:unit": "vitest run tests/unit lib worker/jobs components app",
     "test:integration": "vitest run tests/integration",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:watch": "vitest",
