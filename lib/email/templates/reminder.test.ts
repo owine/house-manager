@@ -184,4 +184,111 @@ describe('reminderEmail', () => {
     // The text version should also escape or omit dangerous content
     expect(html).not.toMatch(/<img[^>]*onerror/);
   });
+
+  it('hides item targets whose parent system is also targeted', () => {
+    // The reported bug: one reminder, two HVAC systems, four component items.
+    // Six lines arrive; two should.
+    const { html, text } = reminderEmail(
+      baseData({
+        title: 'HVAC Filters',
+        targets: [
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_df', name: 'Downstairs Furnace', systemId: 'sys_down' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            system: { id: 'sys_down', name: 'Downstairs HVAC' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_dhp', name: 'Downstairs Heat Pump', systemId: 'sys_down' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            system: { id: 'sys_up', name: 'Upstairs HVAC' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_uf', name: 'Upstairs Furnace', systemId: 'sys_up' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_uhp', name: 'Upstairs Heat Pump', systemId: 'sys_up' },
+          },
+        ],
+      }),
+    );
+
+    for (const body of [html, text]) {
+      expect(body).toContain('Downstairs HVAC');
+      expect(body).toContain('Upstairs HVAC');
+      expect(body).not.toContain('Downstairs Furnace');
+      expect(body).not.toContain('Downstairs Heat Pump');
+      expect(body).not.toContain('Upstairs Furnace');
+      expect(body).not.toContain('Upstairs Heat Pump');
+    }
+    // Exactly two bullets survive.
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2);
+  });
+
+  it('keeps an item target whose parent system is not targeted', () => {
+    const { html } = reminderEmail(
+      baseData({
+        targets: [
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_uf', name: 'Upstairs Furnace', systemId: 'sys_up' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            system: { id: 'sys_plumb', name: 'Plumbing' },
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('Upstairs Furnace');
+    expect(html).toContain('Plumbing');
+  });
+
+  it('keeps a covered item target whose due date has drifted', () => {
+    // Completed late, so this target advanced independently of its system.
+    // Hiding it would make an overdue filter invisible.
+    const { html } = reminderEmail(
+      baseData({
+        targets: [
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-08T00:00:00Z')),
+            item: { id: 'itm_uf', name: 'Upstairs Furnace', systemId: 'sys_up' },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            system: { id: 'sys_up', name: 'Upstairs HVAC' },
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('Upstairs Furnace');
+    expect(html).toContain('Upstairs HVAC');
+  });
+
+  it('keeps an item target that belongs to no system', () => {
+    const { html, text } = reminderEmail(
+      baseData({
+        targets: [
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            item: { id: 'itm_fridge', name: 'Fridge', systemId: null },
+          },
+          {
+            nextDueOn: asCalendarDate(new Date('2026-08-01T00:00:00Z')),
+            system: { id: 'sys_up', name: 'Upstairs HVAC' },
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('Fridge');
+    expect(html).toContain('Upstairs HVAC');
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2);
+  });
 });

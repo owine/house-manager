@@ -83,16 +83,54 @@ describe('groupBySystem', () => {
   });
 
   // The mixed case targetsArraySchema permits: one reminder targeting both an
-  // item AND the system that owns it. A "suppress only when it is the sole
-  // target" rule would render "HVAC" as a bullet under the "HVAC" heading.
-  it('drops the self-referential system target but keeps the item', () => {
+  // item AND the system that owns it. Under the "HVAC" heading, "Furnace" adds
+  // nothing the heading has not already said — the system covers its items.
+  it('drops both the self-referential system target and the items it covers', () => {
     const groups = groupBySystem([
       row({ target: { kind: 'item', id: 'itm_furnace', name: 'Furnace' }, system: HVAC }),
       row({ target: { kind: 'system', id: HVAC.id, name: HVAC.name }, system: HVAC }),
     ]);
 
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.system?.name).toBe('HVAC');
     expect(groups[0]?.entries).toHaveLength(1);
-    expect(groups[0]?.entries[0]?.targets.map((t) => t.name)).toEqual(['Furnace']);
+    expect(groups[0]?.entries[0]?.title).toBe('Replace filter');
+    expect(groups[0]?.entries[0]?.targets).toEqual([]);
+  });
+
+  it('keeps items when the entry carries no system target of its own', () => {
+    // Nothing covers them: the heading is attribution, not a target.
+    const groups = groupBySystem([
+      row({ target: { kind: 'item', id: 'itm_furnace', name: 'Furnace' }, system: HVAC }),
+      row({ target: { kind: 'item', id: 'itm_hp', name: 'Heat Pump' }, system: HVAC }),
+    ]);
+
+    expect(groups[0]?.entries[0]?.targets.map((t) => t.name)).toEqual(['Furnace', 'Heat Pump']);
+  });
+
+  it('keeps a covered item whose due date drifted from its system target', () => {
+    // Different dueOn => different entry => no system target in scope to cover
+    // it. The date rule holds here without any date comparison.
+    const groups = groupBySystem([
+      row({ dueOn: JUN5, target: { kind: 'item', id: 'itm_furnace', name: 'Furnace' } }),
+      row({ dueOn: JUN1, target: { kind: 'system', id: HVAC.id, name: HVAC.name } }),
+    ]);
+
+    expect(groups[0]?.entries).toHaveLength(2);
+    const jun5 = groups[0]?.entries.find((e) => e.dueOn.getTime() === JUN5.getTime());
+    expect(jun5?.targets.map((t) => t.name)).toEqual(['Furnace']);
+    const jun1 = groups[0]?.entries.find((e) => e.dueOn.getTime() === JUN1.getTime());
+    expect(jun1?.targets).toEqual([]);
+  });
+
+  it('leaves the Unassigned group alone', () => {
+    // system === null, so no item there has a parent that could cover it.
+    const groups = groupBySystem([
+      row({ system: null, target: { kind: 'item', id: 'itm_fridge', name: 'Fridge' } }),
+    ]);
+
+    expect(groups[0]?.system).toBeNull();
+    expect(groups[0]?.entries[0]?.targets.map((t) => t.name)).toEqual(['Fridge']);
   });
 
   it('orders systems alphabetically, entries by date then title, targets by name', () => {

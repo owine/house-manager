@@ -30,7 +30,7 @@ export async function handleNotify(
       targets: {
         select: {
           nextDueOn: true,
-          item: { select: { id: true, name: true } },
+          item: { select: { id: true, name: true, systemId: true } },
           system: { select: { id: true, name: true } },
         },
       },

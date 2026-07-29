@@ -6,8 +6,9 @@ import type { ListParams } from '@/lib/url-params';
 const TARGETS_INCLUDE = {
   targets: {
     include: {
-      // `item.systemId` lets <TargetsChips> dedupe item chips whose parent
-      // system is also in the same target set.
+      // `item.systemId` feeds `dropSystemCoveredItems`
+      // (lib/reminders/target-coverage.ts), which hides item targets whose
+      // parent system is targeted by the same reminder.
       item: { select: { id: true, name: true, systemId: true } },
       system: { select: { id: true, name: true } },
     },

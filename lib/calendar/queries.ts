@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { collapseDuplicateEvents } from './collapse';
 
 export type CalendarEvent =
   | {
@@ -29,9 +30,10 @@ export async function listCalendarEventsInRange(opts: {
 }): Promise<CalendarEvent[]> {
   const { start, end } = opts;
 
-  // `nextDueOn` lives on ReminderTarget — multiple targets on one reminder
-  // can be due on different days. We surface each target as its own event
-  // so a reminder spanning 3 items renders as 3 dots, not one.
+  // `nextDueOn` lives on ReminderTarget — multiple targets on one reminder can
+  // be due on different days, so each target is projected as its own event and
+  // duplicates within a day are collapsed below. A reminder spanning 3 items
+  // due on 3 days is 3 dots; the same 3 items due on one day is 1 dot.
   const [targets, services] = await Promise.all([
     prisma.reminderTarget.findMany({
       where: { nextDueOn: { gte: start, lt: end }, reminder: { active: true } },
@@ -48,7 +50,7 @@ export async function listCalendarEventsInRange(opts: {
     }),
   ]);
 
-  const events: CalendarEvent[] = [
+  const events: CalendarEvent[] = collapseDuplicateEvents([
     ...targets.map(
       (t): CalendarEvent => ({
         kind: 'reminder' as const,
@@ -65,7 +67,7 @@ export async function listCalendarEventsInRange(opts: {
         date: s.performedOn,
       }),
     ),
-  ];
+  ]);
   events.sort((a, b) => a.date.getTime() - b.date.getTime());
   return events;
 }

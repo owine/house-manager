@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatCalendarDate } from '@/lib/format/date';
+import { dropSystemCoveredItems } from '@/lib/reminders/target-coverage';
 import type { CalendarDate } from '@/lib/time/tz';
 import { EMAIL_TOKENS, Layout } from '../layout';
 import { renderEmail } from '../render';
@@ -8,7 +9,8 @@ const T = EMAIL_TOKENS;
 
 type ReminderEmailTarget = {
   nextDueOn: CalendarDate;
-  item?: { id: string; name: string };
+  /** `systemId` is the item's parent system — it drives coverage suppression. */
+  item?: { id: string; name: string; systemId?: string | null };
   system?: { id: string; name: string };
 };
 
@@ -41,7 +43,17 @@ type ResolvedTarget = {
 };
 
 function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
-  return data.targets.map((t) => {
+  // An item target is noise when the same reminder also targets the system that
+  // owns it *on the same day* — the system's line already covers it. Dates must
+  // agree: per-target completion lets a component drift away from its system,
+  // and a drifted target is exactly the one worth still seeing.
+  const visible = dropSystemCoveredItems(data.targets, (t) => ({
+    systemId: t.system?.id ?? null,
+    itemSystemId: t.item?.systemId ?? null,
+    dueOn: t.nextDueOn,
+  }));
+
+  return visible.map((t) => {
     // Schema enforces XOR via parent-XOR check constraint: exactly one of
     // item/system is present per target. If both are missing (shouldn't
     // happen) we fall back to a non-link label so the email still sends.
