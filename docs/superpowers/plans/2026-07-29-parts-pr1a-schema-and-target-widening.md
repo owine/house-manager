@@ -18,7 +18,7 @@ Three facts that will otherwise cost you hours:
 
 1. **`pnpm test:unit` and `pnpm test:integration` pass directory arguments**, so appending a path *widens* the run instead of narrowing it. To run one file, invoke vitest directly: `pnpm exec vitest run tests/integration/parts-constraints.test.ts`.
 2. **`git commit` can fail silently behind the Biome pre-commit hook.** After every commit, verify HEAD actually moved with `git log --oneline -1`. Never use `--no-verify`.
-3. **The dev database is disposable.** If a migration blocks, reset and reseed (`pnpm db:migrate reset`) rather than doing checksum surgery.
+3. **The dev database is disposable.** If a migration blocks, reset and reseed (`pnpm exec prisma migrate reset --force`) rather than doing checksum surgery.
 
 `prisma migrate diff` cannot regenerate any of the hand-written SQL in Task 2. Eyeball the generated migration for dropped CHECK constraints and dropped `NULLS NOT DISTINCT` indexes every time you regenerate.
 
@@ -53,6 +53,17 @@ Three facts that will otherwise cost you hours:
 | `lib/digests/queries.ts`, `lib/digests/group.ts` | Part in `DigestTarget` |
 | `lib/search/document.ts` | Part in the service aggregation loop + its select |
 | `lib/embedding/canonicalize.ts` | Part in `canonicalizeServiceRecord` |
+| `lib/reminders/queries.ts`, `lib/service-records/queries.ts`, `lib/warranties/queries.ts` | `part: { select: { id, name } }` on target selects — these feed `TargetsChips` and the edit pages |
+
+**This table is not exhaustive for Task 8.** Every render site needs `partId` /
+`part` selected by whichever query feeds it, and `pnpm typecheck` will name them
+one at a time. Expect roughly eight additional mechanical fallouts from Task 4's
+signature change alone (`TargetInput` is imported as a parameter type in
+`lib/reminders/actions.ts:10` and `lib/service-records/actions.ts:8`;
+`revalidateReminderPaths` is also called from `deleteReminder` at `:355`,
+`setReminderActive` at `:374`, and with an inline map at `:342`; `requireAnchor`
+in `lib/service-records/schema.ts:25` types targets as `{itemId?, systemId?}[]`).
+All are typecheck-caught — work through the list, don't try to predict it.
 
 **Deliberately NOT in this PR:** `lib/parts/*`, any route under `app/(app)/parts/`, the nav entry, the Parts tabs, the picker UI, `deleteSystemWithParts`, the `freeform.ts` extraction, seeds. Those are PR 1b.
 
@@ -189,7 +200,7 @@ CREATE UNIQUE INDEX "sr_targets_record_item_system_part_key"
 - [ ] **Step 4: Apply and confirm no drift**
 
 ```bash
-pnpm db:migrate reset --force   # dev DB is disposable
+pnpm exec prisma migrate reset --force   # dev DB is disposable
 pnpm exec prisma migrate diff --from-schema-datamodel prisma/schema.prisma \
   --to-schema-datasource prisma/schema.prisma --exit-code
 ```
@@ -293,7 +304,12 @@ describe('part_links constraints', () => {
 describe('reminder_targets 3-way at-most-one', () => {
   async function makeReminder(kind: 'REMINDER' | 'CHORE') {
     return ctx.prisma.reminder.create({
-      data: { title: 't', kind, recurrence: { freq: 'MONTHLY', interval: 1 }, notifyUserIds: [] },
+      data: {
+        title: 't',
+        kind,
+        recurrence: { kind: 'interval', every: 1, unit: 'month' },
+        notifyUserIds: [],
+      },
     });
   }
 
@@ -557,12 +573,17 @@ Expected: FAIL — the seed key builder returns `s:undefined` for a part row, co
 
 - [ ] **Step 3: Implement**
 
-Change the key builder to cover all three, and keep the type as `PartTargetInput`:
+There is no named key builder to change — `lib/targets/expand.ts:18` inlines the
+expression inside `new Set(seed.map(...))`. Extract it, and widen `seed`, `out`
+and the return type from `TargetInput[]` to `PartTargetInput[]`:
 
 ```ts
 const keyOf = (t: PartTargetInput) =>
   t.itemId ? `i:${t.itemId}` : t.systemId ? `s:${t.systemId}` : `p:${t.partId}`;
 ```
+
+Without the extraction the inline version returns `s:undefined` for a part row,
+colliding with a real system target.
 
 **Do not make a system selection expand to its parts.** Items are *components* of a system; parts are *consumed by* it. "Serviced the furnace" must not silently claim the filter was replaced.
 
@@ -600,6 +621,32 @@ A part-only row is `itemId === null && systemId === null`. So it is **excluded f
 
 - [ ] **Step 1: Write the failing integration tests**
 
+**Before the snippet — three pieces of harness boilerplate the snippet omits.**
+Copy them from `tests/integration/incoming-email-actions.test.ts`:
+
+1. **Import the actions dynamically, inside `beforeAll`, after `setupIntegration()`.**
+   `lib/db.ts` builds its Prisma client singleton at *import* time, so a static
+   `import { createReminder } from '@/lib/reminders/actions'` connects to the wrong
+   database — `setupIntegration()` has not yet repointed `DATABASE_URL`. See
+   `tests/integration/helpers.ts:23-28`. Use:
+
+   ```ts
+   let actions: typeof import('@/lib/reminders/actions');
+   beforeAll(async () => {
+     ctx = await setupIntegration();
+     actions = await import('@/lib/reminders/actions');
+   }, 180_000);
+   ```
+
+   and call `actions.createReminder(...)` throughout.
+
+2. **`vi.mock('@/lib/auth')`** so `auth()` returns a session with a real user id,
+   and **`vi.mock('next/cache')`** so `revalidatePath` is a no-op.
+
+3. **The standard `beforeEach` fixture scaffold** — the truncate list, a category,
+   an item, a system, and the `partId` used below. Reuse the one from
+   `tests/integration/parts-constraints.test.ts` (Task 3).
+
 ```ts
 // Part targets are structurally identical to the standalone-chore sentinel on
 // (itemId, systemId). Every one of these tests fails against the unwidened
@@ -609,7 +656,7 @@ describe('part target survives reconciliation', () => {
     const created = await createReminder({
       title: 'Change filter',
       kind: 'REMINDER',
-      recurrence: { freq: 'MONTHLY', interval: 1 },
+      recurrence: { kind: 'interval', every: 1, unit: 'month' },
       nextDueOn: todayCal(),
       targets: [{ partId }],
     });
@@ -624,7 +671,7 @@ describe('part target survives reconciliation', () => {
       id,
       title: 'Change filter',
       kind: 'REMINDER',
-      recurrence: { freq: 'MONTHLY', interval: 1 },
+      recurrence: { kind: 'interval', every: 1, unit: 'month' },
       targets: [{ partId }],
     });
 
@@ -639,7 +686,7 @@ describe('part target survives reconciliation', () => {
     const created = await createReminder({
       title: 'Service',
       kind: 'REMINDER',
-      recurrence: { freq: 'YEARLY', interval: 1 },
+      recurrence: { kind: 'interval', every: 1, unit: 'year' },
       nextDueOn: todayCal(),
       targets: [{ partId }, { partId: second.id }],
     });
@@ -654,7 +701,7 @@ describe('part target survives reconciliation', () => {
     const created = await createReminder({
       title: 'Sweep',
       kind: 'CHORE',
-      recurrence: { freq: 'WEEKLY', interval: 1 },
+      recurrence: { kind: 'weekly', weekdays: [1], interval: 1 },
       nextDueOn: todayCal(),
       targets: [],
     });
@@ -668,7 +715,7 @@ describe('part target survives reconciliation', () => {
       id,
       title: 'Sweep',
       kind: 'CHORE',
-      recurrence: { freq: 'WEEKLY', interval: 1 },
+      recurrence: { kind: 'weekly', weekdays: [1], interval: 1 },
       targets: [{ partId }],
     });
 
@@ -687,7 +734,7 @@ describe('completing a part-targeted reminder', () => {
     const created = await createReminder({
       title: 'Change filter',
       kind: 'REMINDER',
-      recurrence: { freq: 'MONTHLY', interval: 1 },
+      recurrence: { kind: 'interval', every: 1, unit: 'month' },
       nextDueOn: todayCal(),
       autoCreateServiceRecord: true,
       targets: [{ partId }],
@@ -697,7 +744,15 @@ describe('completing a part-targeted reminder', () => {
 
     // Against the unwidened code this THROWS: the mirrored row is all-NULL and
     // violates service_record_targets_parent_xor.
-    const done = await completeReminder({ reminderId: id, targetId: target.id });
+    const done = await completeReminder({
+      id,
+      targetIds: [target.id],
+      // REQUIRED: the auto-create branch is gated on
+      // `reminder.autoCreateServiceRecord && serviceRecord` (actions.ts:457).
+      // Omit this and no ServiceRecord is created even with autoCreate on, so
+      // the test would pass vacuously.
+      serviceRecord: { summary: 'Filter changed' },
+    });
     expect(done.ok).toBe(true);
 
     const srTargets = await ctx.prisma.serviceRecordTarget.findMany();
@@ -802,7 +857,7 @@ git log --oneline -1
 
 - [ ] **Step 1: Widen `targetsToCreateData`**
 
-At `lib/service-records/actions.ts:43-48`, add `partId: t.partId ?? null`. Used by `createServiceRecord`; without it a part target inserts all-NULL and throws.
+At `lib/service-records/actions.ts:42-47`, add `partId: t.partId ?? null`. Used by `createServiceRecord`; without it a part target inserts all-NULL and throws.
 
 - [ ] **Step 2: Widen the diff key and its select**
 
@@ -813,7 +868,7 @@ Same typecheck blindness as Task 6 Step 5.
 
 - [ ] **Step 3: Widen `validateTargets` and `revalidateForTargets`**
 
-Mirror Task 6 Steps 7 and 8 in `lib/service-records/actions.ts:17-36`.
+Mirror Task 6 Steps 7 and 8: `validateTargets` is at `lib/service-records/actions.ts:17-35` and `revalidateForTargets` at `:49-54`.
 
 - [ ] **Step 4: Route the service edit page through the shared helper**
 
@@ -936,6 +991,10 @@ pnpm test:coverage
 Never lower a threshold in `vitest.config.ts` to make this pass. The floor only ratchets up.
 
 - [ ] **Step 5: Open the PR**
+
+**Do not push before Task 8 lands.** Committing per task deliberately leaves the
+tree non-compiling between Task 4 and Task 8 (Task 4 Step 5 says as much), and CI
+runs typecheck on every push.
 
 Follow the repo's PR workflow: push, `gh pr create`, watch the Sourcery review check and address its comments, then `gh pr merge --auto --squash`, then watch CI.
 
