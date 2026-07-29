@@ -129,6 +129,10 @@ plus `@@index([partId])` on each. **Do not add `partId` to `WarrantyTarget` or `
 
 The `map:` is **required, not cosmetic**. Prisma's default name for the service-record one would be `service_record_targets_serviceRecordId_itemId_systemId_partId_key` — 65 characters, over Postgres's 63-byte identifier limit. Postgres truncates silently and Prisma truncates by its own rule, so the two would disagree and the `migrate-check` CI job would report permanent drift. Both are mapped so the tables stay symmetric.
 
+**Note:** `pnpm typecheck` still PASSES after Tasks 1–3. Adding an optional
+column and relation is purely additive — nothing existing breaks. The tree only
+goes non-compiling at **Task 4**, when `toTargetInputs`' signature changes.
+
 - [ ] **Step 5: Verify the schema parses**
 
 Run: `pnpm exec prisma validate`
