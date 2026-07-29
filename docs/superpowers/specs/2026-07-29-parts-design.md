@@ -454,8 +454,9 @@ Required changes:
   `` `${itemId ?? ''}|${systemId ?? ''}|${partId ?? ''}` `` — **and extend the
   Prisma `select`s that feed them**: `lib/reminders/actions.ts:151-161`,
   `lib/service-records/actions.ts:131-133`, and `createReminder`'s result select
-  at `:121-123` (which feeds `revalidateReminderPaths`). All three select only
-  `{ id, itemId, systemId }`.
+  at `:121-123` (which feeds `revalidateReminderPaths`). **None of the three
+  selects `partId`** — the reminder one also selects `lastCompletedOn` and
+  `nextDueOn`, so don't diff against a literal `{ id, itemId, systemId }`.
 
   **Typecheck will not catch a missed select.** `key()`'s parameter is
   structurally typed with optional fields
@@ -606,14 +607,35 @@ that was wrong.
 
 Three PRs. PR 1 stands alone and is useful without the others.
 
-**PR 1a — target widening.** The reconciliation, validation-schema split, and
-label-rendering changes above, with their integration tests and nothing else. No
-`Part` model yet: `partId` columns and the CHECK/index rebuild land here so the
-highest-risk change is reviewable on its own. Nothing user-visible ships.
+**PR 1a — schema + target widening.** The `PartKind` enum, the `Part` and
+`PartLink` models, the migration creating both tables, the `partId` columns and
+the CHECK/index rebuild, plus the reconciliation fix, the validation-schema
+split, and every label-rendering site — with their integration tests and nothing
+else.
 
-**PR 1b — core.** `lib/parts/*`, the `Part`/`PartLink` models, pages, nav, Parts
-tabs, the picker UI, the `deleteSystemWithParts` dialog, the `freeform.ts`
-extraction, seed rows, `knip.json` entries.
+**The models must be here, not deferred.** Prisma requires both sides of a
+relation, so `ReminderTarget.part Part?` cannot exist without `Part` and its
+`reminderTargets` back-reference. And every label site reads the *relation*
+(`t.part?.name`, plus `part: { select: { id, name } }` added to the selects in
+`worker/jobs/notify.ts`, `lib/digests/queries.ts`, `lib/search/document.ts:284-289`
+and `lib/embedding/canonicalize.ts`) — none of which a bare `partId String?`
+supports. `validateTargets`' part-existence check needs `prisma.part.findMany`,
+and without a `parts` table there is no FK, so a bogus `partId` would insert
+cleanly: the precise failure that check exists to prevent.
+
+Nothing user-visible still ships — two empty tables and a model with no Zod
+surface, no routes and no nav entry are invisible to the user, so the intent of
+the split (review the highest-risk change on its own) is preserved.
+
+Integration tests split accordingly: `part_links` CHECK/unique assertions and the
+target-reconciliation assertions are PR 1a (they need a `Part` fixture row, which
+1a makes possible); the derived-archive query and `deleteSystemWithParts` are
+PR 1b with the queries and dialog they exercise.
+
+**PR 1b — feature surface.** `lib/parts/*` (schema, queries, actions, kinds),
+pages, nav, Parts tabs, the picker UI, the link/unlink actions, the
+`deleteSystemWithParts` dialog, the `freeform.ts` extraction, seed rows,
+`knip.json` entries.
 
 **PR 2 — conversational capture.** `CREATE_PART`/`UPDATE_PART` in
 `ChatProposalKind`; the payload union in `lib/chat/schema.ts`;
