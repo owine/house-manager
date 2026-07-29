@@ -271,6 +271,26 @@ Visual-regression baselines are platform-pinned to the linux Playwright image an
 only be regenerated through `pnpm test:visual:update` (the dockerized harness). Baselines
 generated on macOS will diff on every subsequent run.
 
+**After any `@playwright/test` bump, run `pnpm exec playwright install`.** The version
+has to agree in three independent places, and only CI fixes itself:
+
+| Where | Kept in sync by |
+|---|---|
+| CI | the workflow runs `playwright install` every job |
+| `tests/e2e/visual.Dockerfile` | Renovate — grouped with the npm client under `groupName: playwright` (#324) so the image and the client can only move together |
+| **your machine's `~/Library/Caches/ms-playwright`** | **nothing — do it by hand** |
+
+All three fail the same unhelpful way, pointing at a missing binary rather than at a
+version mismatch:
+
+```
+Error: browserType.launch: Executable doesn't exist at
+  …/chromium_headless_shell-1234/chrome-headless-shell
+```
+
+If that appears right after a dependency update, it is a stale browser cache, not a
+broken test. It bit both the dockerized harness (#325) and the host in the same session.
+
 ## Conventions
 
 - **Dependency pinning:** every dep is pinned to an exact version (`x.y.z`, no range

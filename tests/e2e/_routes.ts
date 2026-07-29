@@ -7,13 +7,21 @@ import { expect, type Page } from '@playwright/test';
  * month turns — which is exactly what happened: a baseline captured in May 2026
  * failed in July against a grid one row shorter.
  *
- * This must stay a month in the **past**, for two reasons: the seeded reminder
- * below is due 2026-06-01 (so June is the only month where the populated
- * calendar actually shows an event — unpinned, it was snapshotting an empty
- * grid and testing nothing), and a past month never contains "today", so the
- * today-cell ring that forced the grid to be masked can no longer appear.
+ * This date must stay in the **past**. The populated calendar only shows an
+ * event in the month this reminder falls in — unpinned, it was snapshotting an
+ * empty grid and testing nothing — and a past month never contains "today", so
+ * the today-cell ring that forced the grid to be masked can no longer appear.
+ * Move it forward and both properties break at once.
  */
-const CALENDAR_MONTH = '2026-06';
+const SEED_REMINDER_DUE_ON = '2026-06-01';
+
+/**
+ * Derived, never written twice. The calendar month and the seeded reminder's due
+ * date have to agree or the "populated" calendar silently shows an empty grid —
+ * which is the defect this pinning was introduced to fix, so a desync would
+ * reintroduce it invisibly.
+ */
+const CALENDAR_MONTH = SEED_REMINDER_DUE_ON.slice(0, 7);
 
 export const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'dashboard-empty', path: '/dashboard' },
@@ -112,7 +120,7 @@ export async function seedPopulated(
 
   await page.goto('/reminders/new');
   await page.getByLabel('Title').fill('Change furnace filter');
-  await fillDate(page.getByLabel('First due date'), '2026-06-01');
+  await fillDate(page.getByLabel('First due date'), SEED_REMINDER_DUE_ON);
   // Reminders require ≥1 target. The picker's Items section is collapsed by
   // default — expand it, then check the Furnace item created above.
   await page.getByRole('button', { name: /^Items/ }).click();

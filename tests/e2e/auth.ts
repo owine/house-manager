@@ -15,49 +15,57 @@ const meili = new Meilisearch({
   apiKey: process.env.MEILI_KEY ?? '',
 });
 
+/**
+ * Tables that must SURVIVE a reset. Everything else in the `public` schema is
+ * truncated.
+ *
+ * The list is inverted deliberately. It used to enumerate the tables to clear,
+ * which meant every new table was untracked until someone remembered to add it
+ * — `systems` never was, and accumulated across every e2e run this repo has
+ * done, which is how a committed `systems-empty` baseline ended up being a
+ * photograph of fourteen leftover systems. `chat_sessions` (added in #319) had
+ * the same hole. Opting a table OUT is a decision someone makes on purpose;
+ * opting one IN is a step they forget.
+ *
+ * The failure mode is now loud (a spec's fixture vanishes) rather than silent
+ * (state accumulates for months).
+ */
+const PRESERVED_TABLES = [
+  // Prisma's own bookkeeping. Truncating this makes the DB look unmigrated.
+  '_prisma_migrations',
+  // Seeded by `prisma seed`; specs open the Category combobox and pick "HVAC"
+  // by visible text, so clearing it breaks essentially every spec.
+  'categories',
+  // Per-house singleton, not per-spec state.
+  'house_profile',
+];
+
 export async function resetAuth(): Promise<void> {
-  // Truncates auth AND domain tables. Playwright runs workers:1 so specs share
-  // the same DB serially; without clearing items/services/etc. between specs,
-  // dashboard assertions hit "strict mode violation" from accumulated rows.
-  // CASCADE handles FK ordering so we don't have to enumerate child-first.
-  // Categories stay (seeded by `prisma seed`; tests open the Category combobox and pick "HVAC" by visible text).
-  // house_profile is a per-house singleton; not per-spec state, leave it.
+  // Playwright runs workers:1 so specs share the same DB serially; without
+  // clearing items/services/etc. between specs, dashboard assertions hit
+  // "strict mode violation" from accumulated rows.
   //
-  // **Every table backing an EMPTY_ROUTES page must be listed here.** A missing
-  // one accumulates silently across runs and only shows up as a visual-baseline
-  // failure much later: `systems` was absent, so `/systems` rendered a dozen
-  // leftover rows where `systems-empty` expects the "no systems yet" placeholder.
-  // CASCADE does not save you here — `Item.systemId` is `onDelete: SetNull`, so
-  // truncating `items` leaves systems standing. `Checklist`, `incoming_emails`
-  // and `chat_sessions` back /checklists, /inbox and /ask and had the same hole.
-  await prisma.$executeRawUnsafe(`
-    TRUNCATE
-      attachments,
-      reminder_completions,
-      notification_logs,
-      push_subscriptions,
-      digest_logs,
-      embeddings,
-      "AISuggestionLog",
-      chat_proposals,
-      chat_messages,
-      chat_sessions,
-      incoming_emails,
-      "ChecklistItem",
-      "Checklist",
-      service_records,
-      warranties,
-      notes,
-      reminders,
-      items,
-      systems,
-      vendors,
-      sessions,
-      accounts,
-      verification_tokens,
-      users
-    RESTART IDENTITY CASCADE
-  `);
+  // The table list is read from the database rather than hand-maintained, so a
+  // newly added table is cleared from the moment it exists. See
+  // PRESERVED_TABLES above for why this is inverted. CASCADE handles FK
+  // ordering, so enumeration order does not matter; RESTART IDENTITY resets
+  // sequences. Quoting every name keeps Prisma's PascalCase tables
+  // (`Checklist`, `AISuggestionLog`) working alongside the snake_case ones.
+  const tables = await prisma.$queryRawUnsafe<Array<{ tablename: string }>>(
+    'SELECT tablename FROM pg_tables WHERE schemaname = current_schema()',
+  );
+  const targets = tables
+    .map((t) => t.tablename)
+    .filter((name) => !PRESERVED_TABLES.includes(name))
+    .map((name) => `"${name}"`);
+
+  // Guard against a schema-introspection failure quietly turning this into a
+  // no-op — a reset that silently resets nothing is the bug this replaced.
+  if (targets.length === 0) {
+    throw new Error('resetAuth: no tables resolved to truncate; check DATABASE_URL/schema');
+  }
+
+  await prisma.$executeRawUnsafe(`TRUNCATE ${targets.join(', ')} RESTART IDENTITY CASCADE`);
 
   // Wipe + recreate the search index so a previous spec's items don't bleed
   // in. Recreating with settings is required: handleSearchIndex's first
