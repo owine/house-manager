@@ -1,3 +1,4 @@
+import { dropSystemCoveredItems } from '@/lib/reminders/target-coverage';
 import type { CalendarDate } from '@/lib/time/tz';
 
 // Pure grouping for digest emails. No I/O, no Prisma, no rendering — the rules
@@ -36,6 +37,35 @@ export type DigestGroup = {
 const UNASSIGNED = ' unassigned';
 
 /**
+ * Project one entry's rows into its visible target list.
+ *
+ * `dueOn` is omitted from the coverage facts because the entry key already
+ * contains it — every row here shares a due date, so agreement is structural.
+ * A target whose date drifted lands in a *different* entry, one carrying no
+ * system target, where nothing is suppressed.
+ *
+ * `itemSystemId` reads the row's resolved `system`, not its `target`:
+ * `DigestTarget` is `{kind, id, name}` and has no parent pointer. The query
+ * attributes an item row to its parent system (`lib/digests/queries.ts`), so
+ * within a group the row's system *is* the item's parent.
+ */
+function projectTargets(entryRows: readonly DigestRow[]): DigestTarget[] {
+  const visible = dropSystemCoveredItems(entryRows, (r) => ({
+    systemId: r.target?.kind === 'system' ? r.target.id : null,
+    itemSystemId: r.target?.kind === 'item' ? (r.system?.id ?? null) : null,
+  }));
+
+  const out: DigestTarget[] = [];
+  for (const r of visible) {
+    if (r.target === null) continue; // standalone chore: no target at all
+    // Drop the target that IS this group's system — the heading already names it.
+    if (r.target.kind === 'system' && r.target.id === r.system?.id) continue;
+    out.push(r.target);
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Collapse flat rows into one entry per (system, reminder, dueOn).
  *
  * `dueOn` is serialized into the key rather than used as a `Date`: two `Date`
@@ -49,7 +79,10 @@ const UNASSIGNED = ' unassigned';
 export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
   const bySystem = new Map<
     string,
-    { system: DigestGroup['system']; entries: Map<string, DigestEntry> }
+    {
+      system: DigestGroup['system'];
+      entries: Map<string, { entry: DigestEntry; rows: DigestRow[] }>;
+    }
   >();
 
   for (const r of rows) {
@@ -64,36 +97,30 @@ export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
     // is a cuid ([0-9a-z]) and toISOString() is fixed-format, so neither half
     // can contain the separator and the two parts cannot run together.
     const entryKey = `${r.reminderId} ${r.dueOn.toISOString()}`;
-    let entry = group.entries.get(entryKey);
-    if (!entry) {
-      entry = {
-        reminderId: r.reminderId,
-        title: r.title,
-        dueOn: r.dueOn,
-        daysOverdue: r.daysOverdue,
-        targets: [],
+    let slot = group.entries.get(entryKey);
+    if (!slot) {
+      slot = {
+        entry: {
+          reminderId: r.reminderId,
+          title: r.title,
+          dueOn: r.dueOn,
+          daysOverdue: r.daysOverdue,
+          targets: [],
+        },
+        rows: [],
       };
-      group.entries.set(entryKey, entry);
+      group.entries.set(entryKey, slot);
     }
 
-    // Drop a target that IS this group's system — the heading already names it.
-    // This must fire regardless of how many other targets the entry has: a
-    // reminder may legitimately target both an item and the system owning it
-    // (targetSchema's XOR is per-target; targetsArraySchema allows an array).
-    const isOwnSystem =
-      r.target !== null && r.target.kind === 'system' && r.target.id === r.system?.id;
-    if (r.target !== null && !isOwnSystem) {
-      entry.targets.push(r.target);
-    }
+    // Rows are buffered rather than projected here: coverage is a property of
+    // the whole entry, so no target can be judged until every row has arrived.
+    slot.rows.push(r);
   }
 
   const groups = [...bySystem.values()].map((g) => ({
     system: g.system,
     entries: [...g.entries.values()]
-      .map((e) => ({
-        ...e,
-        targets: [...e.targets].sort((a, b) => a.name.localeCompare(b.name)),
-      }))
+      .map(({ entry, rows: entryRows }) => ({ ...entry, targets: projectTargets(entryRows) }))
       .sort((a, b) => a.dueOn.getTime() - b.dueOn.getTime() || a.title.localeCompare(b.title)),
   }));
 
