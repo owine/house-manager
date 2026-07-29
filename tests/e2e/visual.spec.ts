@@ -24,15 +24,19 @@ test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'Run via pnpm test:visual:local (doc
 function masksForRoute(name: string): string[] {
   // Dashboard: RecentActivityList renders "5m ago" / "2d ago" per row.
   if (name === 'dashboard-populated') return ['[data-testid=recent-activity-list]'];
-  // Calendar grid: the "today" cell gets a ring-2 highlight that moves daily.
-  if (name === 'reminders-calendar' || name === 'reminders-calendar-populated') {
-    return ['[data-testid=calendar-grid]'];
-  }
+  // The calendar grid used to be masked here, because the "today" cell carries
+  // a ring-2 highlight that moves daily. Both calendar routes now pin
+  // `?month=CALENDAR_MONTH` (see _routes.ts) to a month in the past, which can
+  // never contain today — so the mask is unnecessary, and dropping it means the
+  // event dots are actually covered by the snapshot instead of hidden under it.
   // Reminder list + detail: ReminderStatusBadge text/variant depends on
   // (dueDate - now) in days (Overdue / Due soon / In Nd).
   if (name === 'reminders-populated' || name === 'reminder-detail') {
     return ['[data-testid=reminder-due-badge]'];
   }
+  // Note detail: seeding creates the note during the run, so its "Updated
+  // <date>" is always today and the baseline would differ on any later day.
+  if (name === 'note-detail') return ['[data-testid=note-updated-at]'];
   return [];
 }
 

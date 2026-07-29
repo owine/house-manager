@@ -1,5 +1,28 @@
 import { expect, type Page } from '@playwright/test';
 
+/**
+ * The calendar renders the *current* month unless `?month=YYYY-MM` pins it, and
+ * the month heading, the number of week-rows (5 vs 6) and the grid height all
+ * change with it. Left unpinned, every calendar baseline rots the moment the
+ * month turns — which is exactly what happened: a baseline captured in May 2026
+ * failed in July against a grid one row shorter.
+ *
+ * This date must stay in the **past**. The populated calendar only shows an
+ * event in the month this reminder falls in — unpinned, it was snapshotting an
+ * empty grid and testing nothing — and a past month never contains "today", so
+ * the today-cell ring that forced the grid to be masked can no longer appear.
+ * Move it forward and both properties break at once.
+ */
+const SEED_REMINDER_DUE_ON = '2026-06-01';
+
+/**
+ * Derived, never written twice. The calendar month and the seeded reminder's due
+ * date have to agree or the "populated" calendar silently shows an empty grid —
+ * which is the defect this pinning was introduced to fix, so a desync would
+ * reintroduce it invisibly.
+ */
+const CALENDAR_MONTH = SEED_REMINDER_DUE_ON.slice(0, 7);
+
 export const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'dashboard-empty', path: '/dashboard' },
   { name: 'items-empty', path: '/items' },
@@ -12,7 +35,7 @@ export const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'service-new', path: '/service/new' },
   { name: 'reminders-empty', path: '/reminders' },
   { name: 'reminders-new', path: '/reminders/new' },
-  { name: 'reminders-calendar', path: '/reminders/calendar' },
+  { name: 'reminders-calendar', path: `/reminders/calendar?month=${CALENDAR_MONTH}` },
   { name: 'chores-empty', path: '/chores' },
   { name: 'chores-new', path: '/chores/new' },
   { name: 'checklists-empty', path: '/checklists' },
@@ -97,7 +120,7 @@ export async function seedPopulated(
 
   await page.goto('/reminders/new');
   await page.getByLabel('Title').fill('Change furnace filter');
-  await fillDate(page.getByLabel('First due date'), '2026-06-01');
+  await fillDate(page.getByLabel('First due date'), SEED_REMINDER_DUE_ON);
   // Reminders require ≥1 target. The picker's Items section is collapsed by
   // default — expand it, then check the Furnace item created above.
   await page.getByRole('button', { name: /^Items/ }).click();
@@ -126,7 +149,10 @@ export function populatedRoutes(urls: SeededUrls): Array<{ name: string; path: s
     { name: 'service-detail', path: urls.serviceUrl },
     { name: 'reminders-populated', path: '/reminders' },
     { name: 'reminder-detail', path: urls.reminderUrl },
-    { name: 'reminders-calendar-populated', path: '/reminders/calendar' },
+    {
+      name: 'reminders-calendar-populated',
+      path: `/reminders/calendar?month=${CALENDAR_MONTH}`,
+    },
     { name: 'notes-populated', path: '/notes' },
     { name: 'note-detail', path: urls.noteUrl },
     { name: 'search-furnace', path: '/search?q=furnace' },
