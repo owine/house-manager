@@ -132,6 +132,36 @@ describe('handleNotify', () => {
     expect(payload.text.length).toBeGreaterThan(0);
   });
 
+  it('hides an item target covered by a same-day system target (Prisma select anchor)', async () => {
+    // Guards worker/jobs/notify.ts's `item: { select: { ..., systemId: true } }`.
+    // Nothing in the unit-test suite for the email template can see this select
+    // — it only sees the shape it's handed. This is the only test that drives
+    // the real Prisma query, so it's the only net that catches someone
+    // deleting `systemId: true` and silently reintroducing the six-line bug.
+    const system = await ctx.prisma.system.create({
+      data: { name: 'Upstairs HVAC' },
+    });
+    const cat = await ctx.prisma.category.create({
+      data: { slug: 'hvac', name: 'HVAC' },
+    });
+    const item = await ctx.prisma.item.create({
+      data: { name: 'Upstairs Furnace', categoryId: cat.id, systemId: system.id },
+    });
+    await ctx.prisma.reminderTarget.create({
+      data: { reminderId, systemId: system.id, nextDueOn: new Date('2026-08-01T00:00:00Z') },
+    });
+    await ctx.prisma.reminderTarget.create({
+      data: { reminderId, itemId: item.id, nextDueOn: new Date('2026-08-01T00:00:00Z') },
+    });
+
+    await handleNotify({ reminderId, userId, channel: 'email', cycle: '2026-08-01' });
+
+    expect(sentEmails).toHaveLength(1);
+    const payload = sentEmails[0] as { html: string };
+    expect(payload.html).toContain('Upstairs HVAC');
+    expect(payload.html).not.toContain('Upstairs Furnace');
+  });
+
   it('marks the log skipped with reason "APP_URL not configured" when APP_URL is unset', async () => {
     // Arrange: seed a category + item + reminder target (same pattern as content test).
     const cat = await ctx.prisma.category.create({

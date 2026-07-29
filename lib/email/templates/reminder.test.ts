@@ -229,7 +229,7 @@ describe('reminderEmail', () => {
       expect(body).not.toContain('Upstairs Heat Pump');
     }
     // Exactly two bullets survive.
-    expect(html.match(/<li/g) ?? []).toHaveLength(2);
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2);
   });
 
   it('keeps an item target whose parent system is not targeted', () => {
@@ -273,7 +273,7 @@ describe('reminderEmail', () => {
   });
 
   it('keeps an item target that belongs to no system', () => {
-    const { html } = reminderEmail(
+    const { html, text } = reminderEmail(
       baseData({
         targets: [
           {
@@ -288,5 +288,7 @@ describe('reminderEmail', () => {
       }),
     );
     expect(html).toContain('Fridge');
+    expect(html).toContain('Upstairs HVAC');
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2);
   });
 });
