@@ -520,7 +520,7 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
   // and a drifted target is exactly the one worth still seeing.
   const visible = dropSystemCoveredItems(data.targets, (t) => ({
     systemId: t.system?.id ?? null,
-    itemSystemId: t.system ? null : (t.item?.systemId ?? null),
+    itemSystemId: t.item?.systemId ?? null,
     dueOn: t.nextDueOn,
   }));
 
@@ -532,6 +532,13 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
 
 Both `Body` and `buildText` call `resolveTargets`, so HTML and plaintext stay in
 sync with no second edit.
+
+Do **not** write `itemSystemId: t.system ? null : (t.item?.systemId ?? null)`.
+That guard is unobservable: `dropSystemCoveredItems` short-circuits on
+`f.systemId !== null` before reading `itemSystemId`, and its inner `some` reads
+only `other.systemId`. It was removed from `TargetsChips` in Task 2 for exactly
+this reason. (Task 4's `kind`-based guard is *not* the same thing and must
+stay — see that task.)
 
 - [ ] **Step 4: Run to verify they pass**
 
@@ -550,7 +557,27 @@ always `undefined` in production and the filter silently never fires:
         item: { select: { id: true, name: true, systemId: true } },
 ```
 
-- [ ] **Step 6: Typecheck**
+- [ ] **Step 6: Fix two comments that this task makes wrong**
+
+Both name `<TargetsChips>` as the *reason* a field exists. As of this task the
+rule has a second consumer, so naming one component is now misleading. Reword to
+name the rule instead.
+
+`lib/reminders/queries.ts:9-11`, above `item: { select: { …, systemId: true } }`
+in `TARGETS_INCLUDE`:
+
+```ts
+      // `item.systemId` feeds `dropSystemCoveredItems`
+      // (lib/reminders/target-coverage.ts), which hides item targets whose
+      // parent system is targeted by the same reminder.
+```
+
+`components/targets/TargetsChips.tsx:8-13`, the doc on `TargetSummary.item`:
+reword "lets the chip renderer dedupe item chips that belong to a system already
+in the same target set" to attribute the dedupe to `dropSystemCoveredItems`
+rather than to the chip renderer, which now only supplies facts to it.
+
+- [ ] **Step 7: Typecheck**
 
 ```bash
 pnpm typecheck
@@ -559,10 +586,10 @@ pnpm typecheck
 Expected: clean. This is the step that catches the worker/template shapes
 disagreeing.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add worker/jobs/notify.ts lib/email/templates/reminder.tsx lib/email/templates/reminder.test.ts
+git add worker/jobs/notify.ts lib/email/templates/reminder.tsx lib/email/templates/reminder.test.ts lib/reminders/queries.ts components/targets/TargetsChips.tsx
 git commit -m "fix(email): hide reminder targets covered by a targeted system"
 git log --oneline -1
 ```
