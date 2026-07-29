@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { targetSchema } from '@/lib/targets/schema';
+import { partTargetSchema } from '@/lib/targets/schema';
 
 function partialOf<T extends Record<string, z.ZodTypeAny>>(shape: T) {
   return Object.fromEntries(Object.entries(shape).map(([k, v]) => [k, v.optional()])) as {
@@ -148,8 +148,8 @@ export function parseRecurrence(json: unknown): Recurrence {
 // (asset-centric, notify). Chores may have 0..N links (task-centric;
 // a linkless chore gets a "standalone" ReminderTarget row created
 // server-side — see lib/reminders/actions.ts reconciliation).
-const remindersTargetsSchema = z.array(targetSchema).min(1);
-const choresTargetsSchema = z.array(targetSchema);
+const remindersTargetsSchema = z.array(partTargetSchema).min(1);
+const choresTargetsSchema = z.array(partTargetSchema);
 
 const baseReminderShape = {
   title: z.string().min(1).max(200),

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { targetSchema, targetsArraySchema, toTargetInputs } from '@/lib/targets/schema';
+import {
+  partTargetSchema,
+  targetSchema,
+  targetsArraySchema,
+  toTargetInputs,
+} from '@/lib/targets/schema';
 
 describe('targetSchema', () => {
   it('accepts itemId only', () => {
@@ -58,11 +63,15 @@ describe('targetsArraySchema', () => {
 
 describe('toTargetInputs', () => {
   it('maps an item-linked row to { itemId }', () => {
-    expect(toTargetInputs([{ itemId: 'i1', systemId: null }])).toEqual([{ itemId: 'i1' }]);
+    expect(toTargetInputs([{ itemId: 'i1', systemId: null, partId: null }])).toEqual([
+      { itemId: 'i1' },
+    ]);
   });
 
   it('maps a system-linked row to { systemId }', () => {
-    expect(toTargetInputs([{ itemId: null, systemId: 's1' }])).toEqual([{ systemId: 's1' }]);
+    expect(toTargetInputs([{ itemId: null, systemId: 's1', partId: null }])).toEqual([
+      { systemId: 's1' },
+    ]);
   });
 
   it('drops a standalone (both-null) row instead of emitting { systemId: null }', () => {
@@ -70,26 +79,62 @@ describe('toTargetInputs', () => {
     // targets list so the server reconciles to the standalone shape. Emitting
     // { systemId: null } here would fail targetSchema's XOR refine and block
     // every save of a standalone chore.
-    expect(toTargetInputs([{ itemId: null, systemId: null }])).toEqual([]);
+    expect(toTargetInputs([{ itemId: null, systemId: null, partId: null }])).toEqual([]);
   });
 
   it('keeps links and drops standalone rows in a mixed list', () => {
     expect(
       toTargetInputs([
-        { itemId: 'i1', systemId: null },
-        { itemId: null, systemId: null },
-        { itemId: null, systemId: 's1' },
+        { itemId: 'i1', systemId: null, partId: null },
+        { itemId: null, systemId: null, partId: null },
+        { itemId: null, systemId: 's1', partId: null },
       ]),
     ).toEqual([{ itemId: 'i1' }, { systemId: 's1' }]);
   });
 
   it('emits only rows that satisfy targetSchema', () => {
     for (const t of toTargetInputs([
-      { itemId: 'i1', systemId: null },
-      { itemId: null, systemId: null },
-      { itemId: null, systemId: 's1' },
+      { itemId: 'i1', systemId: null, partId: null },
+      { itemId: null, systemId: null, partId: null },
+      { itemId: null, systemId: 's1', partId: null },
     ])) {
       expect(targetSchema.safeParse(t).success).toBe(true);
     }
+  });
+});
+
+describe('partTargetSchema', () => {
+  it('accepts a part-only target', () => {
+    expect(partTargetSchema.safeParse({ partId: 'p1' }).success).toBe(true);
+  });
+
+  it('rejects two parents', () => {
+    expect(partTargetSchema.safeParse({ partId: 'p1', itemId: 'i1' }).success).toBe(false);
+  });
+
+  it('rejects zero parents', () => {
+    expect(partTargetSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('targetSchema stays narrow', () => {
+  // Warranties and incoming email import this one and keep a two-way XOR.
+  // Widening it would let a part payload pass Zod and then fail at the DB.
+  // The schema is non-strict, so `partId` is stripped as an unknown key and
+  // the payload then fails the two-way XOR refine as a zero-parent target.
+  it('does not accept a partId payload', () => {
+    expect(targetSchema.safeParse({ partId: 'p1' }).success).toBe(false);
+  });
+});
+
+describe('toTargetInputs with part rows', () => {
+  it('keeps a part-only row', () => {
+    expect(toTargetInputs([{ itemId: null, systemId: null, partId: 'p1' }])).toEqual([
+      { partId: 'p1' },
+    ]);
+  });
+
+  it('still drops the standalone chore row where all three are null', () => {
+    expect(toTargetInputs([{ itemId: null, systemId: null, partId: null }])).toEqual([]);
   });
 });

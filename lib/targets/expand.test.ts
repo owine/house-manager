@@ -49,6 +49,16 @@ describe('expandSystemSelection', () => {
     expect(result).toEqual([{ systemId: 'sys1' }]);
   });
 
+  it('does not collide a part target with a system key', () => {
+    const out = expandSystemSelection([{ partId: 'p1' }], {
+      id: 's1',
+      items: [{ id: 'i1', archivedAt: null }],
+    });
+    expect(out).toContainEqual({ partId: 'p1' });
+    expect(out).toContainEqual({ systemId: 's1' });
+    expect(out).toContainEqual({ itemId: 'i1' });
+  });
+
   it('preserves seed order and appends new entries', () => {
     const result = expandSystemSelection([{ itemId: 'pre1' }, { systemId: 'other' }], {
       id: 'sys1',

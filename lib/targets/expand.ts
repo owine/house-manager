@@ -1,21 +1,30 @@
-import type { TargetInput } from './schema';
+import type { PartTargetInput } from './schema';
 
 interface SystemWithComponents {
   id: string;
   items: Array<{ id: string; archivedAt: Date | null }>;
 }
 
+/** Dedupe key. Must cover all three parents: keying a part row as
+ * `s:${t.systemId}` would yield `s:undefined` and collide with system rows. */
+const keyOf = (t: PartTargetInput) =>
+  t.itemId ? `i:${t.itemId}` : t.systemId ? `s:${t.systemId}` : `p:${t.partId}`;
+
 /**
  * When the user checks a system in the picker, also yield all of its
  * active component items. Items already in `seed` are kept; the system
- * itself is included. Returns a deduplicated, ordered TargetInput[].
+ * itself is included. Returns a deduplicated, ordered PartTargetInput[].
+ *
+ * Deliberately does NOT expand a system to its parts: items are *components*
+ * of a system, parts are *consumed by* it. "Serviced the furnace" must not
+ * silently claim the filter was replaced.
  */
 export function expandSystemSelection(
-  seed: TargetInput[],
+  seed: PartTargetInput[],
   system: SystemWithComponents,
-): TargetInput[] {
-  const seen = new Set<string>(seed.map((t) => (t.itemId ? `i:${t.itemId}` : `s:${t.systemId}`)));
-  const out: TargetInput[] = [...seed];
+): PartTargetInput[] {
+  const seen = new Set<string>(seed.map(keyOf));
+  const out: PartTargetInput[] = [...seed];
   if (!seen.has(`s:${system.id}`)) {
     out.push({ systemId: system.id });
     seen.add(`s:${system.id}`);
