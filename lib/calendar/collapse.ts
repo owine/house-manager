@@ -1,3 +1,5 @@
+import type { CalendarEvent } from './queries';
+
 /**
  * Reminder due-state lives on `ReminderTarget`, so a reminder targeting six
  * things due on one day projects six identical calendar events — the events
@@ -5,14 +7,12 @@
  * emitted six React siblings sharing one key, since `CalendarEvent.id` is the
  * reminder id.
  *
- * Generic over the event shape rather than importing `CalendarEvent`: that
- * avoids a type cycle with `queries.ts`, which imports this module.
+ * Applied to the combined reminder+service array, so it dedupes both kinds,
+ * not just reminders.
  */
-export function collapseDuplicateReminderEvents<T extends { kind: string; id: string; date: Date }>(
-  events: readonly T[],
-): T[] {
+export function collapseDuplicateEvents(events: readonly CalendarEvent[]): CalendarEvent[] {
   const seen = new Set<string>();
-  const out: T[] = [];
+  const out: CalendarEvent[] = [];
   for (const ev of events) {
     // Space-joined, matching the convention in lib/digests/group.ts: `kind` is
     // a fixed lowercase word, ids are cuid ([0-9a-z]) and toISOString() is

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { collapseDuplicateReminderEvents } from './collapse';
+import { collapseDuplicateEvents } from './collapse';
 
 export type CalendarEvent =
   | {
@@ -50,7 +50,7 @@ export async function listCalendarEventsInRange(opts: {
     }),
   ]);
 
-  const events: CalendarEvent[] = collapseDuplicateReminderEvents([
+  const events: CalendarEvent[] = collapseDuplicateEvents([
     ...targets.map(
       (t): CalendarEvent => ({
         kind: 'reminder' as const,
