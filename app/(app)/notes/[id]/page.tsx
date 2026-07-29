@@ -48,7 +48,10 @@ export default async function NoteDetailPage({ params }: { params: Params }) {
             ))}
           </span>
         )}
-        <span className="ml-auto text-xs">
+        {/* testid exists so the visual suite can mask this: the note is created
+            during seeding, so `updatedAt` is always "today" and the baseline
+            would differ on every day the suite runs. See masksForRoute(). */}
+        <span className="ml-auto text-xs" data-testid="note-updated-at">
           Updated <LocalDate iso={note.updatedAt.toISOString()} />
         </span>
       </div>

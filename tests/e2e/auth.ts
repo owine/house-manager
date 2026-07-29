@@ -22,17 +22,35 @@ export async function resetAuth(): Promise<void> {
   // CASCADE handles FK ordering so we don't have to enumerate child-first.
   // Categories stay (seeded by `prisma seed`; tests open the Category combobox and pick "HVAC" by visible text).
   // house_profile is a per-house singleton; not per-spec state, leave it.
+  //
+  // **Every table backing an EMPTY_ROUTES page must be listed here.** A missing
+  // one accumulates silently across runs and only shows up as a visual-baseline
+  // failure much later: `systems` was absent, so `/systems` rendered a dozen
+  // leftover rows where `systems-empty` expects the "no systems yet" placeholder.
+  // CASCADE does not save you here — `Item.systemId` is `onDelete: SetNull`, so
+  // truncating `items` leaves systems standing. `Checklist`, `incoming_emails`
+  // and `chat_sessions` back /checklists, /inbox and /ask and had the same hole.
   await prisma.$executeRawUnsafe(`
     TRUNCATE
       attachments,
       reminder_completions,
       notification_logs,
       push_subscriptions,
+      digest_logs,
+      embeddings,
+      "AISuggestionLog",
+      chat_proposals,
+      chat_messages,
+      chat_sessions,
+      incoming_emails,
+      "ChecklistItem",
+      "Checklist",
       service_records,
       warranties,
       notes,
       reminders,
       items,
+      systems,
       vendors,
       sessions,
       accounts,

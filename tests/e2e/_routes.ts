@@ -1,5 +1,20 @@
 import { expect, type Page } from '@playwright/test';
 
+/**
+ * The calendar renders the *current* month unless `?month=YYYY-MM` pins it, and
+ * the month heading, the number of week-rows (5 vs 6) and the grid height all
+ * change with it. Left unpinned, every calendar baseline rots the moment the
+ * month turns — which is exactly what happened: a baseline captured in May 2026
+ * failed in July against a grid one row shorter.
+ *
+ * This must stay a month in the **past**, for two reasons: the seeded reminder
+ * below is due 2026-06-01 (so June is the only month where the populated
+ * calendar actually shows an event — unpinned, it was snapshotting an empty
+ * grid and testing nothing), and a past month never contains "today", so the
+ * today-cell ring that forced the grid to be masked can no longer appear.
+ */
+const CALENDAR_MONTH = '2026-06';
+
 export const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'dashboard-empty', path: '/dashboard' },
   { name: 'items-empty', path: '/items' },
@@ -12,7 +27,7 @@ export const EMPTY_ROUTES: Array<{ name: string; path: string }> = [
   { name: 'service-new', path: '/service/new' },
   { name: 'reminders-empty', path: '/reminders' },
   { name: 'reminders-new', path: '/reminders/new' },
-  { name: 'reminders-calendar', path: '/reminders/calendar' },
+  { name: 'reminders-calendar', path: `/reminders/calendar?month=${CALENDAR_MONTH}` },
   { name: 'chores-empty', path: '/chores' },
   { name: 'chores-new', path: '/chores/new' },
   { name: 'checklists-empty', path: '/checklists' },
@@ -126,7 +141,10 @@ export function populatedRoutes(urls: SeededUrls): Array<{ name: string; path: s
     { name: 'service-detail', path: urls.serviceUrl },
     { name: 'reminders-populated', path: '/reminders' },
     { name: 'reminder-detail', path: urls.reminderUrl },
-    { name: 'reminders-calendar-populated', path: '/reminders/calendar' },
+    {
+      name: 'reminders-calendar-populated',
+      path: `/reminders/calendar?month=${CALENDAR_MONTH}`,
+    },
     { name: 'notes-populated', path: '/notes' },
     { name: 'note-detail', path: urls.noteUrl },
     { name: 'search-furnace', path: '/search?q=furnace' },
