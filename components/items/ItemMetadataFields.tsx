@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { categoryConfigFor, metadataSchemaFor, visibleMetadataFields } from '@/lib/categories';
+import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
 
 type Props = { slug: string };
 
@@ -187,9 +188,21 @@ export function ItemMetadataFields({ slug }: Props) {
 
   // Freeform fallback (ZodRecord / unknown slug) → JSON textarea
   const currentMetadata = form.getValues('metadata');
+  // Reserved keys are stripped from the textarea, not shown-and-preserved:
+  // `freeformMetadataSchema` *rejects* them, so pre-filling `_provenance`
+  // here would make an AI-captured item unsaveable on a field the user never
+  // touched. Structured categories already drop them via non-strict z.object.
   const defaultJson =
     currentMetadata && typeof currentMetadata === 'object'
-      ? JSON.stringify(currentMetadata, null, 2)
+      ? JSON.stringify(
+          Object.fromEntries(
+            Object.entries(currentMetadata as Record<string, unknown>).filter(
+              ([key]) => !isReservedMetadataKey(key),
+            ),
+          ),
+          null,
+          2,
+        )
       : typeof currentMetadata === 'string'
         ? currentMetadata
         : '{}';

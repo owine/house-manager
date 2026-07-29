@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
 import { Markdown } from '@/lib/markdown';
+import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
 
@@ -30,8 +31,17 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 type Props = { item: Item };
 
 export function OverviewTab({ item }: Props) {
-  const hasMetadata =
-    item.metadata && typeof item.metadata === 'object' && Object.keys(item.metadata).length > 0;
+  // Reserved keys (`_provenance` et al) are internal bookkeeping — see
+  // lib/metadata/reserved-keys.ts. They're rejected at the write path and
+  // dropped from embedded text; the read path has to drop them too, or an
+  // AI-captured item renders a raw JSON blob in Additional Details.
+  const visibleMetadata =
+    item.metadata && typeof item.metadata === 'object'
+      ? Object.entries(item.metadata as Record<string, unknown>).filter(
+          ([key]) => !isReservedMetadataKey(key),
+        )
+      : [];
+  const hasMetadata = visibleMetadata.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -87,7 +97,7 @@ export function OverviewTab({ item }: Props) {
           </CardHeader>
           <CardContent className="pt-4">
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
-              {Object.entries(item.metadata as Record<string, unknown>).map(([key, value]) => {
+              {visibleMetadata.map(([key, value]) => {
                 const displayValue = stringifyMetaValue(value);
                 if (!displayValue) return null;
                 return (
