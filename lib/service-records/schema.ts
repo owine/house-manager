@@ -23,7 +23,10 @@ function requireAnchor(
   v: {
     vendorId?: string;
     selfPerformed?: boolean;
-    targets?: { itemId?: string | null; systemId?: string | null }[];
+    // Widened to three columns: a record targeting only a part ("replaced the
+    // filter") is legitimately anchored, so it must satisfy the vendor /
+    // self-performed / targets requirement below on its own.
+    targets?: { itemId?: string | null; systemId?: string | null; partId?: string | null }[];
   },
   ctx: z.RefinementCtx,
 ) {
@@ -33,7 +36,7 @@ function requireAnchor(
   if (!hasVendor && !hasTargets && !isSelf) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Pick a vendor, a self-performed marker, or at least one item/system',
+      message: 'Pick a vendor, a self-performed marker, or at least one item, system, or part',
       path: ['targets'],
     });
   }
