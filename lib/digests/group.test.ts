@@ -91,7 +91,10 @@ describe('groupBySystem', () => {
       row({ target: { kind: 'system', id: HVAC.id, name: HVAC.name }, system: HVAC }),
     ]);
 
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.system?.name).toBe('HVAC');
     expect(groups[0]?.entries).toHaveLength(1);
+    expect(groups[0]?.entries[0]?.title).toBe('Replace filter');
     expect(groups[0]?.entries[0]?.targets).toEqual([]);
   });
 
@@ -116,6 +119,8 @@ describe('groupBySystem', () => {
     expect(groups[0]?.entries).toHaveLength(2);
     const jun5 = groups[0]?.entries.find((e) => e.dueOn.getTime() === JUN5.getTime());
     expect(jun5?.targets.map((t) => t.name)).toEqual(['Furnace']);
+    const jun1 = groups[0]?.entries.find((e) => e.dueOn.getTime() === JUN1.getTime());
+    expect(jun1?.targets).toEqual([]);
   });
 
   it('leaves the Unassigned group alone', () => {

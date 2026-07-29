@@ -48,6 +48,16 @@ const UNASSIGNED = ' unassigned';
  * `DigestTarget` is `{kind, id, name}` and has no parent pointer. The query
  * attributes an item row to its parent system (`lib/digests/queries.ts`), so
  * within a group the row's system *is* the item's parent.
+ *
+ * The `kind` guards are not equally load-bearing. `r.target?.kind === 'system'`
+ * for `systemId` is essential: without it every row reports a non-null
+ * `systemId` (since `r.system` is the group's system for item rows too), so no
+ * row is ever a suppression candidate and coverage never fires. The
+ * `r.target?.kind === 'item'` guard on `itemSystemId` is belt-and-braces — it
+ * survives removal (mutation-tested) only because `dropSystemCoveredItems`
+ * short-circuits on `systemId !== null` before ever reading `itemSystemId` for
+ * a system row. Both stay so correctness is local to this function rather than
+ * dependent on the helper's internal check order.
  */
 function projectTargets(entryRows: readonly DigestRow[]): DigestTarget[] {
   const visible = dropSystemCoveredItems(entryRows, (r) => ({
@@ -55,6 +65,10 @@ function projectTargets(entryRows: readonly DigestRow[]): DigestTarget[] {
     itemSystemId: r.target?.kind === 'item' ? (r.system?.id ?? null) : null,
   }));
 
+  // The own-system drop below must come AFTER coverage filtering, not before:
+  // the own-system target is what covers the items, so removing it first would
+  // leave no system target for dropSystemCoveredItems to match against and
+  // suppression would never fire.
   const out: DigestTarget[] = [];
   for (const r of visible) {
     if (r.target === null) continue; // standalone chore: no target at all
@@ -81,7 +95,7 @@ export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
     string,
     {
       system: DigestGroup['system'];
-      entries: Map<string, { entry: DigestEntry; rows: DigestRow[] }>;
+      entries: Map<string, { entry: Omit<DigestEntry, 'targets'>; rows: DigestRow[] }>;
     }
   >();
 
@@ -105,7 +119,6 @@ export function groupBySystem(rows: readonly DigestRow[]): DigestGroup[] {
           title: r.title,
           dueOn: r.dueOn,
           daysOverdue: r.daysOverdue,
-          targets: [],
         },
         rows: [],
       };
