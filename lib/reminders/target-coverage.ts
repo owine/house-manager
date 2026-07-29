@@ -25,6 +25,8 @@ export type CoverageFacts = {
    * This target's own due date. Omit to skip the date check entirely — callers
    * with no date context (<TargetsChips>) and callers whose scope already
    * guarantees one shared date (digest entries) both leave it undefined.
+   * Populate it for all targets in a call or none — mixing is legal but means
+   * the undated rows suppress unconditionally.
    */
   dueOn?: CalendarDate;
 };
@@ -49,13 +51,14 @@ function datesAgree(a: CalendarDate | undefined, b: CalendarDate | undefined): b
  */
 export function dropSystemCoveredItems<T>(
   targets: readonly T[],
+  /** Called exactly once per target. Must be pure. */
   facts: (target: T) => CoverageFacts,
 ): T[] {
   const read = targets.map((target) => ({ target, facts: facts(target) }));
   return read
     .filter(({ facts: f }) => {
-      // Not an item target, or an item belonging to no system: nothing can cover it.
-      if (f.itemSystemId === null) return true;
+      // A system target is never a candidate — this is also what makes self-comparison safe.
+      if (f.systemId !== null || f.itemSystemId === null) return true;
       return !read.some(
         ({ facts: other }) =>
           other.systemId !== null &&

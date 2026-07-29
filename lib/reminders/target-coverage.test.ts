@@ -96,4 +96,21 @@ describe('dropSystemCoveredItems', () => {
       ]),
     ).toEqual(['Fridge', 'HVAC', 'Attic Fan']);
   });
+
+  it('treats a row with both ids set as a system target and keeps it', () => {
+    // No real caller produces this (the DB XOR constraint forbids it, and the
+    // digest projection guards on target.kind) but the module's own contract
+    // says a system target is never a suppression candidate, so a malformed
+    // row must still be kept rather than self-suppressing.
+    expect(names([{ name: 'Both', systemId: 'hvac', itemSystemId: 'hvac' }])).toEqual(['Both']);
+  });
+
+  it('never empties a non-empty list', () => {
+    expect(
+      names([
+        { name: 'A', systemId: 'a', itemSystemId: 'b' },
+        { name: 'B', systemId: 'b', itemSystemId: 'a' },
+      ]),
+    ).toEqual(['A', 'B']);
+  });
 });
