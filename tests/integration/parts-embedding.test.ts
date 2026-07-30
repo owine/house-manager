@@ -47,14 +47,14 @@ function embedJobs(): EmbedJob[] {
 
 let ctx: IntegrationContext;
 let actions: typeof import('@/lib/parts/actions');
-let cascade: typeof import('@/lib/embedding/cascade');
+let cascade: typeof import('@/lib/rename-cascade');
 let embedding: typeof import('@/lib/embedding');
 let categoryId: string;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
   actions = await import('@/lib/parts/actions');
-  cascade = await import('@/lib/embedding/cascade');
+  cascade = await import('@/lib/rename-cascade');
   embedding = await import('@/lib/embedding');
   const cat = await ctx.prisma.category.upsert({
     where: { slug: 'parts-embedding' },
