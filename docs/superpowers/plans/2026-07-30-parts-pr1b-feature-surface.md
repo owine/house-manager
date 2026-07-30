@@ -57,7 +57,7 @@ Other repo facts that will otherwise cost you time:
 | `components/parts/LinkExistingPartDialog.tsx` | link an existing part to a parent |
 | `components/systems/DeleteSystemPartsDialog.tsx` | the checkbox prompt |
 | `app/(app)/parts/page.tsx`, `new/page.tsx`, `[id]/page.tsx`, `[id]/edit/page.tsx` | routes |
-| `app/(app)/parts/[id]/tabs/*.tsx` | Overview, Links, Reminders, Service, Attachments |
+| `app/(app)/parts/[id]/tabs/*.tsx` | Overview, Links, Reminders, Service (no Attachments — see Task 4) |
 
 **Modify:**
 
