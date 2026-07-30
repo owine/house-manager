@@ -35,6 +35,10 @@ function stubPayload(kind: ChatProposalKind): ProposalPayload {
       return { kind, systemId: '' };
     case 'CREATE_SERVICE_RECORD':
       return { kind, summary: empty, performedOn: empty, selfPerformed: false, targets: [] };
+    case 'CREATE_PART':
+      return { kind, name: empty, partKind: { value: 'OTHER', source: 'user' } };
+    case 'UPDATE_PART':
+      return { kind, partId: '' };
   }
 }
 

@@ -1,3 +1,48 @@
+import type { PartKind } from '@prisma/client';
+import { z } from 'zod';
+
+import { partKindConfigs } from '@/lib/parts/kinds';
+
+/**
+ * One kind's spec fields, rendered for the prompt.
+ *
+ * Derived from `partKindConfigs` rather than hand-written: a second copy of
+ * this list drifts the moment a field is added, and the failure is invisible —
+ * the model simply stops proposing the field it was never told about.
+ *
+ * Every field in those schemas is `.optional()`, so the declared type is
+ * always a `ZodOptional` wrapper that has to come off before the inner type is
+ * legible. Enum members are spelled out because they are the fields the model
+ * otherwise invents plausible-but-wrong values for ("E27" for a US socket,
+ * "warm-white" for a technology).
+ */
+function specFieldsFor(schema: z.ZodTypeAny): string | null {
+  // `OTHER` is `freeformMetadataSchema` — a record, not an object, so it has
+  // no field list to enumerate.
+  if (!(schema instanceof z.ZodObject)) return null;
+
+  return Object.entries(schema.shape as Record<string, z.ZodTypeAny>)
+    .map(([name, field]) => {
+      let inner: z.ZodTypeAny = field;
+      while (inner instanceof z.ZodOptional) inner = inner.unwrap() as z.ZodTypeAny;
+      if (inner instanceof z.ZodEnum) {
+        return `${name} (${(inner.options as string[]).join('|')})`;
+      }
+      return name;
+    })
+    .join(', ');
+}
+
+/** The per-kind spec-field table the model is shown, generated from the schemas. */
+function buildPartSpecTable(): string {
+  return (Object.keys(partKindConfigs) as PartKind[])
+    .map((kind) => {
+      const fields = specFieldsFor(partKindConfigs[kind]);
+      return `   ${kind}: ${fields ?? 'any keys — freeform'}`;
+    })
+    .join('\n');
+}
+
 export const CHAT_SYSTEM_PROMPT = `You are the assistant inside a self-hosted home information manager.
 
 The user will either ASK you something about their house, or TELL you something
@@ -10,8 +55,8 @@ When the user TELLS you something: propose structured changes to their records.
 
 RULES FOR PROPOSALS
 
-1. IDs. You are given a snapshot of every item, system, category and note you may
-   reference. Only ever use an id from that snapshot. NEVER invent an id, and
+1. IDs. You are given a snapshot of every item, system, category, note and part
+   you may reference. Only ever use an id from that snapshot. NEVER invent an id, and
    never propose a change to something that is not listed. If the user refers to
    something you cannot find, say so and propose nothing for it.
 
@@ -32,10 +77,32 @@ RULES FOR PROPOSALS
    inferred with source "inferred". Mark everything the user actually said with
    source "user". Never present an inference as something the user told you.
 
-5. Scope. You may create notes, items and service records, and update notes,
-   items and systems. You may NOT delete, archive or unlink anything.
+5. Scope. You may create notes, items, parts and service records, and update
+   notes, items, systems and parts. You may NOT delete, archive or unlink
+   anything.
 
-6. Privacy. When answering from retrieved context, never echo serial numbers,
+6. Parts vs items. A PART is a consumable or replaceable component the user
+   re-buys — a bulb, an air or water filter, a battery, a belt, a fuse,
+   softener salt. An ITEM is the thing that consumes it. Bulbs are a part; the
+   light fixture is an item. A furnace filter is a part; the furnace is an item
+   or a system. When the user describes something by its SPECIFICATION (base,
+   wattage, colour temperature, MERV rating, size) rather than by purchase or
+   serial number, it is almost certainly a part.
+   Link a new part to the item or system it belongs to when the snapshot has
+   one — but a part with no parent is fine ("we keep AAAs in the drawer").
+
+7. Part spec fields. Put specifications in the part's "metadata" object, keyed
+   by the field names below — NOT in "notes" as prose. Each part kind has its
+   own fields:
+
+${buildPartSpecTable()}
+
+   Every spec field is optional. Omit anything the user did not say rather than
+   guessing at it; if you do fill one in from your own knowledge of the model
+   number, mark it "inferred" per rule 4. For enum-valued fields use one of the
+   listed options exactly, or leave the field out.
+
+8. Privacy. When answering from retrieved context, never echo serial numbers,
    exact addresses, or other PII verbatim in your reply, even though the
    underlying records may contain them. Refer to the record by name instead.
 
@@ -47,6 +114,15 @@ export type SnapshotInput = {
   systems: Array<{ id: string; name: string; location: string | null }>;
   categories: Array<{ id: string; name: string }>;
   notes: Array<{ id: string; title: string }>;
+  // Manufacturer/model travel alongside name and kind so the model can tell a
+  // BR30 bulb from a MERV 11 filter when the user says "order more of those".
+  parts: Array<{
+    id: string;
+    name: string;
+    kind: PartKind;
+    manufacturer: string | null;
+    model: string | null;
+  }>;
 };
 
 /**
@@ -68,6 +144,11 @@ export function buildSnapshotBlock(s: SnapshotInput): string {
     '',
     'NOTES (id | title)',
     ...s.notes.map((n) => `${n.id} | ${n.title}`),
+    '',
+    'PARTS (id | name | kind | manufacturer | model)',
+    ...s.parts.map(
+      (p) => `${p.id} | ${p.name} | ${p.kind} | ${p.manufacturer ?? '-'} | ${p.model ?? '-'}`,
+    ),
   ];
   return lines.join('\n');
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { PART_KINDS } from '@/lib/parts/schema';
+
 // The ENTIRE model-facing schema for conversational capture lives here — the
 // turn envelope and the proposal payload union both.
 //
@@ -35,6 +37,41 @@ const pOptionalString = provenanced(z.string()).optional();
 const pCalendarDate = provenanced(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional();
 
 const noteBody = provenanced(z.string().min(1).max(NOTE_BODY_MAX));
+
+/**
+ * `Part.typicalCost` is `Decimal(10, 2)`, so it crosses the wire as a decimal
+ * string for the same reason calendar dates cross as `YYYY-MM-DD` — a JS number
+ * is the wrong carrier for a fixed-scale column.
+ *
+ * The regex is the whole guard. Dates get a `checkDate` in `validateProposal`;
+ * without the equivalent here a model emitting `"about $4.50"` or `"4.505"`
+ * would pass the union, pass validation, and only blow up at
+ * `prisma.part.create` — long after the user accepted the proposal.
+ */
+const pDecimalAmount = provenanced(z.string().regex(/^\d{1,8}(\.\d{1,2})?$/)).optional();
+
+/**
+ * Per-kind spec fields — bulb base, wattage, colour temperature; filter
+ * dimensions; battery chemistry. This field is the reason the part arms exist:
+ * without it the model dumps those specs into `notes` as prose, which is the
+ * same shoehorn-into-the-nearest-construct bug one construct to the left, and
+ * every AI-captured part lands with empty spec fields the user has to retype.
+ *
+ * Typed loosely HERE **on purpose**. The applicable spec schema is chosen by
+ * the sibling `partKind` via `partKindSchemaFor`, and a field-level Zod schema
+ * cannot see a sibling. `validateProposal` runs the real per-kind check — this
+ * is NOT unvalidated, it is validated one layer up.
+ */
+const pMetadata = provenanced(z.record(z.string(), z.unknown())).optional();
+
+/**
+ * A part's parent link: an Item, a System, or **neither**. Unparented is the
+ * legal standalone "generic bulbs" case, so unlike `CREATE_SERVICE_RECORD`
+ * (whose `targets` array is `.min(1)`) there is no lower bound — only the
+ * mutual exclusion.
+ */
+const exactlyOneParentOrNone = (value: { itemId?: string; systemId?: string }) =>
+  !(value.itemId && value.systemId);
 
 export const proposalPayloadSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -92,6 +129,45 @@ export const proposalPayloadSchema = z.discriminatedUnion('kind', [
     targets: z
       .array(z.object({ itemId: z.string().nullable(), systemId: z.string().nullable() }))
       .min(1),
+  }),
+  z
+    .object({
+      kind: z.literal('CREATE_PART'),
+      name: pString,
+      // NOT `kind` — `proposalPayloadSchema` discriminates on `kind`, and
+      // `Part.kind` means something else entirely. `UPDATE_SYSTEM` hit the same
+      // collision and renamed `System.kind` to `kindLabel`; this follows suit.
+      //
+      // Typed as the enum, not a string: a loose string lets the model emit
+      // `'bulb'`, which only throws at `prisma.part.create` after the user has
+      // already accepted.
+      partKind: provenanced(z.enum(PART_KINDS)),
+      manufacturer: pOptionalString,
+      model: pOptionalString,
+      location: pOptionalString,
+      notes: pOptionalString,
+      typicalCost: pDecimalAmount,
+      metadata: pMetadata,
+      itemId: z.string().min(1).optional(),
+      systemId: z.string().min(1).optional(),
+    })
+    .refine(exactlyOneParentOrNone, {
+      message: 'A part links to an item or a system, not both',
+      path: ['systemId'],
+    }),
+  z.object({
+    kind: z.literal('UPDATE_PART'),
+    partId: z.string().min(1),
+    name: pString.optional(),
+    partKind: provenanced(z.enum(PART_KINDS)).optional(),
+    manufacturer: pOptionalString,
+    model: pOptionalString,
+    location: pOptionalString,
+    notes: pOptionalString,
+    typicalCost: pDecimalAmount,
+    metadata: pMetadata,
+    // No parent link here on purpose: re-parenting a part is a PartLink edit,
+    // not a field update, and this pipeline has no arm for it.
   }),
 ]);
 

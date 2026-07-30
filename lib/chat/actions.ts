@@ -16,6 +16,7 @@ import { embedTexts } from '@/lib/embedding/voyage';
 import { getEnv } from '@/lib/env';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
+import { LIVE_PART } from '@/lib/parts/queries';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { parseCalendarDate, resolveAnchorDay } from './dates';
@@ -89,6 +90,10 @@ function targetFor(p: ProposalPayload): { targetType: string; targetId: string |
       return { targetType: 'SYSTEM', targetId: p.systemId };
     case 'CREATE_SERVICE_RECORD':
       return { targetType: 'SERVICE_RECORD', targetId: null };
+    case 'CREATE_PART':
+      return { targetType: 'PART', targetId: null };
+    case 'UPDATE_PART':
+      return { targetType: 'PART', targetId: p.partId };
   }
 }
 
@@ -164,7 +169,59 @@ async function captureBeforeState(
       }
       return { baseUpdatedAt: row.updatedAt, beforeSnapshot: snap as Prisma.JsonValue };
     }
-    default:
+    case 'UPDATE_PART': {
+      const row = await prisma.part.findUnique({
+        where: { id: p.partId },
+        select: {
+          updatedAt: true,
+          name: true,
+          kind: true,
+          manufacturer: true,
+          model: true,
+          location: true,
+          notes: true,
+          typicalCost: true,
+          metadata: true,
+        },
+      });
+      if (!row) return { baseUpdatedAt: null, beforeSnapshot: null };
+      const snap: Record<string, unknown> = {};
+      if (p.name !== undefined) snap.name = row.name;
+      // Keyed `partKind`, matching the payload field — `Part.kind` collides
+      // with the union's own discriminator, so the wire name differs from the
+      // column name and the diff pairs on the wire name.
+      if (p.partKind !== undefined) snap.partKind = row.kind;
+      if (p.manufacturer !== undefined) snap.manufacturer = row.manufacturer;
+      if (p.model !== undefined) snap.model = row.model;
+      if (p.location !== undefined) snap.location = row.location;
+      if (p.notes !== undefined) snap.notes = row.notes;
+      if (p.typicalCost !== undefined) {
+        // `typicalCost` is Decimal(10, 2) and this is the ONLY Decimal any
+        // proposal kind touches. decimal.js defines `toJSON`, so storing the
+        // Decimal itself does not throw — it round-trips through the Json
+        // column as `"4.5"`, dropping the trailing zero and producing a
+        // spurious diff against a model-proposed `"4.50"`. Normalising to a
+        // fixed-2 string here is the same rule the calendar dates above
+        // follow: store the payload's own wire format, not the column's type.
+        snap.typicalCost = row.typicalCost === null ? null : row.typicalCost.toFixed(2);
+      }
+      if (p.metadata !== undefined) {
+        // The spec blob shares `metadata` with `_provenance`; the diff is
+        // about the spec, so the reserved key is stripped rather than shown.
+        const { _provenance, ...spec } = asRecord(row.metadata);
+        void _provenance;
+        snap.metadata = spec;
+      }
+      return { baseUpdatedAt: row.updatedAt, beforeSnapshot: snap as Prisma.JsonValue };
+    }
+    case 'CREATE_NOTE':
+    case 'CREATE_ITEM':
+    case 'CREATE_SERVICE_RECORD':
+    case 'CREATE_PART':
+      // Create kinds have no target row to snapshot. Enumerated rather than
+      // left to a `default:` on purpose — a `default:` is exactly how a new
+      // UPDATE_* kind silently loses optimistic concurrency here, since the
+      // compiler cannot see the omission.
       return { baseUpdatedAt: null, beforeSnapshot: null };
   }
 }
@@ -345,7 +402,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   const latestUserContent = `${turnText}\n\n---\n\nRetrieved context:\n${contextBlock}`;
 
   // Snapshot: every id the model may legally reference.
-  const [items, systems, categories, notes] = await Promise.all([
+  const [items, systems, categories, notes, parts] = await Promise.all([
     prisma.item.findMany({
       where: { archivedAt: null },
       select: { id: true, name: true, location: true, category: { select: { name: true } } },
@@ -356,6 +413,13 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     }),
     prisma.category.findMany({ select: { id: true, name: true } }),
     prisma.note.findMany({ select: { id: true, title: true } }),
+    // LIVE_PART, not `archivedAt: null`: a part is archived wherever ALL of its
+    // parents are, and that derived rule is exported from lib/parts/queries so
+    // it is written exactly once.
+    prisma.part.findMany({
+      where: LIVE_PART,
+      select: { id: true, name: true, kind: true, manufacturer: true, model: true },
+    }),
   ]);
   const noteRows: NoteRow[] = notes;
   const snapshot: Snapshot = {
@@ -363,6 +427,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     systemIds: new Set(systems.map((s) => s.id)),
     categoryIds: new Set(categories.map((c) => c.id)),
     noteIds: new Set(noteRows.map((n) => n.id)),
+    partIds: new Set(parts.map((p) => p.id)),
   };
 
   const tz = await getHouseTimezone();
@@ -378,6 +443,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     systems: systems.map((s) => ({ id: s.id, name: s.name, location: s.location })),
     categories,
     notes: noteRows,
+    parts,
   };
   const snapshotBlock = buildSnapshotBlock(snapshotInput);
 
@@ -449,7 +515,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     }
     let p = shapeCheck.data;
 
-    const v = validateProposal(p, snapshot);
+    const v = await validateProposal(p, snapshot);
     if (!v.ok) {
       logger.info({ event: 'chat.proposal.dropped', reason: v.reason }, 'dropped proposal');
       continue;
@@ -1013,6 +1079,133 @@ async function applyCreateServiceRecord(
   return { ok: true, data: { id: record.id } };
 }
 
+// NOTE for both part helpers: no `enqueueSearchIndex` / `enqueueEmbed`.
+// `'part'` is not in `SEARCH_KINDS` and `PART` is not in `EmbeddingEntityType`
+// until PR 3, and both helpers are typed to those unions. Same deliberate seam
+// as lib/parts/actions.ts.
+
+async function applyCreatePart(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'CREATE_PART' }>,
+): Promise<ActionResult<{ id: string }>> {
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
+  const provenance = extractProvenance(payload);
+  // The spec blob and `_provenance` share the `metadata` column, so this
+  // merges rather than overwrites. Safe to write provenance here because
+  // PartKindFields and the part Overview tab both strip reserved keys — the
+  // #328 leak/unsaveable-form pair cannot recur.
+  const metadata = mergeProvenanceMetadata(
+    (payload.metadata?.value ?? {}) as Prisma.JsonValue,
+    provenance,
+  );
+
+  const parent = payload.itemId
+    ? { itemId: payload.itemId }
+    : payload.systemId
+      ? { systemId: payload.systemId }
+      : null;
+
+  let part: { id: string };
+  try {
+    part = await prisma.part.create({
+      data: {
+        name: payload.name.value,
+        kind: payload.partKind.value,
+        manufacturer: payload.manufacturer?.value ?? null,
+        model: payload.model?.value ?? null,
+        location: payload.location?.value ?? null,
+        notes: payload.notes?.value ?? null,
+        typicalCost: payload.typicalCost?.value ?? null,
+        metadata,
+        // Nested in the same call: `part_links` carries a hand-written XOR
+        // CHECK, so exactly-one is enforced at the database whatever gets
+        // here. A part with no parent is the legal standalone case.
+        ...(parent ? { links: { create: [parent] } } : {}),
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: create part failed');
+    await releaseClaim(id);
+    return {
+      ok: false,
+      formError: 'Could not create the part — its item or system may have been deleted.',
+    };
+  }
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { appliedEntityId: part.id, appliedAt: new Date() },
+  });
+
+  revalidatePath('/parts');
+  revalidatePath('/dashboard');
+  if (payload.itemId) revalidatePath(`/items/${payload.itemId}`);
+  if (payload.systemId) revalidatePath(`/systems/${payload.systemId}`);
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: part.id } };
+}
+
+async function applyUpdatePart(
+  id: string,
+  payload: Extract<ProposalPayload, { kind: 'UPDATE_PART' }>,
+  baseUpdatedAt: Date | null,
+): Promise<ActionResult<{ id: string }>> {
+  const row = await prisma.part.findUnique({
+    where: { id: payload.partId },
+    select: { updatedAt: true, metadata: true },
+  });
+  const fresh = checkFreshness(row, baseUpdatedAt);
+  if (!fresh.ok) return markTerminal(id, fresh);
+
+  if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
+
+  const provenance = extractProvenance(payload);
+  const existingMetadata = asRecord(row?.metadata);
+  // A proposed spec replaces the spec but must not drop `_provenance`, which
+  // mergeProvenanceMetadata re-attaches from the existing blob below.
+  const baseMetadata: Prisma.JsonValue =
+    payload.metadata !== undefined
+      ? ({
+          _provenance: existingMetadata._provenance,
+          ...(payload.metadata.value as Record<string, unknown>),
+        } as Prisma.JsonValue)
+      : (row?.metadata ?? null);
+
+  const data: Record<string, unknown> = {
+    metadata: mergeProvenanceMetadata(baseMetadata, provenance),
+  };
+  if (payload.name !== undefined) data.name = payload.name.value;
+  if (payload.partKind !== undefined) data.kind = payload.partKind.value;
+  if (payload.manufacturer !== undefined) data.manufacturer = payload.manufacturer.value;
+  if (payload.model !== undefined) data.model = payload.model.value;
+  if (payload.location !== undefined) data.location = payload.location.value;
+  if (payload.notes !== undefined) data.notes = payload.notes.value;
+  if (payload.typicalCost !== undefined) data.typicalCost = payload.typicalCost.value;
+
+  try {
+    await prisma.part.update({ where: { id: payload.partId }, data });
+  } catch (err) {
+    logger.warn({ err, proposalId: id }, 'chat.apply: update part failed');
+    await releaseClaim(id);
+    return { ok: false, formError: 'Could not update the part.' };
+  }
+
+  await prisma.chatProposal.update({
+    where: { id },
+    data: { appliedEntityId: payload.partId, appliedAt: new Date() },
+  });
+
+  revalidatePath('/parts');
+  revalidatePath(`/parts/${payload.partId}`);
+  revalidatePath('/dashboard');
+  revalidatePath('/ask');
+
+  return { ok: true, data: { id: payload.partId } };
+}
+
 /**
  * Apply one PENDING proposal: re-validate freshness for update kinds, write
  * the row, fire that kind's side effects, and flip status to ACCEPTED.
@@ -1077,6 +1270,10 @@ export async function applyProposal(proposalId: unknown): Promise<ActionResult<{
       return applyUpdateSystem(id, payload, proposal.baseUpdatedAt);
     case 'CREATE_SERVICE_RECORD':
       return applyCreateServiceRecord(id, payload);
+    case 'CREATE_PART':
+      return applyCreatePart(id, payload);
+    case 'UPDATE_PART':
+      return applyUpdatePart(id, payload, proposal.baseUpdatedAt);
   }
 }
 

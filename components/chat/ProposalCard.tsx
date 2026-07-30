@@ -1,15 +1,18 @@
 'use client';
 
-import type { ChatProposalKind, Prisma } from '@prisma/client';
+import type { ChatProposalKind, PartKind, Prisma } from '@prisma/client';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ChatTurnProposal } from '@/lib/chat/actions';
 import { parseCalendarDate } from '@/lib/chat/dates';
 import type { ProposalPayload } from '@/lib/chat/schema';
+import { formatCurrency } from '@/lib/format/currency';
 import { formatCalendarDate } from '@/lib/format/date';
+import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 import type { ActionResult } from '@/lib/result';
 import { asCalendarDate } from '@/lib/time/tz';
 import { DiffRow } from './DiffRow';
@@ -31,6 +34,8 @@ const KIND_LABELS: Record<ChatProposalKind, string> = {
   UPDATE_ITEM: 'Update item',
   UPDATE_SYSTEM: 'Update system',
   CREATE_SERVICE_RECORD: 'New service record',
+  CREATE_PART: 'New part',
+  UPDATE_PART: 'Update part',
 };
 
 // ORPHANED and INVALID share nothing — different cause, different remedy.
@@ -42,14 +47,16 @@ const TERMINAL_MESSAGES: Record<string, string> = {
   INVALID: 'This proposal predates a schema change and can no longer be applied.',
 };
 
-type ProvenancedValue = { value: string; source: 'user' | 'inferred' };
+type Source = 'user' | 'inferred';
+
+type ProvenancedValue = { value: string; source: Source };
 
 type Row = {
   key: string;
   label: string;
   before?: string;
   after: string;
-  source?: 'user' | 'inferred';
+  source?: Source;
 };
 
 /** Format a model-supplied YYYY-MM-DD string; fall back to the raw value on parse failure. */
@@ -58,7 +65,29 @@ function fmtDate(value: string): string {
   return parsed ? formatCalendarDate(asCalendarDate(parsed)) : value;
 }
 
-function asSnapshotRecord(v: Prisma.JsonValue | null): Record<string, unknown> {
+/** Render a `PartKind` enum member as its label ("Air filter", not AIR_FILTER). */
+function fmtPartKind(value: string): string {
+  return PART_KIND_LABELS[value as PartKind] ?? value;
+}
+
+/**
+ * A spec key rendered as a label, matching the part detail page's treatment
+ * (`app/(app)/parts/[id]/tabs/OverviewTab.tsx`): short all-lowercase keys are
+ * acronyms (merv, mpr, cri), everything else is camelCase split into words.
+ */
+function fmtSpecLabel(key: string): string {
+  if (/^[a-z]{2,4}$/.test(key)) return key.toUpperCase();
+  return key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+}
+
+function fmtSpecValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function asSnapshotRecord(v: unknown): Record<string, unknown> {
   if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
   return {};
 }
@@ -68,27 +97,43 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
   const before = asSnapshotRecord(beforeSnapshot);
   const rows: Row[] = [];
 
+  // `fmt` is applied to BOTH sides: the snapshot stores each field in the
+  // payload's own wire format (YYYY-MM-DD, a fixed-2 decimal string, a raw
+  // enum member), so before and after have to render through the same
+  // function or an unchanged value shows up as a diff.
   const push = (
     key: string,
     label: string,
     field: ProvenancedValue | undefined,
-    isDate = false,
+    fmt: (value: string) => string = (v) => v,
   ) => {
     if (!field) return;
     const rawBefore = before[key];
     const beforeStr =
-      rawBefore === undefined || rawBefore === null
-        ? undefined
-        : isDate
-          ? fmtDate(String(rawBefore))
-          : String(rawBefore);
+      rawBefore === undefined || rawBefore === null ? undefined : fmt(String(rawBefore));
     rows.push({
       key,
       label,
       before: beforeStr,
-      after: isDate ? fmtDate(field.value) : field.value,
+      after: fmt(field.value),
       source: field.source,
     });
+  };
+
+  /** Emit one row per user-visible spec key in the part's `metadata` blob. */
+  const pushSpecs = (field: { value: Record<string, unknown>; source: Source } | undefined) => {
+    if (!field) return;
+    const beforeSpecs = asSnapshotRecord(before.metadata);
+    for (const [specKey, value] of visibleMetadataEntries(field.value)) {
+      const rawBefore = beforeSpecs[specKey];
+      rows.push({
+        key: `metadata.${specKey}`,
+        label: fmtSpecLabel(specKey),
+        before: rawBefore === undefined ? undefined : fmtSpecValue(rawBefore),
+        after: fmtSpecValue(value),
+        source: field.source,
+      });
+    }
   };
 
   switch (payload.kind) {
@@ -106,7 +151,7 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
       push('model', 'Model', payload.model);
       push('serialNumber', 'Serial number', payload.serialNumber);
       push('location', 'Location', payload.location);
-      push('purchaseDate', 'Purchase date', payload.purchaseDate, true);
+      push('purchaseDate', 'Purchase date', payload.purchaseDate, fmtDate);
       break;
     case 'UPDATE_ITEM':
       push('name', 'Name', payload.name);
@@ -115,19 +160,55 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
       push('serialNumber', 'Serial number', payload.serialNumber);
       push('location', 'Location', payload.location);
       push('notes', 'Notes', payload.notes);
-      push('purchaseDate', 'Purchase date', payload.purchaseDate, true);
+      push('purchaseDate', 'Purchase date', payload.purchaseDate, fmtDate);
       break;
     case 'UPDATE_SYSTEM':
       push('name', 'Name', payload.name);
       push('kindLabel', 'Kind', payload.kindLabel);
       push('location', 'Location', payload.location);
       push('notes', 'Notes', payload.notes);
-      push('installDate', 'Install date', payload.installDate, true);
+      push('installDate', 'Install date', payload.installDate, fmtDate);
       break;
     case 'CREATE_SERVICE_RECORD':
       push('summary', 'Summary', payload.summary);
-      push('performedOn', 'Performed on', payload.performedOn, true);
+      push('performedOn', 'Performed on', payload.performedOn, fmtDate);
       push('notes', 'Notes', payload.notes);
+      break;
+    case 'CREATE_PART':
+      push('name', 'Name', payload.name);
+      push('partKind', 'Kind', payload.partKind, fmtPartKind);
+      push('manufacturer', 'Manufacturer', payload.manufacturer);
+      push('model', 'Model', payload.model);
+      push('location', 'Location', payload.location);
+      push('notes', 'Notes', payload.notes);
+      push('typicalCost', 'Typical cost', payload.typicalCost, formatCurrency);
+      // Parent link is create-only: re-parenting an existing part is a
+      // PartLink edit, which UPDATE_PART has no arm for.
+      if (payload.itemId) {
+        rows.push({ key: 'itemId', label: 'Linked item', after: payload.itemId });
+      }
+      if (payload.systemId) {
+        rows.push({ key: 'systemId', label: 'Linked system', after: payload.systemId });
+      }
+      pushSpecs(payload.metadata);
+      break;
+    case 'UPDATE_PART':
+      push('name', 'Name', payload.name);
+      push('partKind', 'Kind', payload.partKind, fmtPartKind);
+      push('manufacturer', 'Manufacturer', payload.manufacturer);
+      push('model', 'Model', payload.model);
+      push('location', 'Location', payload.location);
+      push('notes', 'Notes', payload.notes);
+      push('typicalCost', 'Typical cost', payload.typicalCost, formatCurrency);
+      pushSpecs(payload.metadata);
+      break;
+    default:
+      // This switch is `case`/`break` over a discriminated union with a single
+      // `return rows` below, so a missing kind is NOT a type error — it renders
+      // a card with zero diff rows and nothing anywhere complains. The
+      // `satisfies never` restores the check: add a proposal kind without an
+      // arm here and this line stops compiling.
+      payload satisfies never;
       break;
   }
   return rows;

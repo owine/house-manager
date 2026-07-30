@@ -1,12 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type Snapshot, validateProposal } from './resolve';
 import type { ProposalPayload } from './schema';
+
+// Only ONE arm reaches the database: UPDATE_PART carrying `metadata` but no
+// `partKind`, which has to resolve the part's stored kind before it can pick a
+// spec schema. Everything else here is pure.
+const findUniquePart = vi.fn(async () => ({ kind: 'BULB' as const }));
+vi.mock('@/lib/db', () => ({
+  prisma: { part: { findUnique: (...args: unknown[]) => findUniquePart(...(args as [])) } },
+}));
 
 const snapshot: Snapshot = {
   itemIds: new Set(['item-1']),
   systemIds: new Set(['sys-1']),
   categoryIds: new Set(['cat-1']),
   noteIds: new Set(['note-1']),
+  partIds: new Set(['part-1']),
 };
 
 const createItem = (over: Record<string, unknown> = {}): ProposalPayload =>
@@ -18,18 +27,18 @@ const createItem = (over: Record<string, unknown> = {}): ProposalPayload =>
   }) as ProposalPayload;
 
 describe('validateProposal', () => {
-  it('accepts a proposal whose IDs are all in the snapshot', () => {
-    expect(validateProposal(createItem(), snapshot).ok).toBe(true);
+  it('accepts a proposal whose IDs are all in the snapshot', async () => {
+    expect((await validateProposal(createItem(), snapshot)).ok).toBe(true);
   });
 
-  it('rejects a hallucinated categoryId', () => {
-    const r = validateProposal(createItem({ categoryId: 'cat-nope' }), snapshot);
+  it('rejects a hallucinated categoryId', async () => {
+    const r = await validateProposal(createItem({ categoryId: 'cat-nope' }), snapshot);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/categoryId/);
   });
 
-  it('rejects a hallucinated itemId on UPDATE_ITEM', () => {
-    const r = validateProposal(
+  it('rejects a hallucinated itemId on UPDATE_ITEM', async () => {
+    const r = await validateProposal(
       {
         kind: 'UPDATE_ITEM',
         itemId: 'item-nope',
@@ -40,8 +49,8 @@ describe('validateProposal', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('rejects a service record targeting an unknown system', () => {
-    const r = validateProposal(
+  it('rejects a service record targeting an unknown system', async () => {
+    const r = await validateProposal(
       {
         kind: 'CREATE_SERVICE_RECORD',
         summary: { value: 'Flush', source: 'user' },
@@ -54,8 +63,8 @@ describe('validateProposal', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('rejects an unparseable calendar date', () => {
-    const r = validateProposal(
+  it('rejects an unparseable calendar date', async () => {
+    const r = await validateProposal(
       {
         kind: 'CREATE_SERVICE_RECORD',
         summary: { value: 'Flush', source: 'user' },
@@ -74,8 +83,8 @@ describe('validateProposal', () => {
   // from the XOR rule, not from a snapshot miss. Letting this through would
   // throw a Prisma constraint error from inside a server action, violating the
   // never-throw skeleton.
-  it('rejects a service-record target naming both an item and a system', () => {
-    const r = validateProposal(
+  it('rejects a service-record target naming both an item and a system', async () => {
+    const r = await validateProposal(
       {
         kind: 'CREATE_SERVICE_RECORD',
         summary: { value: 'Flush', source: 'user' },
@@ -89,8 +98,8 @@ describe('validateProposal', () => {
     if (!r.ok) expect(r.reason).toMatch(/exactly one/i);
   });
 
-  it('allows a null itemId on CREATE_NOTE (house-general knowledge)', () => {
-    const r = validateProposal(
+  it('allows a null itemId on CREATE_NOTE (house-general knowledge)', async () => {
+    const r = await validateProposal(
       {
         kind: 'CREATE_NOTE',
         title: { value: 'Lightbulbs', source: 'user' },
@@ -100,5 +109,85 @@ describe('validateProposal', () => {
       snapshot,
     );
     expect(r.ok).toBe(true);
+  });
+
+  it('rejects a hallucinated partId on UPDATE_PART', async () => {
+    const r = await validateProposal(
+      { kind: 'UPDATE_PART', partId: 'part-nope' } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/partId/);
+  });
+
+  it('rejects a CREATE_PART naming a parent that is not in the snapshot', async () => {
+    const r = await validateProposal(
+      {
+        kind: 'CREATE_PART',
+        name: { value: 'BR30', source: 'user' },
+        partKind: { value: 'BULB', source: 'user' },
+        systemId: 'sys-nope',
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/systemId/);
+  });
+
+  // Unparented is the legal standalone "generic bulbs" case — unlike
+  // CREATE_SERVICE_RECORD there is no lower bound on parents.
+  it('allows a CREATE_PART with no parent at all', async () => {
+    const r = await validateProposal(
+      {
+        kind: 'CREATE_PART',
+        name: { value: 'AA batteries', source: 'user' },
+        partKind: { value: 'BATTERY', source: 'user' },
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects metadata that fails the schema its partKind selects', async () => {
+    const r = await validateProposal(
+      {
+        kind: 'CREATE_PART',
+        name: { value: 'BR30', source: 'user' },
+        partKind: { value: 'BULB', source: 'user' },
+        metadata: { value: { watts: 'nine' }, source: 'inferred' },
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/metadata/);
+  });
+
+  // Non-strict z.object: an invented key is dropped, not rejected. The check
+  // exists to catch wrong-TYPED values, not unknown ones.
+  it('allows an invented metadata key', async () => {
+    const r = await validateProposal(
+      {
+        kind: 'CREATE_PART',
+        name: { value: 'BR30', source: 'user' },
+        partKind: { value: 'BULB', source: 'user' },
+        metadata: { value: { bulbColour: 'warm' }, source: 'inferred' },
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('resolves the stored kind when UPDATE_PART omits partKind', async () => {
+    findUniquePart.mockClear();
+    const r = await validateProposal(
+      {
+        kind: 'UPDATE_PART',
+        partId: 'part-1',
+        metadata: { value: { watts: 'nine' }, source: 'inferred' },
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(findUniquePart).toHaveBeenCalledTimes(1);
+    expect(r.ok).toBe(false);
   });
 });

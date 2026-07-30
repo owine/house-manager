@@ -89,6 +89,89 @@ describe('proposalPayloadSchema', () => {
     expect(r.success).toBe(false);
   });
 
+  it('accepts a well-formed CREATE_PART payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_PART',
+      name: { value: 'String light bulbs', source: 'user' },
+      partKind: { value: 'BULB', source: 'inferred' },
+      manufacturer: { value: 'Feit', source: 'user' },
+      typicalCost: { value: '4.50', source: 'user' },
+      metadata: { value: { base: 'E26', wattage: 11 }, source: 'user' },
+      itemId: 'item-1',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts CREATE_PART with neither itemId nor systemId', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_PART',
+      name: { value: 'Generic AA batteries', source: 'user' },
+      partKind: { value: 'BATTERY', source: 'user' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects CREATE_PART carrying both itemId and systemId', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_PART',
+      name: { value: 'Air filter', source: 'user' },
+      partKind: { value: 'AIR_FILTER', source: 'user' },
+      itemId: 'item-1',
+      systemId: 'system-1',
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects a partKind outside PART_KINDS', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_PART',
+      name: { value: 'Mystery part', source: 'user' },
+      partKind: { value: 'bulb', source: 'inferred' },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it.each(['about $4.50', '4.505', '$4.50', '', '4.5.0'])(
+    'rejects typicalCost %j',
+    (typicalCost) => {
+      const r = proposalPayloadSchema.safeParse({
+        kind: 'CREATE_PART',
+        name: { value: 'Bulb', source: 'user' },
+        partKind: { value: 'BULB', source: 'user' },
+        typicalCost: { value: typicalCost, source: 'inferred' },
+      });
+      expect(r.success).toBe(false);
+    },
+  );
+
+  it.each(['4.50', '4', '4.5', '12345678.99'])('accepts typicalCost %j', (typicalCost) => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'CREATE_PART',
+      name: { value: 'Bulb', source: 'user' },
+      partKind: { value: 'BULB', source: 'user' },
+      typicalCost: { value: typicalCost, source: 'inferred' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts a well-formed UPDATE_PART payload', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'UPDATE_PART',
+      partId: 'part-1',
+      model: { value: 'BR30-927-DIM', source: 'user' },
+      metadata: { value: { colorTemperatureK: 2700 }, source: 'inferred' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('requires partId on UPDATE_PART', () => {
+    const r = proposalPayloadSchema.safeParse({
+      kind: 'UPDATE_PART',
+      model: { value: 'BR30-927-DIM', source: 'user' },
+    });
+    expect(r.success).toBe(false);
+  });
+
   it('rejects CREATE_SERVICE_RECORD with a non-ISO performedOn', () => {
     const r = proposalPayloadSchema.safeParse({
       kind: 'CREATE_SERVICE_RECORD',
@@ -108,6 +191,10 @@ describe('parseStoredPayload', () => {
 
   it('returns null instead of throwing when the union has moved on', () => {
     expect(parseStoredPayload({ kind: 'SOMETHING_REMOVED' })).toBeNull();
+    // A CREATE_PART whose stored shape no longer matches — partKind gone.
+    expect(
+      parseStoredPayload({ kind: 'CREATE_PART', name: { value: 'Bulb', source: 'user' } }),
+    ).toBeNull();
     expect(parseStoredPayload(null)).toBeNull();
     expect(parseStoredPayload('not an object')).toBeNull();
   });
