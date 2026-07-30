@@ -49,12 +49,23 @@ describe('expandSystemSelection', () => {
     expect(result).toEqual([{ systemId: 'sys1' }]);
   });
 
-  it('does not collide a part target with a system key', () => {
-    const out = expandSystemSelection([{ partId: 'p1' }], {
+  // A guard, NOT a regression test — be honest about which. The two-column key
+  // builder this replaced could not actually lose a part row: `out` starts as
+  // `[...seed]`, so seed entries are kept regardless of their key, and the Set
+  // only gates what gets *appended*. `s:undefined` never equals a real
+  // `s:<id>`, so nothing collided.
+  //
+  // The three-way `keyOf` matters if a future change ever appends part rows
+  // (e.g. expanding a system to its parts — deliberately not done, see the
+  // note in expand.ts). This test pins the behaviour so that change can't
+  // silently dedupe them together.
+  it('keeps two distinct part targets in the seed', () => {
+    const out = expandSystemSelection([{ partId: 'p1' }, { partId: 'p2' }], {
       id: 's1',
       items: [{ id: 'i1', archivedAt: null }],
     });
     expect(out).toContainEqual({ partId: 'p1' });
+    expect(out).toContainEqual({ partId: 'p2' });
     expect(out).toContainEqual({ systemId: 's1' });
     expect(out).toContainEqual({ itemId: 'i1' });
   });
