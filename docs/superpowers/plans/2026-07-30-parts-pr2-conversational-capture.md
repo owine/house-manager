@@ -45,7 +45,7 @@ Other repo facts:
 | `lib/chat/schema.ts` | two payload arms |
 | `lib/chat/resolve.ts` | target resolution for the new kinds |
 | `components/chat/ProposalCard.tsx` | labels + diff rows, incl. currency formatting |
-| `components/chat/proposal-mapping.ts` | if it enumerates kinds |
+| `components/chat/proposal-mapping.ts` | `stubPayload` switch — it does enumerate kinds |
 
 ---
 
@@ -77,7 +77,9 @@ Other repo facts:
 
   **Leave `metadata` out of the payload.** Per-kind spec fields are a structured blob validated against eight different schemas; letting the model write it invites malformed specs and expands the diff render enormously. `name`/`manufacturer`/`model` capture what a user dictates in practice. Revisit only with evidence.
 
-  **`typicalCost` is a `Decimal`** — see Task 4. Emit it as a decimal string on the wire, matching how `pCalendarDate` handles dates.
+  **`typicalCost` is a `Decimal`** — see Task 4. Emit it as a decimal string on the wire, matching how `pCalendarDate` handles dates, and **constrain it**: `provenanced(z.string().regex(/^\d{1,8}(\.\d{1,2})?$/))`. Dates get a `checkDate` in `validateProposal`; without the equivalent here a model emitting `"about $4.50"` or `"4.505"` passes the union, passes validation, and throws at `prisma.part.create` — surfacing a generic failure long after the user accepted the proposal.
+
+  **Type the part's kind as the enum**, not a free string: `provenanced(z.enum(PART_KINDS))` using `PART_KINDS` from `lib/parts/schema.ts`. A loose string means `prisma.part.create({ kind: 'bulb' })` throws at apply time.
 
 - [ ] **Step 3:** Tests pass. Commit `feat(chat): CREATE_PART / UPDATE_PART payload arms`
 
@@ -97,11 +99,36 @@ Other repo facts:
 
 - [ ] **Step 3: `lib/chat/resolve.ts`** — add the two kinds to the `targetType`/`targetId` switch (`targetType: 'PART'`).
 
-- [ ] **Step 4: The apply switches.** `lib/chat/actions.ts` has three sites that switch on kind — around `:79`, `:117` (the `beforeSnapshot` capture) and `:1078`. Find them all by grepping for `CREATE_SERVICE_RECORD`; do not trust these line numbers after earlier edits.
+- [ ] **Step 4: The kind switches — seven of them, and grepping for `CREATE_SERVICE_RECORD` will NOT find them all.**
+
+  Grep `switch (p.kind)` / `switch (payload.kind)` instead. Verified complete list:
+
+  | Site | Note |
+  |---|---|
+  | `lib/chat/actions.ts:79` `targetFor` | |
+  | `lib/chat/actions.ts:106` `captureBeforeState` | **ends in `default:` — see below** |
+  | `lib/chat/actions.ts:1067` `applyProposal` | |
+  | `lib/chat/resolve.ts:26` | |
+  | `components/chat/proposal-mapping.ts:25` `stubPayload` | exhaustive-return, typecheck catches it |
+  | `components/chat/ProposalCard.tsx:27` `KIND_LABELS` | |
+  | `components/chat/ProposalCard.tsx:94` `buildRows` | |
+
+  Nothing in `queries.ts`, `dedup.ts`, `dice.ts` or `title.ts`.
+
+  **`captureBeforeState` is the dangerous one.** It ends in
+  `default: return { baseUpdatedAt: null, beforeSnapshot: null }`, so omitting
+  `UPDATE_PART` there **compiles clean** — no exhaustiveness error — and silently
+  returns a null `baseUpdatedAt`. Optimistic concurrency is then disabled (`STALE`
+  never fires) and `refreshProposal` marks the proposal `ORPHANED`. It also does
+  not contain the string `CREATE_SERVICE_RECORD`, which is why the grep recipe an
+  earlier draft of this plan suggested would have missed exactly the site that
+  fails quietly.
 
   Apply writes via `prisma.part.*` directly, as the other kinds do. **Do not call `enqueueSearchIndex` / `enqueueEmbed`** — `'part'` is not in `SEARCH_KINDS` and `PART` is not in `EmbeddingEntityType` until PR 3, and both helpers are typed to those unions.
 
   `UPDATE_PART` needs the same optimistic-concurrency handling as `UPDATE_ITEM`: `baseUpdatedAt`, and `ORPHANED` when the row is gone.
+
+  **Decide provenance explicitly.** Every other write kind runs `extractProvenance` + `mergeProvenanceMetadata` into the row's `metadata` (`actions.ts:767`, `:821`, `:896`), and `Part.metadata` exists. Excluding spec `metadata` from the *payload* does not answer whether the apply path writes `_provenance`. Writing it is safe — `components/parts/PartKindFields.tsx` and the part Overview tab already strip reserved keys, so the #328 leak/unsaveable-form pair cannot recur — and skipping it loses the inferred-vs-user distinction as soon as the proposal scrolls out of the thread. Default to writing it.
 
 - [ ] **Step 5:** Integration tests — a `CREATE_PART` proposal applies and creates the row; `UPDATE_PART` applies; a stale `baseUpdatedAt` yields `STALE`; a deleted target yields `ORPHANED`; a `partId` absent from the snapshot is rejected by `validateProposal`.
 
@@ -133,7 +160,9 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
 - [ ] **Step 2: Normalise at capture.** This is the same rule the schema comment already applies to calendar dates ("store as YYYY-MM-DD strings, matching the payload's own wire format"). Store `typicalCost` in `beforeSnapshot` as a fixed-2 decimal string. Do not store the `Decimal` and try to repair it at render — the wire format is the snapshot's contract.
 
-- [ ] **Step 3: Format at render.** `buildRows` in `components/chat/ProposalCard.tsx` has an `isDate` flag that routes a value through `fmtDate`. Add the money equivalent, reusing whatever currency formatter the app already uses (`Intl.NumberFormat` with `style: 'currency'` appears in the item tabs — check for a shared helper before adding another).
+- [ ] **Step 3: Format at render.** `buildRows` has an `isDate` flag routing values through `fmtDate`; add the money equivalent.
+
+  **There is no shared currency formatter** — there are eleven independent copies of `new Intl.NumberFormat('en-US', { style: 'currency' })` across the app. Add `lib/format/currency.ts` next to `lib/format/date.ts` (which `ProposalCard` already imports) and use it here. ~10 lines. Do not migrate the other eleven in this PR.
 
 - [ ] **Step 4: Update the schema comment.** It currently says no proposal kind touches a Decimal and to keep it that way. That is no longer true. Replace it with the rule that makes it safe — normalise to the payload's wire format at capture — so the next person reads a rule rather than a stale prohibition.
 
@@ -165,9 +194,11 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
 **Files:** `components/chat/ProposalCard.tsx`, `components/chat/proposal-mapping.ts`
 
-- [ ] **Step 1:** Add the two kinds to the label map (`:33`) and to `buildRows` (`:127`). Rows: name, kind label, manufacturer, model, location, typical cost (currency-formatted, per Task 4).
-- [ ] **Step 2:** Component tests, including a `CREATE_PART` card and an `UPDATE_PART` card with a before-snapshot.
-- [ ] **Step 3:** Commit `feat(chat): render part proposals in the diff card`
+- [ ] **Step 1:** Add the two kinds to `KIND_LABELS` (`:27`) and `buildRows` (`:94`). Rows: name, kind label, manufacturer, model, location, typical cost (currency-formatted, per Task 4).
+- [ ] **Step 2:** `components/chat/proposal-mapping.ts:25` — `stubPayload` needs both arms. Exhaustive-return, so typecheck catches it, but it is a step rather than a maybe.
+- [ ] **Step 3: Render the part kind through `components/parts/kind-labels.ts`** so the card shows "Air filter", not `AIR_FILTER`.
+- [ ] **Step 4:** Component tests, including a `CREATE_PART` card and an `UPDATE_PART` card with a before-snapshot.
+- [ ] **Step 5:** Commit `feat(chat): render part proposals in the diff card`
 
 ---
 
@@ -197,4 +228,6 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
 ## Out of scope
 
-Search and embedding indexing (PR 3) — hence no `enqueueSearchIndex`/`enqueueEmbed` in the part apply path. Part `metadata` in proposals. Part targets on `CREATE_SERVICE_RECORD` (its `targets` array is `{ itemId, systemId }` only; a natural follow-up, deliberately not here).
+Search and embedding indexing (PR 3) — hence no `enqueueSearchIndex`/`enqueueEmbed` in the part apply path. Part targets on `CREATE_SERVICE_RECORD` (its `targets` array is `{ itemId, systemId }` only; a natural follow-up, deliberately not here).
+
+**`CREATE_PART` cannot link the part to a parent.** The acceptance test in Task 7 Step 3 therefore produces an *unparented* part, which the user must then link by hand from `/parts` — the exact navigation the spec calls out as wrong ("nobody navigates to `/parts/new` and then hunts for the furnace"). Adding an optional `{ itemId | systemId }` to `CREATE_PART`, validated against the snapshot the way `CREATE_SERVICE_RECORD.targets` already is at `resolve.ts:58-69` and written as a nested `links: { create: … }`, is a small addition the `part_links` XOR CHECK already guards. Called out here so it is a decision rather than an omission.
