@@ -3,7 +3,7 @@ import { createSuggestionLog } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
 import { getLogger } from '@/lib/logger';
 import { buildPartSpecTable } from './prompt';
-import { type Snapshot, validateProposal } from './resolve';
+import { type Snapshot, snapshotLogIds, validateProposal } from './resolve';
 import { type PartProposalPayload, partProposalPayloadSchema, stripNullish } from './schema';
 
 const logger = getLogger('chat.parts-extract');
@@ -200,7 +200,7 @@ async function runExtraction(args: {
       userId,
       kind: 'chat-parts',
       userPrompt: turnText,
-      inventorySnapshotIds: [],
+      inventorySnapshotIds: snapshotLogIds(snapshot),
       response: null,
       errorReason,
       model: ANTHROPIC_MODEL,
@@ -213,7 +213,7 @@ async function runExtraction(args: {
     userId,
     kind: 'chat-parts',
     userPrompt: turnText,
-    inventorySnapshotIds: [],
+    inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { partsExtract: raw },
     model: ANTHROPIC_MODEL,
     inputTokens: usage.input_tokens,
