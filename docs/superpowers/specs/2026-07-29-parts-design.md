@@ -358,9 +358,27 @@ deleteSystemWithParts(input: { systemId: string; archivePartIds: string[] }):
   Promise<ActionResult<{ archivedCount: number; keptCount: number }>>
 ```
 
-1. `deleteSystem(id)` probes. On the RESTRICT violation, `isFkViolation` catches
-   it and the action returns the **list** rather than a count, so the dialog can
-   render names and kinds.
+1. **`deleteSystem(id)` pre-queries** for parts linked to that system and returns
+   the **list** rather than a count, so the dialog can render names and kinds.
+
+   Note this is *not* the probe-style pattern `tryDeleteVendor` uses.
+   `PartLink.system` is `onDelete: Cascade` (shipped in PR 1a), so a system
+   delete succeeds silently and cascades the link rows away — **there is no
+   RESTRICT violation to catch.** `tryDeleteVendor` probes because a RESTRICT FK
+   is the only thing stopping that delete; here nothing stops it, so an explicit
+   pre-check is both correct and simpler:
+
+   ```ts
+   const parts = await prisma.part.findMany({
+     where: { links: { some: { systemId: id } } },
+     select: { id: true, name: true, kind: true, _count: { select: { links: true } } },
+   });
+   // willBeOrphaned: every one of this part's links points at the system being deleted
+   ```
+
+   An earlier draft of this section described a RESTRICT probe. That was a
+   fossil of the pre-many-to-many design, where `Part` carried a single parent FK
+   set to `Restrict` specifically to force the probe. Many-to-many removed it.
 2. Dialog: one row per part with a checkbox, plus select-all/none. Rows are
    **default-checked only when `willBeOrphaned`** — a part still linked to two
    other fixtures should not be archived because one was deleted.
