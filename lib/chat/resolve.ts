@@ -17,6 +17,29 @@ export type Snapshot = {
   partIds: Set<string>;
 };
 
+/**
+ * Flatten a Snapshot into the id list recorded on `AISuggestionLog`.
+ *
+ * Ids are **kind-prefixed** (`item:cm…`, `part:cm…`). The suggest paths store
+ * bare Item ids because their snapshot is only ever items; a chat snapshot
+ * spans five kinds, and a bare cuid tells you nothing about which table to
+ * look in. Interpret the format by the row's `kind` column.
+ *
+ * This is a debugging aid, and the only record of its kind: the snapshot block
+ * sent to the model is not persisted anywhere. It answers "what could the
+ * model legally reference on this turn", which is the first question worth
+ * asking when a proposal cites something surprising.
+ */
+export function snapshotLogIds(snapshot: Snapshot): string[] {
+  return [
+    ...[...snapshot.itemIds].map((id) => `item:${id}`),
+    ...[...snapshot.systemIds].map((id) => `system:${id}`),
+    ...[...snapshot.categoryIds].map((id) => `category:${id}`),
+    ...[...snapshot.noteIds].map((id) => `note:${id}`),
+    ...[...snapshot.partIds].map((id) => `part:${id}`),
+  ];
+}
+
 export type ValidationResult = { ok: true } | { ok: false; reason: string };
 
 const bad = (reason: string): ValidationResult => ({ ok: false, reason });

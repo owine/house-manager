@@ -25,7 +25,7 @@ import { findDuplicateNote, type NoteTitle } from './dedup';
 import { extractPartProposals } from './parts-extract';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT, type SnapshotInput } from './prompt';
 import { getChatSession } from './queries';
-import { type Snapshot, validateProposal } from './resolve';
+import { type Snapshot, snapshotLogIds, validateProposal } from './resolve';
 import {
   chatTurnInputSchema,
   chatTurnOutputSchema,
@@ -497,7 +497,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       userId,
       kind: 'chat',
       userPrompt: turnText,
-      inventorySnapshotIds: [],
+      inventorySnapshotIds: snapshotLogIds(snapshot),
       response: null,
       errorReason,
       model: ANTHROPIC_MODEL,
@@ -586,7 +586,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     userId,
     kind: 'chat',
     userPrompt: turnText,
-    inventorySnapshotIds: [],
+    inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { reply: rawOutput.reply, proposals: rawOutput.proposals } as Prisma.InputJsonValue,
     model: ANTHROPIC_MODEL,
     inputTokens: usage.input_tokens,

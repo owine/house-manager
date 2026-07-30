@@ -696,6 +696,14 @@ model AISuggestionLog {
   kind                 String
   systemPromptVersion  String
   userPrompt           String?
+  // What the model was shown. Format differs by `kind`, deliberately:
+  //   suggest paths ('reminders', 'checklist') → bare Item ids
+  //   chat paths ('chat', 'chat-parts')        → kind-prefixed ('item:cm…',
+  //     'part:cm…'), because a chat snapshot spans items, systems, categories,
+  //     notes and parts, and a bare cuid does not say which table to look in.
+  // Empty is legitimate on log rows written BEFORE the snapshot is built —
+  // rate-limit rejections and retrieval failures. See lib/chat/resolve.ts
+  // `snapshotLogIds`.
   inventorySnapshotIds String[]
   response             Json?
   acceptedItemIds      Json     @default("[]")

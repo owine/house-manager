@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type Snapshot, validateProposal } from './resolve';
+import { type Snapshot, snapshotLogIds, validateProposal } from './resolve';
 import type { ProposalPayload } from './schema';
 
 // Only ONE arm reaches the database: UPDATE_PART carrying `metadata` but no
@@ -205,5 +205,46 @@ describe('validateProposal', () => {
     );
     expect(findUniquePart).toHaveBeenCalledTimes(1);
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('snapshotLogIds', () => {
+  const snapshot = {
+    itemIds: new Set(['i1']),
+    systemIds: new Set(['s1']),
+    categoryIds: new Set(['c1']),
+    noteIds: new Set(['n1']),
+    partIds: new Set(['p1']),
+  };
+
+  it('prefixes every id with its kind', () => {
+    expect(snapshotLogIds(snapshot)).toEqual([
+      'item:i1',
+      'system:s1',
+      'category:c1',
+      'note:n1',
+      'part:p1',
+    ]);
+  });
+
+  // A bare cuid tells you nothing about which table to look in, and this list
+  // is the ONLY record of what the model could reference — the snapshot block
+  // itself is never persisted.
+  it('covers all five kinds, so a new kind cannot be silently omitted', () => {
+    const kinds = new Set(snapshotLogIds(snapshot).map((s) => s.split(':')[0]));
+    expect(kinds).toEqual(new Set(['item', 'system', 'category', 'note', 'part']));
+    expect(kinds.size).toBe(Object.keys(snapshot).length);
+  });
+
+  it('is empty for an empty snapshot', () => {
+    expect(
+      snapshotLogIds({
+        itemIds: new Set(),
+        systemIds: new Set(),
+        categoryIds: new Set(),
+        noteIds: new Set(),
+        partIds: new Set(),
+      }),
+    ).toEqual([]);
   });
 });
