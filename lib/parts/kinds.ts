@@ -82,7 +82,7 @@ const airFilterSchema = z.object({
 });
 
 const waterFilterSchema = z.object({
-  cartridgeType: z.enum(['RO membrane', 'sediment', 'carbon block', 'fridge inline']).optional(),
+  cartridgeType: z.enum(['ro-membrane', 'sediment', 'carbon-block', 'fridge-inline']).optional(),
   micronRating: z.number().nonnegative().optional(),
   capacityGallons: z.number().nonnegative().optional(),
   ratedMonths: z.number().nonnegative().optional(),

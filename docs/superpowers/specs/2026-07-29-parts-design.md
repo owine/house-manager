@@ -242,7 +242,7 @@ export const partKindConfigs: Record<PartKind, z.ZodTypeAny> = { ... }
 |---|---|
 | `BULB` | `base` (E26/E12/E17/E39/GU10/GU24/GU5.3/G4/G9/other), `shape` (A19/A21/BR30/BR40/PAR20/PAR30/PAR38/MR16/G25/ST19/S14/T8/other), `technology` (LED/incandescent/halogen/CFL/fluorescent), `watts`, `wattEquivalent`, `lumens`, `colorTempK`, `cri`, `dimmable`, `voltage`, `ratedHours` |
 | `AIR_FILTER` | `nominalSize` (`20x25x1`), `actualSize`, `merv`, `mpr`, `fpr`, `pleated`, `ratedMonths` |
-| `WATER_FILTER` | `cartridgeType` (RO membrane/sediment/carbon block/fridge inline), `micronRating`, `capacityGallons`, `ratedMonths` |
+| `WATER_FILTER` | `cartridgeType` (ro-membrane/sediment/carbon-block/fridge-inline), `micronRating`, `capacityGallons`, `ratedMonths` |
 | `BATTERY` | `size` (AA/AAA/C/D/9V/CR2032/CR2450/CR123A/18650/other), `chemistry`, `voltage`, `capacityMah`, `rechargeable` |
 | `BELT` | `beltType`, `length`, `profile` |
 | `FUSE` | `amps`, `voltage`, `fuseType`, `fastBlow` |

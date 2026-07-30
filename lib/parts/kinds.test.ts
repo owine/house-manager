@@ -89,7 +89,7 @@ describe('partKindSchemaFor(WATER_FILTER)', () => {
 
   it('accepts a full spec', () => {
     const input = {
-      cartridgeType: 'carbon block',
+      cartridgeType: 'carbon-block',
       micronRating: 0.5,
       capacityGallons: 300,
       ratedMonths: 6,
