@@ -68,7 +68,10 @@ Other repo facts that will otherwise cost you time:
 | `components/targets/TargetsPicker.tsx` | opt-in `allowParts` prop; **pass through** unknown part rows |
 | `components/reminders/ReminderForm.tsx` | `PartTargetInput`, `allowParts` |
 | `components/service-records/ServiceRecordForm.tsx` | `PartTargetInput`, `allowParts` |
-| `app/(app)/reminders/new/page.tsx`, `chores/new/page.tsx`, `service/new/page.tsx` | `PartTargetInput` |
+| `app/(app)/reminders/new`, `chores/new`, `service/new`, `reminders/[id]/edit`, `service/[id]/edit` | `allowParts`, `availableParts`, `?partId=` prefill |
+| `components/targets/TargetsChips.tsx` + test | link part chips now that `/parts/[id]` exists |
+| `lib/email/templates/reminder.tsx` + test | link part targets in notification emails |
+| `app/(app)/systems/[id]/**` | a Delete action — `deleteSystem` has no UI entry point today |
 | `lib/systems/actions.ts` | `deleteSystem` returns parts; `deleteSystemWithParts` |
 | `app/(app)/items/[id]/page.tsx`, `systems/[id]/page.tsx` | Parts tab |
 | `app/(app)/_components/AppSidebar.tsx` | `/parts` nav entry |
@@ -123,6 +126,12 @@ The repo's feature-module convention is in `CLAUDE.md`; `lib/items/*` is canonic
 
   Write these once and import them; a second inline copy is how the list page and the picker end up disagreeing.
 
+  **Also export a picker query**, mirroring the existing
+  `listAllActiveItemsForPicker()` / `listSystemsWithItemsForPicker()`:
+  `listPartsForPicker()`, filtered by `LIVE_PART`. Without it Task 5 has an
+  `allowParts` flag and no data to render. The spec says the derived-archive rule
+  applies to the target pickers, so this is where it gets applied.
+
 - [ ] **Step 3: `actions.ts`.** Follow the server-action skeleton in `CLAUDE.md` exactly: `input: unknown`, `auth()` first returning `{ ok: false, formError: 'Unauthorized' }` (never throw), `safeParse`, `revalidatePath`, side effects never fatal.
 
   `createPart` / `updatePart` / `archivePart` / `restorePart`, plus:
@@ -151,13 +160,32 @@ The repo's feature-module convention is in `CLAUDE.md`; `lib/items/*` is canonic
 
   **Guard against the `ItemForm` bug fixed in #328:** if you reset metadata when `kind` changes, the effect must not fire on mount. A `useEffect` keyed on a watched value runs on the first render too, and `ItemForm` shipped exactly that — every edit submitted `metadata: {}` and destroyed the stored spec. Use the previous-value ref guard from `ItemForm.tsx`, and write the regression test as an assertion on the **submitted payload**, not on rendered inputs; the discriminator `Select` keeps its own uncontrolled value, so a render-level assertion passes against the bug.
 
-- [ ] **Step 4: Detail tabs.** Overview, Links, Reminders, Service, Attachments.
+- [ ] **Step 4: Detail tabs.** Overview, Links, Reminders, Service.
+
+  **No Attachments tab** — the spec lists one, but `lib/attachments/schema.ts:3`
+  defines `PARENT_TYPES = ['item','warranty','serviceRecord','note']`, and
+  `parentExists`, `FK_FIELD` and `REVALIDATE_PATH` all switch on it exhaustively.
+  Adding parts means modifying `lib/attachments/*`, which is a different unit of
+  work. `system` isn't a parent type either, so a detail page without attachments
+  has precedent. Deferred, not forgotten — `attachments.partId` already exists
+  from PR 1a, so the tab is a small follow-up whenever it's wanted.
 
   **The Overview tab must filter reserved metadata keys from day one.** Use `visibleMetadataEntries` from `lib/metadata/reserved-keys.ts` (added in #328). Rendering `Object.entries(metadata)` raw is how `_provenance` leaked onto the item page.
 
-- [ ] **Step 5: Nav.** `/parts` in `AppSidebar.tsx`, grouped with items/systems/vendors — inventory, not activity. Prefer `Boxes` or `Puzzle` over `Lightbulb`, which over-indexes on bulbs.
+- [ ] **Step 5: Link the two deferred href sites.** Both render parts as plain
+  text *because `/parts/[id]` 404s today*, and both have tests asserting that
+  no-link behaviour which must be updated once the route exists:
+  - `components/targets/TargetsChips.tsx:41-45` (`href: null` at `:83`) — test at
+    `components/targets/TargetsChips.test.tsx:83-84`
+  - `lib/email/templates/reminder.tsx:44-48` — test at
+    `lib/email/templates/reminder.test.ts:135`
 
-- [ ] **Step 6:** Component tests for `PartForm` (including the metadata-wipe regression). Commit `feat(parts): routes, nav, and the part form`
+  Leaving these is a silently degraded outcome, not a compile error: a
+  part-targeted reminder email would keep shipping an unlinked target.
+
+- [ ] **Step 6: Nav.** `/parts` in `AppSidebar.tsx`, grouped with items/systems/vendors — inventory, not activity. Prefer `Boxes` or `Puzzle` over `Lightbulb`, which over-indexes on bulbs.
+
+- [ ] **Step 7:** Component tests for `PartForm` (including the metadata-wipe regression). Commit `feat(parts): routes, nav, and the part form`
 
 ---
 
@@ -179,13 +207,35 @@ Read the "Read this before starting" section again before editing.
 
   Widening the *type* for all four consumers is fine — `TargetInput` and `PartTargetInput` are mutually assignable. What must stay gated is the *UI affordance*: warranties and incoming email must never let a user create a part target, because their tables keep a two-way XOR and the write would 500.
 
-- [ ] **Step 3:** `ReminderForm` and `ServiceRecordForm` pass `allowParts`, type state as `PartTargetInput[]`. Update the three `new/page.tsx` files' `initialTargets` types.
+- [ ] **Step 3: `TargetsPicker` also needs an `availableParts` prop.** It renders
+  from `availableItems` / `availableSystems`; a boolean flag alone gives it
+  nothing to show. Feed it from `listPartsForPicker()` (Task 3).
 
-- [ ] **Step 4:** Fix `ReminderForm.tsx:103` — the client-side message still says "Select at least one item or system" while the server message mentions parts.
+- [ ] **Step 4: FIVE pages host these forms, not three.** The plan's earlier draft
+  listed only the `new/` ones:
+  - `app/(app)/reminders/new/page.tsx`
+  - `app/(app)/chores/new/page.tsx`
+  - `app/(app)/service/new/page.tsx`
+  - **`app/(app)/reminders/[id]/edit/page.tsx`**
+  - **`app/(app)/service/[id]/edit/page.tsx`**
 
-- [ ] **Step 5: Verify the loop end to end**, because the unit tests cannot. An integration or e2e test that creates a part, targets it from a reminder, **re-saves the reminder through the form path**, and asserts the target survives with the same row id. The PR 1a tests call the actions directly and would not catch a form that drops the row.
+  The two edit pages already pass `PartTargetInput[]` via `toTargetInputs`, so
+  they **typecheck untouched** — which is exactly why they're easy to miss. But
+  without `allowParts` + `availableParts` a user editing a part-targeted reminder
+  sees the part in neither the chips nor the list, and cannot add or remove one.
+  That is the precise flow this task exists for, and where Step 6's end-to-end
+  test runs.
 
-- [ ] **Step 6:** `pnpm verify`. Commit `feat(parts): allow part targets in the reminder and service-record pickers`
+  While in these files, add a `?partId=` prefill branch alongside the existing
+  `sp.itemId` / `sp.systemId` ones, so the Parts detail page's Reminders and
+  Service tabs get a one-click "add reminder for this part" — the same
+  navigation argument Task 6 makes for the Parts tabs.
+
+- [ ] **Step 5:** Fix `ReminderForm.tsx:103` — the client-side message still says "Select at least one item or system" while the server message mentions parts.
+
+- [ ] **Step 6: Verify the loop end to end**, because the unit tests cannot. An integration or e2e test that creates a part, targets it from a reminder, **re-saves the reminder through the form path**, and asserts the target survives with the same row id. The PR 1a tests call the actions directly and would not catch a form that drops the row.
+
+- [ ] **Step 7:** `pnpm verify`. Commit `feat(parts): allow part targets in the reminder and service-record pickers`
 
 ---
 
@@ -215,7 +265,14 @@ Read the "Read this before starting" section again before editing.
 
   `willBeOrphaned` = every one of that part's links points at the system being deleted.
 
-  `deleteSystem`'s return type changes from `ActionResult`, so its existing callers need updating. Visible break, not a silent one.
+  **`deleteSystem` currently has ZERO callers** — `grep -rn deleteSystem app components lib tests worker` returns only its definition at `lib/systems/actions.ts:78`. There is no way to delete a system in the UI at all.
+
+  So an earlier draft's warning that "its existing callers need updating" was
+  wrong, and the real gap is the inverse: **this task must add the entry point**,
+  or the dialog is unreachable and Task 8's e2e cannot be written. Add a Delete
+  action on the system detail page (`SystemHeader.tsx` or the detail page's
+  action row) that opens `DeleteSystemPartsDialog`. Changing the return type is
+  therefore free — nothing depends on the old shape.
 
 - [ ] **Step 2: The dialog.** One row per part with a checkbox, plus select-all/none. **Default-checked only when `willBeOrphaned`** — a part still linked to two other fixtures must not be archived because one was deleted. `checkbox.tsx` and `dialog.tsx` already exist; no new primitives. Wire rows with `label[for="…"]` for Playwright. `Part.name` is user-supplied — render as text, never markup.
 
@@ -229,8 +286,8 @@ Read the "Read this before starting" section again before editing.
 
 ### Task 8: Seeds, e2e, and full verification
 
-- [ ] **Step 1:** A few parts in `prisma/seed.ts` — at minimum an `AIR_FILTER` linked to a system and a `BULB` with no links (the standalone/generic case), so both shapes are represented.
-- [ ] **Step 2:** An e2e spec: create a part, link it to an item, target it from a reminder. At most one `@critical` tag — CI runs only those. Remember the `label[for="…"]` gotcha.
+- [ ] **Step 1:** A few parts in `prisma/seed.ts` — at minimum an `AIR_FILTER` linked to a **system**, a `BULB` linked to an **item**, and a `BULB` with **no links** (the standalone/generic case). Task 6 puts a Parts tab on both Item and System, so both parent shapes need seeded coverage.
+- [ ] **Step 2:** An e2e spec: create a part, link it to an item, target it from a reminder, **and exercise the delete-system dialog** (now reachable, per Task 7). At most one `@critical` tag — CI runs only those. Remember the `label[for="…"]` gotcha.
 - [ ] **Step 3:**
   ```bash
   pnpm verify
