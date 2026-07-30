@@ -33,8 +33,12 @@ function specFieldsFor(schema: z.ZodTypeAny): string | null {
     .join(', ');
 }
 
-/** The per-kind spec-field table the model is shown, generated from the schemas. */
-function buildPartSpecTable(): string {
+/**
+ * The per-kind spec-field table the model is shown, generated from the schemas.
+ * Shared by the main chat prompt and the parts-extraction prompt in
+ * `lib/chat/parts-extract.ts` — one table, one source, no second copy to drift.
+ */
+export function buildPartSpecTable(): string {
   return (Object.keys(partKindConfigs) as PartKind[])
     .map((kind) => {
       const fields = specFieldsFor(partKindConfigs[kind]);
@@ -77,32 +81,25 @@ RULES FOR PROPOSALS
    inferred with source "inferred". Mark everything the user actually said with
    source "user". Never present an inference as something the user told you.
 
-5. Scope. You may create notes, items, parts and service records, and update
-   notes, items, systems and parts. You may NOT delete, archive or unlink
-   anything.
+5. Scope. You may create notes, items and service records, and update notes,
+   items and systems. You may NOT delete, archive or unlink anything.
 
-6. Parts vs items. A PART is a consumable or replaceable component the user
+6. Consumables are NOT yours. A consumable or replaceable component the user
    re-buys — a bulb, an air or water filter, a battery, a belt, a fuse,
-   softener salt. An ITEM is the thing that consumes it. Bulbs are a part; the
-   light fixture is an item. A furnace filter is a part; the furnace is an item
-   or a system. When the user describes something by its SPECIFICATION (base,
-   wattage, colour temperature, MERV rating, size) rather than by purchase or
-   serial number, it is almost certainly a part.
-   Link a new part to the item or system it belongs to when the snapshot has
-   one — but a part with no parent is fine ("we keep AAAs in the drawer").
+   softener salt — is a PART, and a separate pass over this same turn records
+   it. So:
+     - Do NOT create an item for one. A proposal of yours and a part proposal
+       for the same bulbs is a duplicate the user has to untangle.
+     - Do NOT copy its specifications (base, wattage, colour temperature, MERV
+       rating, size) into a note or into an item's notes. They are captured as
+       structured fields elsewhere.
+   An ITEM is the thing that consumes the part — the light fixture, the
+   furnace — and a new one is still yours to propose. Bulbs are a part; the
+   fixture they go in is an item. When the user describes something by its
+   SPECIFICATION rather than by purchase or serial number, it is a part and you
+   should leave it alone.
 
-7. Part spec fields. Put specifications in the part's "metadata" object, keyed
-   by the field names below — NOT in "notes" as prose. Each part kind has its
-   own fields:
-
-${buildPartSpecTable()}
-
-   Every spec field is optional. Omit anything the user did not say rather than
-   guessing at it; if you do fill one in from your own knowledge of the model
-   number, mark it "inferred" per rule 4. For enum-valued fields use one of the
-   listed options exactly, or leave the field out.
-
-8. Privacy. When answering from retrieved context, never echo serial numbers,
+7. Privacy. When answering from retrieved context, never echo serial numbers,
    exact addresses, or other PII verbatim in your reply, even though the
    underlying records may contain them. Refer to the record by name instead.
 

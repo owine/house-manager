@@ -120,14 +120,14 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
     });
   };
 
-  /** Emit one row per user-visible spec key in the part's `metadata` blob. */
+  /** Emit one row per user-visible spec key in the part's proposed `spec`. */
   const pushSpecs = (field: { value: Record<string, unknown>; source: Source } | undefined) => {
     if (!field) return;
-    const beforeSpecs = asSnapshotRecord(before.metadata);
+    const beforeSpecs = asSnapshotRecord(before.spec);
     for (const [specKey, value] of visibleMetadataEntries(field.value)) {
       const rawBefore = beforeSpecs[specKey];
       rows.push({
-        key: `metadata.${specKey}`,
+        key: `spec.${specKey}`,
         label: fmtSpecLabel(specKey),
         before: rawBefore === undefined ? undefined : fmtSpecValue(rawBefore),
         after: fmtSpecValue(value),
@@ -190,7 +190,7 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
       if (payload.systemId) {
         rows.push({ key: 'systemId', label: 'Linked system', after: payload.systemId });
       }
-      pushSpecs(payload.metadata);
+      pushSpecs(payload.spec);
       break;
     case 'UPDATE_PART':
       push('name', 'Name', payload.name);
@@ -200,7 +200,7 @@ function buildRows(payload: ProposalPayload, beforeSnapshot: Prisma.JsonValue | 
       push('location', 'Location', payload.location);
       push('notes', 'Notes', payload.notes);
       push('typicalCost', 'Typical cost', payload.typicalCost, formatCurrency);
-      pushSpecs(payload.metadata);
+      pushSpecs(payload.spec);
       break;
     default:
       // This switch is `case`/`break` over a discriminated union with a single

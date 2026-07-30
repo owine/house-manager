@@ -105,7 +105,7 @@ function seedPart(over: Partial<Prisma.PartUncheckedCreateInput> = {}) {
 describe('applyProposal — part kinds', () => {
   beforeEach(seed);
 
-  it('applies CREATE_PART: writes the spec metadata AND the parent link', async () => {
+  it('applies CREATE_PART: writes the spec to metadata AND the parent link', async () => {
     const proposal = await createProposal({
       kind: 'CREATE_PART',
       targetType: 'PART',
@@ -115,7 +115,7 @@ describe('applyProposal — part kinds', () => {
         partKind: { value: 'BULB', source: 'user' },
         manufacturer: { value: 'Philips', source: 'inferred' },
         typicalCost: { value: '4.50', source: 'user' },
-        metadata: { value: { base: 'E26', shape: 'BR30', watts: 9 }, source: 'inferred' },
+        spec: { value: { base: 'E26', shape: 'BR30', watts: 9 }, source: 'inferred' },
         itemId: 'item-1',
       },
     });
@@ -143,7 +143,7 @@ describe('applyProposal — part kinds', () => {
       partKind: 'user',
       manufacturer: 'inferred',
       typicalCost: 'user',
-      metadata: 'inferred',
+      spec: 'inferred',
     });
 
     expect(part.links).toHaveLength(1);
@@ -190,7 +190,7 @@ describe('applyProposal — part kinds', () => {
         partId: existing.id,
         manufacturer: { value: 'GE', source: 'user' },
         typicalCost: { value: '5.25', source: 'user' },
-        metadata: { value: { base: 'E26', watts: 9 }, source: 'inferred' },
+        spec: { value: { base: 'E26', watts: 9 }, source: 'inferred' },
       },
     });
 
@@ -205,7 +205,7 @@ describe('applyProposal — part kinds', () => {
     expect(metadata._provenance).toEqual({
       manufacturer: 'user',
       typicalCost: 'user',
-      metadata: 'inferred',
+      spec: 'inferred',
     });
   });
 
@@ -332,14 +332,14 @@ describe('validateProposal — part arms against a real snapshot', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('rejects metadata failing the stored kind schema when partKind is omitted', async () => {
+  it('rejects a spec failing the stored kind schema when partKind is omitted', async () => {
     await seedPart();
     const result = await validateProposal(
       {
         kind: 'UPDATE_PART',
         partId: 'part-1',
         // The stored kind is BULB, whose `watts` is a number.
-        metadata: { value: { watts: 'nine' }, source: 'inferred' },
+        spec: { value: { watts: 'nine' }, source: 'inferred' },
       } as never,
       {
         itemIds: new Set(['item-1']),
@@ -350,6 +350,6 @@ describe('validateProposal — part arms against a real snapshot', () => {
       },
     );
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/metadata/);
+    if (!result.ok) expect(result.reason).toMatch(/spec/);
   });
 });

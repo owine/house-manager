@@ -3,7 +3,7 @@ import type { PartKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { partKindSchemaFor } from '@/lib/parts/kinds';
 import { parseCalendarDate } from './dates';
-import type { ProposalPayload } from './schema';
+import { type ProposalPayload, stripNullish } from './schema';
 
 // The model is handed a snapshot of every ID it may reference and MUST NOT mint
 // one. Same discipline as validateCandidateIds in lib/incoming-email/ai-classify.
@@ -28,7 +28,7 @@ function checkDate(label: string, value: string | undefined): string | null {
 }
 
 /**
- * A part's spec blob is validated by the schema its `kind` selects — the same
+ * A part's spec is validated by the schema its `kind` selects — the same
  * `partKindSchemaFor` the parts form and `lib/parts/actions.ts` use, so a
  * chat-proposed BULB cannot land with a shape the parts UI then refuses to
  * re-save.
@@ -39,12 +39,15 @@ function checkDate(label: string, value: string | undefined): string | null {
  * `prisma.part.update` and throw from inside apply, long after the user
  * accepted the proposal.
  */
-function checkMetadata(kind: PartKind, metadata: unknown): ValidationResult {
-  const result = partKindSchemaFor(kind).safeParse(metadata ?? {});
+function checkSpec(kind: PartKind, spec: Record<string, unknown> | undefined): ValidationResult {
+  // Nulls are stripped, not rejected: `partSpecSchema` lets the model say
+  // "not stated" with an explicit null, and the per-kind schemas take neither
+  // null nor a key belonging to another kind. Absent is the same as null here.
+  const result = partKindSchemaFor(kind).safeParse(stripNullish(spec ?? {}));
   if (result.success) return { ok: true };
   const first = result.error.issues[0];
   const path = first?.path.join('.');
-  return bad(`metadata: ${path ? `${path}: ` : ''}${first?.message ?? 'invalid for this kind'}`);
+  return bad(`spec: ${path ? `${path}: ` : ''}${first?.message ?? 'invalid for this kind'}`);
 }
 
 /**
@@ -111,13 +114,13 @@ export async function validateProposal(
       // absent.
       if (p.itemId && !snap.itemIds.has(p.itemId)) return bad('itemId not in snapshot');
       if (p.systemId && !snap.systemIds.has(p.systemId)) return bad('systemId not in snapshot');
-      if (p.metadata === undefined) return { ok: true };
-      return checkMetadata(p.partKind.value, p.metadata.value);
+      if (p.spec === undefined) return { ok: true };
+      return checkSpec(p.partKind.value, p.spec.value);
     }
 
     case 'UPDATE_PART': {
       if (!snap.partIds.has(p.partId)) return bad('partId not in snapshot');
-      if (p.metadata === undefined) return { ok: true };
+      if (p.spec === undefined) return { ok: true };
       let kind = p.partKind?.value;
       if (kind === undefined) {
         const existing = await prisma.part.findUnique({
@@ -127,7 +130,7 @@ export async function validateProposal(
         if (!existing) return bad('partId no longer exists');
         kind = existing.kind;
       }
-      return checkMetadata(kind, p.metadata.value);
+      return checkSpec(kind, p.spec.value);
     }
   }
 }

@@ -1,6 +1,6 @@
 'use server';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import type { ChatProposal, ChatProposalKind, Prisma } from '@prisma/client';
+import type { ChatProposal, ChatProposalKind, PartKind, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
@@ -16,11 +16,13 @@ import { embedTexts } from '@/lib/embedding/voyage';
 import { getEnv } from '@/lib/env';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
+import { partKindSchemaFor } from '@/lib/parts/kinds';
 import { LIVE_PART } from '@/lib/parts/queries';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { parseCalendarDate, resolveAnchorDay } from './dates';
 import { findDuplicateNote, type NoteTitle } from './dedup';
+import { extractPartProposals } from './parts-extract';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT, type SnapshotInput } from './prompt';
 import { getChatSession } from './queries';
 import { type Snapshot, validateProposal } from './resolve';
@@ -29,7 +31,8 @@ import {
   chatTurnOutputSchema,
   type ProposalPayload,
   parseStoredPayload,
-  proposalPayloadSchema,
+  storedProposalPayloadSchema,
+  stripNullish,
 } from './schema';
 import { deriveSessionTitle } from './title';
 
@@ -205,12 +208,14 @@ async function captureBeforeState(
         // follow: store the payload's own wire format, not the column's type.
         snap.typicalCost = row.typicalCost === null ? null : row.typicalCost.toFixed(2);
       }
-      if (p.metadata !== undefined) {
-        // The spec blob shares `metadata` with `_provenance`; the diff is
-        // about the spec, so the reserved key is stripped rather than shown.
+      if (p.spec !== undefined) {
+        // The proposed `spec` lands in the `metadata` column, which also holds
+        // `_provenance`; the diff is about the spec, so the reserved key is
+        // stripped rather than shown. Keyed `spec` to match the wire field the
+        // diff pairs on, not the column it came from.
         const { _provenance, ...spec } = asRecord(row.metadata);
         void _provenance;
-        snap.metadata = spec;
+        snap.spec = spec;
       }
       return { baseUpdatedAt: row.updatedAt, beforeSnapshot: snap as Prisma.JsonValue };
     }
@@ -453,6 +458,24 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   ];
 
   const start = Date.now();
+
+  // TWO model calls, both in flight from here — this promise is created before
+  // the main request is awaited, so the two overlap and the turn costs one
+  // round trip, not two.
+  //
+  // Parts are extracted separately because the main call is constrained by a
+  // compiled grammar with hard ceilings the part arms cannot fit inside; see
+  // `GRAMMAR_ARMS` in ./schema.ts and the header of ./parts-extract.ts.
+  // `extractPartProposals` never rejects: a failed extraction is zero part
+  // proposals and the main call's proposals still stand.
+  const partsPromise = extractPartProposals({
+    userId,
+    turnText,
+    priorMessages,
+    snapshotBlock,
+    snapshot,
+  });
+
   let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
   try {
     result = await getAnthropic().messages.parse({
@@ -466,6 +489,9 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       output_config: { format: zodOutputFormat(chatTurnOutputSchema) },
     } as never);
   } catch (e) {
+    // Settle the in-flight parts request before returning, so its own logging
+    // finishes inside the action rather than after the response.
+    await partsPromise;
     const errorReason = classifyAnthropicError(e);
     const log = await createSuggestionLog({
       userId,
@@ -500,6 +526,20 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   let droppedForLength = false;
   const survivors: SurvivingProposal[] = [];
 
+  /** Everything a validated payload still needs before it can be persisted. */
+  const pushSurvivor = async (p: ProposalPayload) => {
+    const { targetType, targetId } = targetFor(p);
+    const { baseUpdatedAt, beforeSnapshot } = await captureBeforeState(p);
+    survivors.push({
+      kind: p.kind,
+      targetType,
+      targetId,
+      payload: p,
+      baseUpdatedAt,
+      beforeSnapshot,
+    });
+  };
+
   for (const raw of rawOutput.proposals) {
     // Do NOT trust `result.parsed_output`'s TS type as a runtime guarantee —
     // the Anthropic SDK's own zod re-validation happens inside
@@ -507,7 +547,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     // through. Re-parsing here is what makes the over-length-note and
     // hallucinated-id drops actually testable, and is cheap insurance in
     // production too.
-    const shapeCheck = proposalPayloadSchema.safeParse(raw);
+    const shapeCheck = storedProposalPayloadSchema.safeParse(raw);
     if (!shapeCheck.success) {
       if (isNoteTooLong(shapeCheck.error)) droppedForLength = true;
       logger.info({ event: 'chat.proposal.dropped', reason: 'invalid_shape' }, 'dropped proposal');
@@ -528,17 +568,14 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       }
     }
 
-    const { targetType, targetId } = targetFor(p);
-    const { baseUpdatedAt, beforeSnapshot } = await captureBeforeState(p);
+    await pushSurvivor(p);
+  }
 
-    survivors.push({
-      kind: p.kind,
-      targetType,
-      targetId,
-      payload: p,
-      baseUpdatedAt,
-      beforeSnapshot,
-    });
+  // Part proposals from the second call. Already shape-checked and run through
+  // `validateProposal` inside `extractPartProposals`, so they join the same
+  // persistence path from here.
+  for (const p of await partsPromise) {
+    await pushSurvivor(p);
   }
 
   if (droppedForLength) reply += NOTE_TOO_LONG_EXPLANATION;
@@ -1084,21 +1121,45 @@ async function applyCreateServiceRecord(
 // until PR 3, and both helpers are typed to those unions. Same deliberate seam
 // as lib/parts/actions.ts.
 
+/**
+ * The spec a part proposal actually writes to `Part.metadata`.
+ *
+ * Re-validated at apply time against `partKindSchemaFor(partKind)`, not merely
+ * at proposal time: the proposal may have sat in the thread while the part's
+ * kind changed underneath it. The per-kind schemas are non-strict `z.object`s,
+ * so `.data` is the spec with every field belonging to another kind — or
+ * invented outright — dropped. That silent drop is the behaviour the design
+ * relies on for a kind change; it is not a fallback.
+ */
+function specForWrite(
+  partKind: PartKind,
+  spec: Record<string, unknown> | undefined,
+): { ok: true; value: Record<string, unknown> } | { ok: false; reason: string } {
+  const parsed = partKindSchemaFor(partKind).safeParse(stripNullish(spec ?? {}));
+  if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? 'invalid' };
+  return { ok: true, value: parsed.data as Record<string, unknown> };
+}
+
 async function applyCreatePart(
   id: string,
   payload: Extract<ProposalPayload, { kind: 'CREATE_PART' }>,
 ): Promise<ActionResult<{ id: string }>> {
+  // Before the claim, not after: a rejected spec leaves the proposal PENDING
+  // and retryable rather than stuck ACCEPTED with no row behind it.
+  const spec = specForWrite(payload.partKind.value, payload.spec?.value);
+  if (!spec.ok) {
+    logger.warn({ proposalId: id, reason: spec.reason }, 'chat.apply: part spec invalid');
+    return { ok: false, formError: 'Could not create the part — its specification is invalid.' };
+  }
+
   if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
 
   const provenance = extractProvenance(payload);
-  // The spec blob and `_provenance` share the `metadata` column, so this
-  // merges rather than overwrites. Safe to write provenance here because
+  // The spec and `_provenance` share the `metadata` column, so this merges
+  // rather than overwrites. Safe to write provenance here because
   // PartKindFields and the part Overview tab both strip reserved keys — the
   // #328 leak/unsaveable-form pair cannot recur.
-  const metadata = mergeProvenanceMetadata(
-    (payload.metadata?.value ?? {}) as Prisma.JsonValue,
-    provenance,
-  );
+  const metadata = mergeProvenanceMetadata(spec.value as Prisma.JsonValue, provenance);
 
   const parent = payload.itemId
     ? { itemId: payload.itemId }
@@ -1155,10 +1216,20 @@ async function applyUpdatePart(
 ): Promise<ActionResult<{ id: string }>> {
   const row = await prisma.part.findUnique({
     where: { id: payload.partId },
-    select: { updatedAt: true, metadata: true },
+    select: { updatedAt: true, kind: true, metadata: true },
   });
   const fresh = checkFreshness(row, baseUpdatedAt);
   if (!fresh.ok) return markTerminal(id, fresh);
+
+  // The kind the spec is judged against is the one the part will HAVE: a
+  // proposal may change it in the same breath as the spec, and the per-kind
+  // schema is non-strict, so the fields of the old kind drop out on their own.
+  const effectiveKind = payload.partKind?.value ?? row?.kind ?? 'OTHER';
+  const spec = specForWrite(effectiveKind, payload.spec?.value);
+  if (!spec.ok) {
+    logger.warn({ proposalId: id, reason: spec.reason }, 'chat.apply: part spec invalid');
+    return { ok: false, formError: 'Could not update the part — its specification is invalid.' };
+  }
 
   if (!(await claimForApply(id))) return { ok: false, formError: ALREADY_HANDLED };
 
@@ -1167,11 +1238,8 @@ async function applyUpdatePart(
   // A proposed spec replaces the spec but must not drop `_provenance`, which
   // mergeProvenanceMetadata re-attaches from the existing blob below.
   const baseMetadata: Prisma.JsonValue =
-    payload.metadata !== undefined
-      ? ({
-          _provenance: existingMetadata._provenance,
-          ...(payload.metadata.value as Record<string, unknown>),
-        } as Prisma.JsonValue)
+    payload.spec !== undefined
+      ? ({ _provenance: existingMetadata._provenance, ...spec.value } as Prisma.JsonValue)
       : (row?.metadata ?? null);
 
   const data: Record<string, unknown> = {

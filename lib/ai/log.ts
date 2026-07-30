@@ -8,6 +8,11 @@ export type SuggestionKind =
   | 'incoming-email-extract'
   | 'incoming-email-classify'
   | 'ask'
+  // The chat turn's SECOND model call (lib/chat/parts-extract.ts). Its own
+  // kind, not 'chat': the hourly budget in lib/ai/rate-limit.ts counts 'chat'
+  // rows, so logging both calls under one kind would halve the number of turns
+  // a user gets. Separate rows also keep the two calls' token costs legible.
+  | 'chat-parts'
   | 'chat';
 
 export type CreateLogInput = {

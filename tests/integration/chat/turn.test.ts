@@ -22,10 +22,19 @@ const hoisted = vi.hoisted(() => {
   return {
     embedTextsMock: vi.fn(async () => [queryVector]),
     parseMock: vi.fn(),
+    // The SECOND model call: parts are extracted unconstrained, via
+    // `messages.create`, because the constrained grammar cannot afford the
+    // part arms. Defaults to "no parts in this turn", which is the common case.
+    createMock: vi.fn(),
     state: {
       askEnabled: true,
       parseResponse: null as unknown,
       lastParseArgs: null as Record<string, unknown> | null,
+      // Text the parts call returns, MINUS the leading `{` — the request
+      // prefills the assistant turn with a brace, so the model's own output
+      // starts after it.
+      partsResponse: '"proposals":[]}' as unknown,
+      lastCreateArgs: null as Record<string, unknown> | null,
     },
   };
 });
@@ -54,6 +63,12 @@ vi.mock('@/lib/ask/retrieve', () => ({
   retrieveTopK: vi.fn(async () => []),
 }));
 
+hoisted.createMock.mockImplementation(async (args: Record<string, unknown>) => {
+  hoisted.state.lastCreateArgs = args;
+  if (hoisted.state.partsResponse instanceof Error) throw hoisted.state.partsResponse;
+  return { content: [{ type: 'text', text: hoisted.state.partsResponse }], usage: {} };
+});
+
 hoisted.parseMock.mockImplementation(async (args: Record<string, unknown>) => {
   hoisted.state.lastParseArgs = args;
   if (hoisted.state.parseResponse instanceof Error) throw hoisted.state.parseResponse;
@@ -63,7 +78,9 @@ hoisted.parseMock.mockImplementation(async (args: Record<string, unknown>) => {
 // from '@/lib/ai/client' must be hand-listed here, or the factory throws
 // `No "X" export is defined on the mock`.
 vi.mock('@/lib/ai/client', () => ({
-  getAnthropic: vi.fn(() => ({ messages: { parse: hoisted.parseMock } })),
+  getAnthropic: vi.fn(() => ({
+    messages: { parse: hoisted.parseMock, create: hoisted.createMock },
+  })),
   ANTHROPIC_MODEL: 'claude-haiku-4-5',
   ANTHROPIC_MAX_TOKENS: 2048,
   ANTHROPIC_CHAT_MAX_TOKENS: 4096,
@@ -75,7 +92,7 @@ vi.mock('@/lib/ai/client', () => ({
 // the moment Task 13 lands.
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-const { embedTextsMock, parseMock, state } = hoisted;
+const { createMock, embedTextsMock, parseMock, state } = hoisted;
 
 let ctx: IntegrationContext;
 let chatTurn: typeof import('@/lib/chat/actions').chatTurn;
@@ -128,8 +145,11 @@ describe('chatTurn', () => {
     state.askEnabled = true;
     state.parseResponse = null;
     state.lastParseArgs = null;
+    state.partsResponse = '"proposals":[]}';
+    state.lastCreateArgs = null;
     embedTextsMock.mockClear();
     parseMock.mockClear();
+    createMock.mockClear();
     await seed();
   });
 
@@ -145,6 +165,91 @@ describe('chatTurn', () => {
 
     const count = await ctx.prisma.chatProposal.count();
     expect(count).toBe(0);
+  });
+
+  // ── The second, unconstrained model call ─────────────────────────────────
+  // Part proposals cannot ride the main call: the compiled grammar has hard
+  // parameter ceilings the part arms blow through (see
+  // lib/chat/schema-budget.test.ts). They come from `messages.create` instead
+  // and merge into the same turn.
+
+  it('merges part proposals from the second call into the turn', async () => {
+    state.parseResponse = simpleReplyFixture;
+    state.partsResponse = JSON.stringify({
+      proposals: [
+        {
+          kind: 'CREATE_PART',
+          name: { value: 'S14 string light bulbs', source: 'user' },
+          partKind: { value: 'BULB', source: 'inferred' },
+          spec: {
+            value: { base: 'E26', shape: 'S14', watts: 11, colorTempK: 2700 },
+            source: 'user',
+          },
+          itemId: 'item-1',
+        },
+      ],
+    }).slice(1); // the request prefills the assistant turn with `{`
+
+    const result = await chatTurn(
+      turnInput('the backyard string lights take 24 S14 bulbs, E26 base, 2700K, 11 watts each'),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    const part = result.data.proposals.find((p) => p.kind === 'CREATE_PART');
+    expect(part).toBeDefined();
+    expect(part?.targetType).toBe('PART');
+    expect(part?.payload).toMatchObject({
+      spec: { value: { base: 'E26', shape: 'S14', watts: 11, colorTempK: 2700 } },
+    });
+
+    const rows = await ctx.prisma.chatProposal.findMany({ where: { kind: 'CREATE_PART' } });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('sends the parts call unconstrained, with a `{` prefill', async () => {
+    state.parseResponse = simpleReplyFixture;
+    await chatTurn(turnInput('the porch takes BR30 bulbs'));
+
+    const args = state.lastCreateArgs as {
+      output_config?: unknown;
+      messages: Array<{ role: string; content: string }>;
+    };
+    // No output_config is the entire point — that is what puts this call
+    // outside the three grammar ceilings.
+    expect(args.output_config).toBeUndefined();
+    expect(args.messages[args.messages.length - 1]).toEqual({ role: 'assistant', content: '{' });
+  });
+
+  it('a failed parts call costs only the part proposals, not the turn', async () => {
+    state.parseResponse = updateNoteAndCreateItemFixture;
+    state.partsResponse = new Error('anthropic 500');
+
+    const result = await chatTurn(turnInput('update the lightbulbs note and add a toaster'));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data.proposals).toHaveLength(2);
+    expect(result.data.proposals.some((p) => p.kind.endsWith('_PART'))).toBe(false);
+  });
+
+  it('unparseable parts JSON costs only the part proposals, not the turn', async () => {
+    state.parseResponse = updateNoteAndCreateItemFixture;
+    state.partsResponse = 'sure, here are the bulbs I found!';
+
+    const result = await chatTurn(turnInput('update the lightbulbs note and add a toaster'));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data.proposals).toHaveLength(2);
+  });
+
+  it('logs the parts call under its own kind so it does not eat the chat budget', async () => {
+    state.parseResponse = simpleReplyFixture;
+    await chatTurn(turnInput('the porch takes BR30 bulbs'));
+
+    expect(await ctx.prisma.aISuggestionLog.count({ where: { kind: 'chat' } })).toBe(1);
+    expect(await ctx.prisma.aISuggestionLog.count({ where: { kind: 'chat-parts' } })).toBe(1);
   });
 
   it('rewrites a duplicate CREATE_NOTE into UPDATE_NOTE against the existing note', async () => {

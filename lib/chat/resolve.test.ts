@@ -148,29 +148,45 @@ describe('validateProposal', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('rejects metadata that fails the schema its partKind selects', async () => {
+  it('rejects a spec that fails the schema its partKind selects', async () => {
     const r = await validateProposal(
       {
         kind: 'CREATE_PART',
         name: { value: 'BR30', source: 'user' },
         partKind: { value: 'BULB', source: 'user' },
-        metadata: { value: { watts: 'nine' }, source: 'inferred' },
+        spec: { value: { watts: 'nine' }, source: 'inferred' },
       } as ProposalPayload,
       snapshot,
     );
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toMatch(/metadata/);
+    if (!r.ok) expect(r.reason).toMatch(/spec/);
   });
 
   // Non-strict z.object: an invented key is dropped, not rejected. The check
   // exists to catch wrong-TYPED values, not unknown ones.
-  it('allows an invented metadata key', async () => {
+  it('allows an invented spec key', async () => {
     const r = await validateProposal(
       {
         kind: 'CREATE_PART',
         name: { value: 'BR30', source: 'user' },
         partKind: { value: 'BULB', source: 'user' },
-        metadata: { value: { bulbColour: 'warm' }, source: 'inferred' },
+        spec: { value: { bulbColour: 'warm' }, source: 'inferred' },
+      } as ProposalPayload,
+      snapshot,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  // The extraction model emits an explicit null for "the user didn't say", and
+  // the per-kind schemas take neither null nor a foreign key — stripped, not
+  // rejected, or every part with a partly-filled spec would be dropped.
+  it('treats a null spec value as absent', async () => {
+    const r = await validateProposal(
+      {
+        kind: 'CREATE_PART',
+        name: { value: 'BR30', source: 'user' },
+        partKind: { value: 'BULB', source: 'user' },
+        spec: { value: { base: 'E26', watts: null }, source: 'user' },
       } as ProposalPayload,
       snapshot,
     );
@@ -183,7 +199,7 @@ describe('validateProposal', () => {
       {
         kind: 'UPDATE_PART',
         partId: 'part-1',
-        metadata: { value: { watts: 'nine' }, source: 'inferred' },
+        spec: { value: { watts: 'nine' }, source: 'inferred' },
       } as ProposalPayload,
       snapshot,
     );

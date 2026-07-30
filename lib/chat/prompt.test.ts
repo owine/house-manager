@@ -21,42 +21,31 @@ describe('CHAT_SYSTEM_PROMPT', () => {
     expect(CHAT_SYSTEM_PROMPT).toMatch(/PII/);
   });
 
-  it('puts parts in scope for both create and update', () => {
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/create notes, items, parts and service records/);
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/update\s+notes, items, systems and parts/);
+  it("keeps parts out of the main call's scope", () => {
+    // Parts are proposed by the separate unconstrained extraction call, so the
+    // main prompt must NOT offer them — see lib/chat/parts-extract.ts.
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/create notes, items and service records/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/update notes,\s+items and systems/);
   });
 
-  it('tells the model when a part is right rather than an item', () => {
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/Parts vs items/i);
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/Bulbs are a part; the\s+light fixture is an item/);
+  it('tells the model to leave consumables alone rather than making an item', () => {
+    // The reported bug: asked about bulbs, the model created an Item and threw
+    // the specs away. Without this instruction BOTH calls now propose something
+    // for the same bulbs and the user sees a duplicate.
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/Do NOT create an item for one/);
     expect(CHAT_SYSTEM_PROMPT).toMatch(/SPECIFICATION/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/Bulbs are a part; the\s+fixture they go in is an item/);
   });
 
-  it('routes specs to metadata rather than notes prose', () => {
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/metadata/);
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/NOT in "notes" as prose/);
-  });
-
-  // The guard against the spec table and `partKindConfigs` drifting apart: a
-  // field added to a kind's schema but not surfaced to the model is invisible
-  // — the model just never proposes it.
-  it('lists every spec field of every structured part kind', () => {
+  it('does not carry the spec-field table — the extraction prompt owns that', () => {
     for (const [kind, schema] of Object.entries(partKindConfigs)) {
       if (!(schema instanceof z.ZodObject)) continue;
-      expect(CHAT_SYSTEM_PROMPT).toContain(`${kind}: `);
-      for (const field of Object.keys(schema.shape)) {
-        expect(CHAT_SYSTEM_PROMPT, `${kind}.${field} missing from the prompt`).toContain(field);
-      }
+      expect(CHAT_SYSTEM_PROMPT).not.toContain(`${kind}: `);
     }
   });
 
-  it('spells out the options for enum-valued spec fields', () => {
-    expect(CHAT_SYSTEM_PROMPT).toContain('technology (LED|incandescent|halogen|CFL|fluorescent)');
-    expect(CHAT_SYSTEM_PROMPT).toContain('form (pellet|crystal|liquid|tablet|powder)');
-  });
-
-  it('describes OTHER as freeform rather than listing fields', () => {
-    expect(CHAT_SYSTEM_PROMPT).toMatch(/OTHER: any keys/);
+  it('still lists parts among the referenceable ids, since the snapshot has them', () => {
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/item, system, category, note and part/);
   });
 });
 

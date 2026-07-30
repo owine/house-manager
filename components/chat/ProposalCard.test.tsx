@@ -253,3 +253,67 @@ describe('ProposalCard', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
+
+describe('ProposalCard — part proposals', () => {
+  it('renders each spec field as its own diff row, with a readable label', () => {
+    render(
+      <ProposalCard
+        proposal={makeProposal({
+          kind: 'CREATE_PART',
+          targetType: 'PART',
+          targetId: null,
+          payload: {
+            kind: 'CREATE_PART',
+            name: { value: 'S14 string light bulbs', source: 'user' },
+            partKind: { value: 'BULB', source: 'inferred' },
+            typicalCost: { value: '4.50', source: 'user' },
+            spec: { value: { base: 'E26', shape: 'S14', colorTempK: 2700 }, source: 'user' },
+            itemId: 'item-1',
+          },
+        })}
+        applyProposal={noopApply}
+        rejectProposal={noopApply}
+        refreshProposal={noopRefresh}
+      />,
+    );
+
+    expect(screen.getByText('New part')).toBeInTheDocument();
+    // The part kind renders through the shared label map, not as the raw enum.
+    expect(screen.getByText('Bulb')).toBeInTheDocument();
+    expect(screen.getByText('$4.50')).toBeInTheDocument();
+    expect(screen.getByText('BASE')).toBeInTheDocument();
+    expect(screen.getByText('E26')).toBeInTheDocument();
+    expect(screen.getByText('Color Temp K')).toBeInTheDocument();
+  });
+
+  it('pairs spec rows against the before-snapshot, which is keyed `spec`', () => {
+    render(
+      <ProposalCard
+        proposal={makeProposal({
+          kind: 'UPDATE_PART',
+          targetType: 'PART',
+          targetId: 'part-1',
+          payload: {
+            kind: 'UPDATE_PART',
+            partId: 'part-1',
+            typicalCost: { value: '4.50', source: 'user' },
+            spec: { value: { merv: 13 }, source: 'user' },
+          },
+          baseUpdatedAt: new Date('2026-07-01T00:00:00Z'),
+          // `typicalCost` is normalised to a fixed-2 string at capture: a
+          // Decimal(10,2) holding 4.50 otherwise round-trips as "4.5" and shows
+          // a spurious diff against a proposed "4.50".
+          beforeSnapshot: { typicalCost: '4.50', spec: { merv: 11 } },
+        })}
+        applyProposal={noopApply}
+        rejectProposal={noopApply}
+        refreshProposal={noopRefresh}
+      />,
+    );
+
+    expect(screen.getByText('11')).toBeInTheDocument();
+    expect(screen.getByText('13')).toBeInTheDocument();
+    // Unchanged cost renders identically on both sides — no phantom diff.
+    expect(screen.getAllByText('$4.50')).toHaveLength(2);
+  });
+});
