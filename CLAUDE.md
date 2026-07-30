@@ -69,6 +69,21 @@ The floor only ratchets up.
 There is no `types.ts` and no barrel `index.ts`. Server components import `queries.ts`
 directly — there is no fetch-to-own-API layer.
 
+**`.partial()` does not strip `.default()`.** `updateItemSchema.safeParse({ id, name })`
+returns `metadata: {}`; `updateVendorSchema.safeParse({ id, name })` returns `tags: []`.
+Defaults are resurrected on fields the caller never mentioned, so a *partial* patch
+overwrites them — and a guard like `if (metadata !== undefined)` does not save you,
+because an injected `{}` is defined.
+
+Nothing sends a partial patch today (the forms send every field, and the chat apply
+path writes via `prisma.item.update` directly), so this is a live trap rather than a
+live bug. If you write a narrow action, build the update schema from a defaults-free
+core instead — `lib/parts/schema.ts` does exactly that and explains why.
+
+**`z.string().url()` is not a safety check.** It accepts `javascript:`, `data:` and
+`ftp:` — it validates URL syntax, not scheme. Any user-supplied URL rendered into an
+`href` must use `httpUrlSchema` from `lib/http-url.ts`.
+
 **Server-action skeleton** (`lib/items/actions.ts` is canonical). Deviating from this
 shape is a review finding:
 

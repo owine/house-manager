@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { httpUrlSchema } from '@/lib/http-url';
+
 const PARENT_TYPES = ['item', 'warranty', 'serviceRecord', 'note'] as const;
 export type ParentType = (typeof PARENT_TYPES)[number];
 
@@ -8,15 +10,10 @@ export const uploadAttachmentSchema = z.object({
   parentId: z.string().min(1),
 });
 
-const httpUrl = z
-  .string()
-  .url()
-  .refine((s) => /^https?:\/\//i.test(s), 'URL must use http:// or https://');
-
 export const addAttachmentLinkSchema = z.object({
   parentType: z.enum(PARENT_TYPES),
   parentId: z.string().min(1),
-  externalUrl: httpUrl,
+  externalUrl: httpUrlSchema,
   displayLabel: z.string().max(200).optional().or(z.literal('')),
   externalProvider: z.string().max(50).optional(),
   externalProviderId: z.string().max(200).optional(),

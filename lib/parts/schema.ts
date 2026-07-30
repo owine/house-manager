@@ -1,6 +1,8 @@
 import type { PartKind } from '@prisma/client';
 import { z } from 'zod';
 
+import { httpUrlSchema } from '@/lib/http-url';
+
 import { partKindSchemaFor } from './kinds';
 
 export const PART_KINDS = [
@@ -14,21 +16,9 @@ export const PART_KINDS = [
   'OTHER',
 ] as const satisfies readonly PartKind[];
 
-/**
- * `purchaseLinks` entries render as user-clickable anchors, so the scheme check
- * is a security property rather than a formatting nicety: zod's `.url()` accepts
- * `javascript:alert(1)` (and `data:`), which would be a stored-XSS vector the
- * moment a link is rendered as an `href`. Same guard as the external-attachment
- * URL in `lib/attachments/schema.ts`.
- */
-const httpUrl = z
-  .string()
-  .url()
-  .refine((s) => /^https?:\/\//i.test(s), 'URL must use http:// or https://');
-
 const purchaseLinkSchema = z.object({
   label: z.string().max(80).optional(),
-  url: httpUrl,
+  url: httpUrlSchema,
 });
 
 /**
