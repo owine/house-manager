@@ -16,6 +16,90 @@
 
 Asked to record some light bulbs, the assistant created an `Item` named "Backyard String Lights" and stuffed bulb specs into it — because `Item` was the only construct that could own metadata, a vendor link and a reminder. PRs 1a and 1b built the better construct. **Until this PR the model still cannot reach it.**
 
+## ARCHITECTURE CHANGE — read this first
+
+The original design put `CREATE_PART`/`UPDATE_PART` into the existing
+`proposalPayloadSchema` union, which is handed to the Anthropic API as a
+constrained output grammar via `zodOutputFormat`. **That does not work.** It was
+implemented, committed (`45b5f94`), passed 1167 unit tests, 436 integration
+tests, typecheck, lint and knip — and every chat turn 400s at runtime.
+
+### Three hard API ceilings, measured against the live endpoint
+
+| Limit | Message | Where we stand |
+|---|---|---|
+| **≤24 optional parameters** | *"too many optional parameters (35)… limit: 24"* | `main` alone spends 19 |
+| **Compiled grammar size** | *"The compiled grammar is too large"* | `main` is already near it |
+| **Union-typed parameters (~49)** | *"too many parameters with union types (49…)"* | nullable **is** a union |
+
+They interact, so every escape from one spends another: converting `.optional()`
+to required-and-nullable fixes limit 1 and immediately spends limit 3.
+`$ref` does not help either — the JSON schema was only 8 kB, but the grammar
+compiler **expands refs**, so a shared spec object is charged once per use.
+
+**The real finding is not about parts.** `main`'s six-arm union is already at the
+edge of all three, so *any* meaningful seventh proposal kind breaks chat. And no
+gate in this repo can see it: the limits exist only at the API boundary.
+
+### The design that works
+
+Measured, not theorised — 3/3 runs produced byte-identical correct output:
+
+1. **A separate parts extraction call.** The existing six-arm union is untouched
+   and keeps its constrained grammar. Parts get their own request.
+2. **Unconstrained JSON, validated server-side.** No `output_config.format`, so
+   none of the three limits apply. Prefill the assistant turn with `{` to force
+   JSON-only output, then `JSON.parse` + `safeParse`. Malformed output is already
+   a handled state in this pipeline — `parseStoredPayload` returns `null` and the
+   proposal is marked `INVALID`.
+3. **A typed flat `spec` object, generated from `partKindConfigs`.** This is
+   load-bearing: with `metadata` as `z.record(z.string(), z.unknown())` the model
+   returned `{}` every time, even with a worked example in the prompt. Under
+   constrained decoding `unknown` has no productions, so an empty object is the
+   only thing it can emit; and even unconstrained, a typed shape is what makes
+   the model fill the fields. Generate the union of every kind's fields from
+   `partKindConfigs` so the two cannot drift.
+
+### Evidence
+
+`main` today, given *"the backyard string lights take 24 S14 bulbs, E26 base, 2700K, about 11 watts each"*:
+
+```json
+{ "kind": "CREATE_ITEM", "name": "S14 bulbs for backyard string lights", "categoryId": "cat_exterior" }
+```
+
+An item, with base, colour temperature and wattage discarded entirely. With the
+design above:
+
+```
+CREATE_PART | partKind: BULB | itemId: item_lights
+spec: { "base": "E26", "shape": "S14", "watts": 11, "colorTempK": 2700 }
+```
+
+### What this means for the tasks below
+
+Tasks 1, 4, 5, 6 stand. Tasks 2 and 3 change:
+
+- `proposalPayloadSchema` still carries both part arms — it validates **stored**
+  payloads, and apply/render/`captureBeforeState` all depend on it.
+- A **new** `chatTurnOutputSchema` variant excludes them, because that is the one
+  passed to `zodOutputFormat`. Split the union: six arms for the grammar, eight
+  for storage.
+- The part arms' wire shape uses `spec` (typed, flat), not `metadata` (free
+  record). The apply path maps `spec` → `Part.metadata` and validates it against
+  `partKindSchemaFor(partKind)`, which is non-strict and so drops fields
+  belonging to other kinds — the behaviour the spec already relies on.
+- **The main prompt must tell the model not to create an item for a consumable**,
+  since a separate pass handles those. Without it both calls propose something
+  for the same bulbs.
+
+### CI guard
+
+Whatever ships, add a gate that catches this class of failure. A unit assertion
+on optional-parameter count and union-typed-parameter count against
+`chatTurnOutputSchema` is cheap and needs no API call. Grammar size cannot be
+measured locally, so a smoke call belongs in `test:local`, not the lean CI gate.
+
 ## Read this before starting: the enum is the smallest part of the job
 
 Adding `CREATE_PART` to `ChatProposalKind` does **not** make the model emit one. Three things in `lib/chat/prompt.ts` gate it, and all three must change or the feature is inert:
