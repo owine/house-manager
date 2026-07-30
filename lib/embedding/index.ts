@@ -159,7 +159,7 @@ async function buildCanonical(
         manufacturer: item.manufacturer,
         model: item.model,
         purchaseDate: item.purchaseDate,
-        purchasePrice: item.purchasePrice as unknown as number | string | null,
+        purchasePrice: item.purchasePrice,
         metadata: (item.metadata as Record<string, unknown>) ?? {},
         notes: item.notes,
       });
@@ -205,7 +205,7 @@ async function buildCanonical(
       return canonicalizeServiceRecord({
         summary: sr.summary,
         performedOn: sr.performedOn,
-        cost: sr.cost as unknown as number | string | null,
+        cost: sr.cost,
         notes: sr.notes,
         vendor: sr.vendor,
         targets: sr.targets,
@@ -260,7 +260,7 @@ async function buildCanonical(
         coverage: w.coverage,
         startsOn: w.startsOn,
         endsOn: w.endsOn,
-        cost: w.cost as unknown as number | string | null,
+        cost: w.cost,
         targets: w.targets,
       });
     }
@@ -340,7 +340,7 @@ async function buildCanonical(
         // `String()`, not a cast: the pg adapter hands back a Prisma `Decimal`
         // object, and `fmtMoney`'s `Number.isFinite` check silently drops it
         // (it is neither a number nor a string). Verified against a seeded row.
-        typicalCost: p.typicalCost != null ? String(p.typicalCost) : null,
+        typicalCost: p.typicalCost,
         metadata: p.metadata,
         notes: p.notes,
         parentNames,

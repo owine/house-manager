@@ -1,4 +1,4 @@
-import type { PartKind } from '@prisma/client';
+import type { PartKind, Prisma } from '@prisma/client';
 import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { isReservedMetadataKey, visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 
@@ -25,7 +25,7 @@ export type ItemForCanonical = {
   manufacturer?: string | null;
   model?: string | null;
   purchaseDate?: Date | null;
-  purchasePrice?: number | string | null;
+  purchasePrice?: MoneyLike;
   metadata?: Record<string, unknown>;
   notes?: string | null;
 };
@@ -43,7 +43,7 @@ export type NoteForCanonical = {
 export type ServiceRecordForCanonical = {
   summary: string;
   performedOn?: Date | null;
-  cost?: number | string | null;
+  cost?: MoneyLike;
   notes?: string | null;
   vendor?: { name: string } | null;
   freeformVendorName?: string | null;
@@ -69,7 +69,7 @@ export type WarrantyForCanonical = {
   coverage?: string | null;
   startsOn?: Date | null;
   endsOn?: Date | null;
-  cost?: number | string | null;
+  cost?: MoneyLike;
   targets?: Array<{ item?: { name: string } | null; system?: { name: string } | null }>;
 };
 
@@ -80,7 +80,7 @@ export type PartForCanonical = {
   manufacturer?: string | null;
   model?: string | null;
   sku?: string | null;
-  typicalCost?: number | string | null;
+  typicalCost?: MoneyLike;
   /** Per-kind spec blob. Reserved (`_`-prefixed) keys are dropped below. */
   metadata?: unknown;
   notes?: string | null;
@@ -99,9 +99,26 @@ function fmtDate(d: Date | null | undefined): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-function fmtMoney(n: number | string | null | undefined): string | null {
+/**
+ * A money column as it can actually arrive here.
+ *
+ * `@db.Decimal` columns come back from the pg adapter as `Prisma.Decimal`
+ * **objects**, not numbers or strings. The previous signature admitted only
+ * `number | string`, and every call site cast the Decimal away with
+ * `as unknown as number | string | null` — so the compiler was satisfied while
+ * `Number.isFinite(anObject)` was false and `fmtMoney` silently returned null.
+ *
+ * The result: every Item, Warranty and ServiceRecord embedding in the database
+ * was missing its price or cost line entirely. Nothing errored; the line just
+ * never appeared, so Ask could not answer "how much did the fridge cost".
+ */
+type MoneyLike = number | string | Prisma.Decimal | null | undefined;
+
+function fmtMoney(n: MoneyLike): string | null {
   if (n === null || n === undefined || n === '') return null;
-  const num = typeof n === 'string' ? Number(n) : n;
+  // `String()` covers all three shapes: Prisma.Decimal has a faithful
+  // toString, and number/string pass through unchanged.
+  const num = typeof n === 'number' ? n : Number(String(n));
   if (!Number.isFinite(num)) return null;
   return `$${num.toFixed(2)}`;
 }
