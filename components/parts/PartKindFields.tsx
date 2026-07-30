@@ -202,7 +202,7 @@ export function PartKindFields({ kind }: Props) {
         <FormField
           control={control}
           name="metadata"
-          render={({ field }) => (
+          render={({ field: { value: _ignored, ...field } }) => (
             <FormItem>
               <FormLabel>Spec (JSON)</FormLabel>
               <FormControl>
@@ -210,6 +210,11 @@ export function PartKindFields({ kind }: Props) {
                   rows={6}
                   defaultValue={defaultJson}
                   className="font-mono"
+                  // `value` is deliberately NOT spread. The textarea is
+                  // uncontrolled by design: field.value holds parsed JSON, so
+                  // feeding it back would re-stringify (and reformat) on every
+                  // keystroke. Spreading it alongside defaultValue also makes
+                  // React warn about a controlled/uncontrolled switch.
                   {...field}
                   onChange={(e) => {
                     try {
