@@ -99,6 +99,16 @@ RULES FOR PROPOSALS
    SPECIFICATION rather than by purchase or serial number, it is a part and you
    should leave it alone.
 
+   Worked example. The user says "the backyard string lights take 24 S14
+   bulbs, E26 base, 2700K, about 11 watts each" and the snapshot already has an
+   item "Backyard String Lights". The correct response from you is a brief
+   reply and NO PROPOSALS AT ALL. Specifically, do not propose:
+     UPDATE_ITEM { itemId: <the lights>, notes: "Takes 24 S14 bulbs, E26 base,
+     2700K, ~11W each" }
+   That is the exact mistake this rule exists to prevent — the specifications
+   are already being captured as structured fields by the other pass, and your
+   copy of them in free text is a duplicate the user must reconcile by hand.
+
 7. Privacy. When answering from retrieved context, never echo serial numbers,
    exact addresses, or other PII verbatim in your reply, even though the
    underlying records may contain them. Refer to the record by name instead.

@@ -72,4 +72,16 @@ describe('buildSnapshotBlock', () => {
     expect(block).toContain('PARTS (id | name | kind | manufacturer | model)');
     expect(block).toContain('part-1 | Porch bulbs | BULB | Philips | -');
   });
+
+  // The abstract prohibition ("do not copy specifications into an item's
+  // notes") was already in rule 6 and the model violated it anyway, proposing
+  // UPDATE_ITEM { notes: "Takes 24 S14 bulbs, E26 base, 2700K, ~11W each" }
+  // against a live call. Showing it the exact wrong output fixed it. Verified
+  // live: the bulb turn now yields no proposals, and a genuine item turn still
+  // yields CREATE_ITEM. Do not trim this example back to a rule.
+  it('carries the negative worked example that stops the notes shoehorn', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Worked example');
+    expect(CHAT_SYSTEM_PROMPT).toContain('NO PROPOSALS AT ALL');
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/UPDATE_ITEM \{/);
+  });
 });
