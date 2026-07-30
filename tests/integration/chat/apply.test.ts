@@ -1,13 +1,13 @@
 import type { ChatProposalKind, ChatProposalStatus, Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enqueueItemRenameCascade } from '@/lib/embedding/cascade';
+import { enqueueItemRenameCascade } from '@/lib/rename-cascade';
 import { signInAs } from '../ai/_mock-auth';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from '../helpers';
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 //
 // Spy on @/lib/embedding/enqueue, @/lib/search/client and
-// @/lib/embedding/cascade — applyProposal's per-kind side effects are the
+// @/lib/rename-cascade — applyProposal's per-kind side effects are the
 // whole point of this test file, and asserting them against real tables
 // isn't possible (no worker runs in the integration harness; enqueueEmbed
 // only sends a pg-boss job). Mocking cascade directly (rather than letting
@@ -46,7 +46,7 @@ vi.mock('@/lib/search/client', () => ({
 }));
 
 const cascadeCalls: { fn: 'item' | 'system'; id: string }[] = [];
-vi.mock('@/lib/embedding/cascade', () => ({
+vi.mock('@/lib/rename-cascade', () => ({
   enqueueItemRenameCascade: vi.fn(async (id: string) => {
     cascadeCalls.push({ fn: 'item', id });
   }),

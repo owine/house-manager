@@ -10,7 +10,6 @@ import { classifyAnthropicError, userFacingMessage } from '@/lib/ai/suggest/_sha
 import { retrieveTopK } from '@/lib/ask/retrieve';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { enqueueItemRenameCascade, enqueueSystemRenameCascade } from '@/lib/embedding/cascade';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { embedTexts } from '@/lib/embedding/voyage';
 import { getEnv } from '@/lib/env';
@@ -18,6 +17,7 @@ import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import { partKindSchemaFor } from '@/lib/parts/kinds';
 import { LIVE_PART } from '@/lib/parts/queries';
+import { enqueueItemRenameCascade, enqueueSystemRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { parseCalendarDate, resolveAnchorDay } from './dates';

@@ -15,14 +15,21 @@ vi.mock('@/lib/embedding/enqueue', () => ({
   }),
 }));
 
+const searchCalls: { kind: string; id: string }[] = [];
+vi.mock('@/lib/search/client', () => ({
+  enqueueSearchIndex: vi.fn(async (kind: string, id: string) => {
+    searchCalls.push({ kind, id });
+  }),
+}));
+
 let ctx: IntegrationContext;
-let cascade: typeof import('@/lib/embedding/cascade');
+let cascade: typeof import('@/lib/rename-cascade');
 let categoryId: string;
 let userId: string;
 
 beforeAll(async () => {
   ctx = await setupIntegration();
-  cascade = await import('@/lib/embedding/cascade');
+  cascade = await import('@/lib/rename-cascade');
   const cat = await ctx.prisma.category.upsert({
     where: { slug: 'cascade-cat' },
     create: { slug: 'cascade-cat', name: 'Cascade', sortOrder: 999 },
@@ -164,5 +171,70 @@ describe('enqueueSystemRenameCascade', () => {
     expect(embedCalls).toContainEqual({ type: 'SERVICE_RECORD', id: sr.id });
     expect(embedCalls).toContainEqual({ type: 'WARRANTY', id: w.id });
     expect(embedCalls).toHaveLength(3);
+  });
+});
+
+/**
+ * The search half. Its membership deliberately differs from the embedding
+ * half — see the table in lib/rename-cascade.ts. These two tests pin the
+ * divergence, because "add enqueueSearchIndex beside each enqueueEmbed" is
+ * the obvious implementation and it is wrong in both directions.
+ */
+describe('rename cascades reach the search index', () => {
+  it('re-indexes a REMINDER on item rename, which the embedding half does not', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Furnace', categoryId } });
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'Change filter',
+        recurrence: { kind: 'interval', every: 1, unit: 'month' },
+        notifyUserIds: [userId],
+        targets: { create: [{ itemId: item.id, nextDueOn: new Date('2026-06-01T00:00:00.000Z') }] },
+      },
+    });
+
+    searchCalls.length = 0;
+    embedCalls.length = 0;
+    await cascade.enqueueItemRenameCascade(item.id);
+
+    // Reminder documents carry `itemName`, so the index must be refreshed...
+    expect(searchCalls).toContainEqual({ kind: 'reminder', id: reminder.id });
+    // ...but there is no REMINDER embedding type, so the embed half skips it.
+    expect(embedCalls.map((c) => c.type)).not.toContain('REMINDER');
+  });
+
+  it('does NOT re-index a checklist, whose document carries no item name', async () => {
+    const item = await ctx.prisma.item.create({ data: { name: 'Mower', categoryId } });
+    const checklist = await ctx.prisma.checklist.create({ data: { name: 'Spring open' } });
+    await ctx.prisma.checklistItem.create({
+      data: { checklistId: checklist.id, position: 0, title: 'Sharpen blade', itemId: item.id },
+    });
+
+    searchCalls.length = 0;
+    embedCalls.length = 0;
+    await cascade.enqueueItemRenameCascade(item.id);
+
+    // The embedding half DOES cover it (CHECKLIST_ITEM denormalizes the name)...
+    expect(embedCalls.map((c) => c.type)).toContain('CHECKLIST_ITEM');
+    // ...while the search document hardcodes `itemName: ''`, so re-indexing
+    // it would be pure waste.
+    expect(searchCalls.map((c) => c.kind)).not.toContain('checklist');
+  });
+
+  it('a system rename reaches parts only, not items', async () => {
+    const system = await ctx.prisma.system.create({ data: { name: 'HVAC' } });
+    await ctx.prisma.item.create({
+      data: { name: 'Air handler', categoryId, systemId: system.id },
+    });
+    const part = await ctx.prisma.part.create({
+      data: { name: '20x25x1', kind: 'AIR_FILTER', links: { create: [{ systemId: system.id }] } },
+    });
+
+    searchCalls.length = 0;
+    await cascade.enqueueSystemRenameCascade(system.id);
+
+    expect(searchCalls).toContainEqual({ kind: 'part', id: part.id });
+    // Item documents carry no system name — grep `systemName` in
+    // lib/search/document.ts returns nothing.
+    expect(searchCalls.map((c) => c.kind)).not.toContain('item');
   });
 });

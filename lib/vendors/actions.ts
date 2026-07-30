@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { isFkViolation } from '@/lib/db-errors';
-import { enqueueVendorRenameCascade } from '@/lib/embedding/cascade';
+import { enqueueVendorRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { createVendorSchema, updateVendorSchema } from './schema';
