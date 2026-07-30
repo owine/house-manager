@@ -1,10 +1,12 @@
 'use server';
+import type { PartKind } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { freeformMetadataSchema } from '@/lib/metadata/freeform';
 import type { ActionResult } from '@/lib/result';
 import { partKindSchemaFor } from './kinds';
 import { createPartSchema, updatePartSchema } from './schema';
@@ -17,6 +19,26 @@ function revalidatePart(id?: string) {
   revalidatePath('/parts');
   if (id) revalidatePath(`/parts/${id}`);
   revalidatePath('/dashboard');
+}
+
+/**
+ * Key a per-kind spec failure onto a field the UI actually registers. See
+ * `refineMetadata` in ./schema for why the shape differs by kind — a flat key
+ * on a structured kind renders nowhere yet still reports `applied: true`,
+ * which suppresses the caller's fallback toast.
+ */
+function metadataFieldErrors(kind: PartKind, issues: z.ZodIssue[]): Record<string, string[]> {
+  const structured = partKindSchemaFor(kind) !== freeformMetadataSchema;
+  const out: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const path = issue.path.join('.');
+    const key = structured && path ? `metadata.${path}` : 'metadata';
+    const message =
+      structured && path ? issue.message : path ? `${path}: ${issue.message}` : issue.message;
+    out[key] ??= [];
+    out[key].push(message);
+  }
+  return out;
 }
 
 export async function createPart(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -74,12 +96,10 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
     if (!result.success) {
       return {
         ok: false,
-        fieldErrors: {
-          metadata: result.error.issues.map((issue) => {
-            const path = issue.path.join('.');
-            return path ? `${path}: ${issue.message}` : issue.message;
-          }),
-        },
+        // Same keying rule as refineMetadata in ./schema — flat for the
+        // freeform kind (one registered `metadata` textarea), nested for
+        // structured kinds (which register `metadata.<key>` and nothing flat).
+        fieldErrors: metadataFieldErrors(kind, result.error.issues),
       };
     }
     data.metadata = result.data as Prisma.InputJsonValue;

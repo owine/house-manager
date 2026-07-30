@@ -2,6 +2,7 @@ import type { PartKind } from '@prisma/client';
 import { z } from 'zod';
 
 import { httpUrlSchema } from '@/lib/http-url';
+import { freeformMetadataSchema } from '@/lib/metadata/freeform';
 
 import { partKindSchemaFor } from './kinds';
 
@@ -47,9 +48,18 @@ const partFieldsCore = z.object({
 /**
  * Collapse a per-kind metadata failure onto the `metadata` field.
  *
- * The metadata UI registers one control per kind spec, but a nested issue path
- * (`metadata.watts`) that RHF cannot resolve fails silently — same trap as
- * issue #304 on items. The offending key moves into the message instead.
+ * The issue path has to match a field the UI actually registers, and that
+ * differs by kind — the same trap as issue #304 on items, in both directions.
+ *
+ * `OTHER` (freeform) renders ONE `metadata` JSON textarea, so a flat path
+ * renders inline and a nested one would nest under it and show nothing.
+ *
+ * Every structured kind renders `metadata.<key>` controls and registers NOTHING
+ * as plain `metadata`, so a flat path renders nowhere — while
+ * `applyActionFieldErrors` still returns `applied: true` from its optimistic
+ * flat-key branch, which suppresses the caller's fallback toast. Silent.
+ * A nested path is safe there: the helper sets it on the registered field and
+ * also mirrors it to the root banner.
  */
 function refineMetadata(
   value: { kind?: PartKind; metadata?: unknown },
@@ -60,13 +70,19 @@ function refineMetadata(
   if (value.kind === undefined || value.metadata === undefined) return;
   const result = partKindSchemaFor(value.kind).safeParse(value.metadata ?? {});
   if (result.success) return;
+
+  const structured = partKindSchemaFor(value.kind) !== freeformMetadataSchema;
   for (const issue of result.error.issues) {
     const path = issue.path.join('.');
-    ctx.addIssue({
-      code: 'custom',
-      path: ['metadata'],
-      message: path ? `${path}: ${issue.message}` : issue.message,
-    });
+    if (structured && path) {
+      ctx.addIssue({ code: 'custom', path: ['metadata', ...issue.path], message: issue.message });
+    } else {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['metadata'],
+        message: path ? `${path}: ${issue.message}` : issue.message,
+      });
+    }
   }
 }
 

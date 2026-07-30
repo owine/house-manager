@@ -103,7 +103,11 @@ describe('part CRUD round-trip', () => {
     const bad = await actions.updatePart({ id: created.data.id, metadata: { base: 'E27' } });
     expect(bad.ok).toBe(false);
     if (bad.ok) return;
-    expect(bad.fieldErrors?.metadata?.join(' ')).toContain('base');
+
+    // BULB is structured, so PartKindFields registers `metadata.base` and
+    // nothing as plain `metadata`. The key has to match the registered field
+    // or applyActionFieldErrors reports it applied while nothing renders.
+    expect(Object.keys(bad.fieldErrors ?? {})).toContain('metadata.base');
   });
 });
 

@@ -51,7 +51,7 @@ describe('metadata is validated against the part kind', () => {
     expect(parsed.success).toBe(true);
   });
 
-  it('rejects a bad bulb spec and reports it on `metadata`', () => {
+  it('rejects a bad bulb spec and reports each failure on its own field', () => {
     const parsed = createPartSchema.safeParse({
       name: 'BR30',
       kind: 'BULB',
@@ -59,12 +59,14 @@ describe('metadata is validated against the part kind', () => {
     });
     expect(parsed.success).toBe(false);
     if (parsed.success) return;
-    const errors = fieldErrors(parsed);
-    // The offending key is folded into the message, never a nested path RHF
-    // cannot resolve.
-    expect(errors.metadata).toBeDefined();
-    expect(errors.metadata.join(' ')).toContain('base');
-    expect(errors.metadata.join(' ')).toContain('watts');
+
+    // BULB is a structured kind, so PartKindFields registers `metadata.base`
+    // and `metadata.watts` and nothing as plain `metadata`. The issue path has
+    // to match, or the message renders nowhere while applyActionFieldErrors
+    // still reports it as applied.
+    const paths = parsed.error.issues.map((i) => i.path.join('.'));
+    expect(paths).toContain('metadata.base');
+    expect(paths).toContain('metadata.watts');
   });
 
   it('applies the freeform schema (reserved-key guard) for OTHER', () => {
@@ -170,5 +172,44 @@ describe('updatePartSchema', () => {
   it('leaves metadata alone when kind is absent (the action resolves it)', () => {
     const parsed = updatePartSchema.safeParse({ id: 'p1', metadata: { base: 'E27' } });
     expect(parsed.success).toBe(true);
+  });
+});
+
+// The mirror of the items case fixed alongside this (#304's other half).
+//
+// A structured kind registers `metadata.<key>` controls and nothing as plain
+// `metadata`, so a flat issue path renders nowhere — while
+// applyActionFieldErrors still returns `applied: true` from its optimistic
+// flat-key branch, suppressing the caller's fallback toast. Silent rejection.
+//
+// OTHER is the inverse: one registered `metadata` textarea, where a nested path
+// would nest under it and render nothing.
+describe('metadata issue paths match the registered field', () => {
+  it('nests the path for a structured kind', () => {
+    const result = createPartSchema.safeParse({
+      name: 'Bulb',
+      kind: 'BULB',
+      metadata: { watts: -3 },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const paths = result.error.issues.map((i) => i.path.join('.'));
+    expect(paths).toContain('metadata.watts');
+    expect(paths).not.toContain('metadata');
+  });
+
+  it('keeps the path flat for the freeform kind', () => {
+    const result = createPartSchema.safeParse({
+      name: 'Thing',
+      kind: 'OTHER',
+      metadata: { _provenance: { name: 'user' } },
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const paths = result.error.issues.map((i) => i.path.join('.'));
+    expect(paths).toContain('metadata');
+    expect(paths.filter((p) => p.startsWith('metadata.'))).toEqual([]);
   });
 });

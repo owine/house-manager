@@ -7,6 +7,7 @@ import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
 import { enqueueItemRenameCascade } from '@/lib/embedding/cascade';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { freeformMetadataSchema } from '@/lib/metadata/freeform';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
@@ -21,12 +22,45 @@ import { createItemSchema, updateItemSchema } from './schema';
  * The offending path moves into the message instead, so the user still learns
  * which key is at fault.
  */
-function metadataFieldErrors(issues: z.ZodIssue[]): Record<string, string[]> {
-  const messages = issues.map((issue) => {
+/**
+ * Key per-category metadata failures onto a field that is actually registered,
+ * which differs by category shape.
+ *
+ * FREEFORM (`other`, unknown slugs): the UI registers ONE `metadata` textarea,
+ * so a flat key renders inline. A dotted key would nest under it and render
+ * nothing — that was issue #304.
+ *
+ * STRUCTURED (appliance, hvac, …): the UI registers `metadata.<key>` fields and
+ * NOTHING as plain `metadata`. A flat key here renders nowhere, while
+ * `applyActionFieldErrors` still returns `applied: true` from its optimistic
+ * flat-key branch, suppressing the caller's fallback toast — silent, the same
+ * failure #304 was about, just mirrored. Dotted keys are safe: the helper
+ * renders them on the registered field AND mirrors them to the root banner.
+ *
+ * The two schemas are compared by identity against `freeformMetadataSchema`,
+ * which `metadataSchemaFor` returns for both `other` and unknown slugs.
+ */
+function metadataFieldErrors(issues: z.ZodIssue[], slug: string): Record<string, string[]> {
+  const structured = metadataSchemaFor(slug) !== freeformMetadataSchema;
+
+  if (!structured) {
+    const messages = issues.map((issue) => {
+      const path = issue.path.join('.');
+      return path ? `${path}: ${issue.message}` : issue.message;
+    });
+    return { metadata: messages };
+  }
+
+  const out: Record<string, string[]> = {};
+  for (const issue of issues) {
     const path = issue.path.join('.');
-    return path ? `${path}: ${issue.message}` : issue.message;
-  });
-  return { metadata: messages };
+    // A root-level issue on a structured schema has no field to sit on; the
+    // flat key is the only option and the caller's banner is the backstop.
+    const key = path ? `metadata.${path}` : 'metadata';
+    out[key] ??= [];
+    out[key].push(issue.message);
+  }
+  return out;
 }
 
 export async function createItem(input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -45,7 +79,10 @@ export async function createItem(input: unknown): Promise<ActionResult<{ id: str
     parsed.data.metadata ?? {},
   );
   if (!metadataResult.success) {
-    return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues) };
+    return {
+      ok: false,
+      fieldErrors: metadataFieldErrors(metadataResult.error.issues, parsed.data.categorySlug),
+    };
   }
 
   const category = await prisma.category.findUnique({ where: { slug: parsed.data.categorySlug } });
@@ -95,7 +132,7 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
     if (slug) {
       const metadataResult = metadataSchemaFor(slug).safeParse(metadata);
       if (!metadataResult.success) {
-        return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues) };
+        return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues, slug) };
       }
       data.metadata = metadataResult.data as object;
     }
