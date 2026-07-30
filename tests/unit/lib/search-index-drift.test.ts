@@ -43,6 +43,25 @@ const WRITE_METHODS = [
 // Documented exemptions: (file, kind) pairs that legitimately write without
 // enqueueing. Keep this list short and annotated; every entry is a load-
 // bearing comment explaining why the write doesn't change indexed fields.
+/**
+ * Strip comments before scanning.
+ *
+ * Without this the scanner matches `prisma.part.create` written inside a prose
+ * comment and reports a violation for a file that performs no write at all.
+ * That was papered over with two ALLOWED exemptions whose stated reason was
+ * literally "the scanner is matching inside a prose comment" — exemptions that
+ * would then have masked a *real* missing enqueue in those same files.
+ *
+ * Deliberately naive: this is a heuristic guard over source text, not a parser.
+ * It does not understand comment-like sequences inside string or regex
+ * literals. That is acceptable here — a false negative costs one missed
+ * enqueue that the nightly reindex still backfills, while the false positives
+ * it removes were actively corroding the exemption list.
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
 const ALLOWED: { file: string; kind: string; reason: string }[] = [
   {
     file: 'worker/jobs/search-reindex.ts',
@@ -60,16 +79,6 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
     reason:
       'updateMany only sets serviceRecordId to link inbox attachments to a service record; ' +
       'attachment search doc references the direct Item link, not serviceRecord',
-  },
-  {
-    file: 'lib/chat/schema.ts',
-    kind: 'part',
-    reason: 'no write — the scanner is matching `prisma.part.create` inside a prose comment',
-  },
-  {
-    file: 'lib/chat/resolve.ts',
-    kind: 'part',
-    reason: 'no write — the scanner is matching `prisma.part.update` inside a prose comment',
   },
   {
     file: 'worker/jobs/thumbnail.ts',
@@ -111,7 +120,7 @@ describe('search-index drift guard', () => {
 
     for (const fullPath of files) {
       const rel = relative(repoRoot, fullPath);
-      const src = readFileSync(fullPath, 'utf8');
+      const src = stripComments(readFileSync(fullPath, 'utf8'));
 
       for (const [model, kind] of Object.entries(KIND_BY_MODEL)) {
         // Match prisma.<model>.<method> or tx.<model>.<method> or

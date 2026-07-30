@@ -132,10 +132,24 @@ const ICON: Record<SearchKind, string> = {
  * nothing useful on its own. Arrays are flattened; objects are skipped rather
  * than `[object Object]`-ed into the index.
  */
+/**
+ * Flatten one spec entry into searchable tokens.
+ *
+ * Object values are JSON-stringified rather than dropped, matching
+ * `canonicalizePart` in `lib/embedding/canonicalize.ts`. The two paths used to
+ * disagree — search silently discarded objects while the embedding kept them —
+ * which meant a value could be askable but not findable.
+ *
+ * In practice neither branch fires: every `partKindConfigs` schema is a flat
+ * object of scalars, `freeformMetadataSchema` admits only string/number/
+ * boolean/null, and `_provenance` (the one object written directly via Prisma)
+ * is stripped upstream by `visibleMetadataEntries`. So this is about the two
+ * paths never disagreeing again, not about a shape that occurs today.
+ */
 function specText(key: string, value: unknown): string[] {
   if (value === null || value === undefined) return [];
   if (Array.isArray(value)) return value.flatMap((v) => specText(key, v));
-  if (typeof value === 'object') return [];
+  if (typeof value === 'object') return [key, JSON.stringify(value)];
   return [key, String(value)];
 }
 
