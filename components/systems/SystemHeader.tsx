@@ -23,9 +23,11 @@ type Props = {
   system: SystemHeaderSystem;
   onArchive: () => Promise<{ ok: boolean; formError?: string }>;
   onUnarchive: () => Promise<{ ok: boolean; formError?: string }>;
+  /** Rendered after Archive — the delete entry point lives here. */
+  extraActions?: React.ReactNode;
 };
 
-export function SystemHeader({ system, onArchive, onUnarchive }: Props) {
+export function SystemHeader({ system, onArchive, onUnarchive, extraActions }: Props) {
   const [pending, startTransition] = useTransition();
   const isArchived = system.archivedAt !== null;
 
@@ -80,6 +82,7 @@ export function SystemHeader({ system, onArchive, onUnarchive }: Props) {
             </>
           )}
         </Button>
+        {extraActions}
       </div>
     </header>
   );

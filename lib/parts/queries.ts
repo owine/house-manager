@@ -151,6 +151,40 @@ export async function getPart(id: string) {
 }
 
 /**
+ * The parts linked to one item or one system, for the Parts tab on that
+ * parent's detail page.
+ *
+ * Deliberately **not** filtered by {@link LIVE_PART}. That predicate answers
+ * "is this part live somewhere in the house", and on a parent's own tab the
+ * parent supplies the answer: every row here is linked to *this* parent, so the
+ * `links.some(...)` disjunct is satisfied by construction. Applying it would be
+ * dead code implying a rule that is not operating. `Part.archivedAt` is
+ * surfaced instead, so a part the user explicitly stopped buying still shows on
+ * the fixture it is installed in, flagged.
+ */
+export async function listPartsForParent(parent: { itemId?: string; systemId?: string }) {
+  return prisma.partLink.findMany({
+    where: parent.itemId ? { itemId: parent.itemId } : { systemId: parent.systemId },
+    orderBy: [{ part: { name: 'asc' } }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      location: true,
+      quantityInstalled: true,
+      part: {
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          manufacturer: true,
+          model: true,
+          archivedAt: true,
+        },
+      },
+    },
+  });
+}
+
+/**
  * Live parts projected to the shape consumed by `<TargetsPicker>`, mirroring
  * `listAllActiveItemsForPicker()` / `listSystemsWithItemsForPicker()`.
  */

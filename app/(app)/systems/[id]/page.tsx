@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { PartsForParent } from '@/components/parts/PartsForParent';
 import { ComponentsList } from '@/components/systems/ComponentsList';
 import { CostRollup } from '@/components/systems/CostRollup';
+import { DeleteSystemButton } from '@/components/systems/DeleteSystemButton';
 import { SystemHeader } from '@/components/systems/SystemHeader';
 import {
   SystemTimeline,
@@ -12,9 +14,15 @@ import {
 import { SystemVendorsSection } from '@/components/systems/SystemVendorsSection';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { listOrphanItems } from '@/lib/items/queries';
+import { listPartsForParent, listPartsForPicker } from '@/lib/parts/queries';
 import { getRemindersForSystem } from '@/lib/reminders/queries';
 import { getServiceRecordsForSystem } from '@/lib/service-records/queries';
-import { archiveSystem, unarchiveSystem } from '@/lib/systems/actions';
+import {
+  archiveSystem,
+  deleteSystemWithParts,
+  tryDeleteSystem,
+  unarchiveSystem,
+} from '@/lib/systems/actions';
 import { getSystemDetail } from '@/lib/systems/queries';
 import { calendarDate } from '@/lib/time/tz';
 import { listAllVendors } from '@/lib/vendors/queries';
@@ -73,13 +81,16 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
   const { system, rollup } = detail;
 
   // Run the three event queries plus orphan/vendor queries in parallel.
-  const [serviceRecords, warranties, reminders, orphanItems, vendors] = await Promise.all([
-    getServiceRecordsForSystem(id),
-    getWarrantiesForSystem(id),
-    getRemindersForSystem(id),
-    listOrphanItems(),
-    listAllVendors(),
-  ]);
+  const [serviceRecords, warranties, reminders, orphanItems, vendors, partLinks, pickerParts] =
+    await Promise.all([
+      getServiceRecordsForSystem(id),
+      getWarrantiesForSystem(id),
+      getRemindersForSystem(id),
+      listOrphanItems(),
+      listAllVendors(),
+      listPartsForParent({ systemId: id }),
+      listPartsForPicker(),
+    ]);
 
   const events: TimelineEvent[] = [];
   for (const sr of serviceRecords) {
@@ -146,6 +157,28 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
     return r.ok ? { ok: true as const } : { ok: false as const, formError: r.formError };
   }
 
+  async function doTryDelete() {
+    'use server';
+    const r = await tryDeleteSystem(id);
+    if (r.ok) return { ok: true as const };
+    if ('hasParts' in r) return { ok: false as const, hasParts: true as const, parts: r.parts };
+    return { ok: false as const, formError: r.formError };
+  }
+
+  async function doDeleteWithParts(input: { archivePartIds: string[]; keepPartIds: string[] }) {
+    'use server';
+    const r = await deleteSystemWithParts({ systemId: id, ...input });
+    if (r.ok) {
+      return {
+        ok: true as const,
+        archivedCount: r.data.archivedCount,
+        keptCount: r.data.keptCount,
+      };
+    }
+    if ('hasParts' in r) return { ok: false as const, hasParts: true as const, parts: r.parts };
+    return { ok: false as const, formError: r.formError };
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <SystemHeader
@@ -159,6 +192,13 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
         }}
         onArchive={doArchive}
         onUnarchive={doUnarchive}
+        extraActions={
+          <DeleteSystemButton
+            systemName={system.name}
+            onTryDelete={doTryDelete}
+            onDeleteWithParts={doDeleteWithParts}
+          />
+        }
       />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="min-w-0 space-y-6 md:col-span-2">
@@ -177,6 +217,7 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
               model: i.model,
             }))}
           />
+          <PartsForParent systemId={system.id} links={partLinks} pickerParts={pickerParts} />
           <SystemVendorsSection systemId={system.id} links={vendorLinks} vendors={vendors} />
           <SystemTimeline events={events} systemId={system.id} />
         </div>
