@@ -768,6 +768,8 @@ enum ChatProposalKind {
   UPDATE_ITEM
   UPDATE_SYSTEM
   CREATE_SERVICE_RECORD
+  CREATE_PART
+  UPDATE_PART
 }
 
 enum ChatProposalStatus {
@@ -838,13 +840,20 @@ model ChatProposal {
   //
   // Two rules, both load-bearing:
   //   1. Scope it to the touched fields. Snapshotting the whole row would drag
-  //      in Decimal columns (purchasePrice, installCost, cost), which
-  //      serialize into Json as strings and silently break the diff render.
-  //      No proposal kind touches a Decimal field today; keep it that way.
+  //      in Decimal columns (purchasePrice, installCost, cost) that no
+  //      proposal kind touches, and every one of them would break the diff
+  //      render — see rule 3 for why.
   //   2. Store calendar dates as YYYY-MM-DD strings, matching the payload's
   //      own wire format. A Date written to a Json column reads back as an
   //      ISO string, and formatCalendarDate takes a CalendarDate, not a
   //      string — passing the raw value through would not typecheck.
+  //   3. Store a Decimal as a FIXED-SCALE STRING at capture time
+  //      (`value.toFixed(2)`), never the Decimal itself. UPDATE_PART touches
+  //      one: Part.typicalCost, Decimal(10, 2). decimal.js defines `toJSON`,
+  //      so the naive write does not throw — it round-trips as `"4.5"`,
+  //      dropping the trailing zero and producing a spurious diff against a
+  //      payload-side `"4.50"`. Do not repair this at render: the payload's
+  //      wire format is the snapshot's contract, same as rule 2.
   beforeSnapshot Json?
 
   appliedEntityId String?

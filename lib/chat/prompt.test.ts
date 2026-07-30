@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { partKindConfigs } from '@/lib/parts/kinds';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT } from './prompt';
 
 describe('CHAT_SYSTEM_PROMPT', () => {
@@ -18,6 +20,33 @@ describe('CHAT_SYSTEM_PROMPT', () => {
     expect(CHAT_SYSTEM_PROMPT).toMatch(/serial numbers?/i);
     expect(CHAT_SYSTEM_PROMPT).toMatch(/PII/);
   });
+
+  it("keeps parts out of the main call's scope", () => {
+    // Parts are proposed by the separate unconstrained extraction call, so the
+    // main prompt must NOT offer them — see lib/chat/parts-extract.ts.
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/create notes, items and service records/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/update notes,\s+items and systems/);
+  });
+
+  it('tells the model to leave consumables alone rather than making an item', () => {
+    // The reported bug: asked about bulbs, the model created an Item and threw
+    // the specs away. Without this instruction BOTH calls now propose something
+    // for the same bulbs and the user sees a duplicate.
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/Do NOT create an item for one/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/SPECIFICATION/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/Bulbs are a part; the\s+fixture they go in is an item/);
+  });
+
+  it('does not carry the spec-field table — the extraction prompt owns that', () => {
+    for (const [kind, schema] of Object.entries(partKindConfigs)) {
+      if (!(schema instanceof z.ZodObject)) continue;
+      expect(CHAT_SYSTEM_PROMPT).not.toContain(`${kind}: `);
+    }
+  });
+
+  it('still lists parts among the referenceable ids, since the snapshot has them', () => {
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/item, system, category, note and part/);
+  });
 });
 
 describe('buildSnapshotBlock', () => {
@@ -30,6 +59,9 @@ describe('buildSnapshotBlock', () => {
       systems: [{ id: 'sys-1', name: 'HVAC', location: null }],
       categories: [{ id: 'cat-1', name: 'Lighting' }],
       notes: [{ id: 'note-1', title: 'Lightbulbs' }],
+      parts: [
+        { id: 'part-1', name: 'Porch bulbs', kind: 'BULB', manufacturer: 'Philips', model: null },
+      ],
     });
 
     expect(block).toContain('2026-07-03');
@@ -37,5 +69,19 @@ describe('buildSnapshotBlock', () => {
     expect(block).toContain('sys-1');
     expect(block).toContain('cat-1');
     expect(block).toContain('note-1');
+    expect(block).toContain('PARTS (id | name | kind | manufacturer | model)');
+    expect(block).toContain('part-1 | Porch bulbs | BULB | Philips | -');
+  });
+
+  // The abstract prohibition ("do not copy specifications into an item's
+  // notes") was already in rule 6 and the model violated it anyway, proposing
+  // UPDATE_ITEM { notes: "Takes 24 S14 bulbs, E26 base, 2700K, ~11W each" }
+  // against a live call. Showing it the exact wrong output fixed it. Verified
+  // live: the bulb turn now yields no proposals, and a genuine item turn still
+  // yields CREATE_ITEM. Do not trim this example back to a rule.
+  it('carries the negative worked example that stops the notes shoehorn', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Worked example');
+    expect(CHAT_SYSTEM_PROMPT).toContain('NO PROPOSALS AT ALL');
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/UPDATE_ITEM \{/);
   });
 });
