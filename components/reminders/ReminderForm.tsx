@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import {
   type AvailableItem,
+  type AvailablePart,
   type AvailableSystem,
   TargetsPicker,
 } from '@/components/targets/TargetsPicker';
@@ -29,7 +30,7 @@ import {
   recurrenceSchema,
 } from '@/lib/reminders/schema';
 import type { ActionResult } from '@/lib/result';
-import type { TargetInput } from '@/lib/targets/schema';
+import type { PartTargetInput } from '@/lib/targets/schema';
 import { RecurrencePicker } from './RecurrencePicker';
 
 const reminderFormSchema = z.object({
@@ -48,7 +49,8 @@ type ParsedFormValues = z.output<typeof reminderFormSchema>;
 type Props = {
   availableItems: AvailableItem[];
   availableSystems: AvailableSystem[];
-  initialTargets?: TargetInput[];
+  availableParts?: AvailablePart[];
+  initialTargets?: PartTargetInput[];
   defaultValues?: Partial<ParsedFormValues & { id: string }>;
   action: (
     input: CreateReminderInput | (CreateReminderInput & { id: string }),
@@ -66,6 +68,7 @@ type Props = {
 export function ReminderForm({
   availableItems,
   availableSystems,
+  availableParts,
   initialTargets,
   defaultValues,
   action,
@@ -75,7 +78,7 @@ export function ReminderForm({
   const isChore = kind === 'CHORE';
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
+  const [targets, setTargets] = useState<PartTargetInput[]>(initialTargets ?? []);
   const [targetsError, setTargetsError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
@@ -100,7 +103,7 @@ export function ReminderForm({
 
   const onSubmit = handleSubmit((data) => {
     if (!isChore && targets.length === 0) {
-      setTargetsError('Select at least one item or system');
+      setTargetsError('Select at least one item, system, or part');
       return;
     }
     setTargetsError(null);
@@ -124,7 +127,7 @@ export function ReminderForm({
     });
   });
 
-  const handleTargetsChange = (next: TargetInput[]) => {
+  const handleTargetsChange = (next: PartTargetInput[]) => {
     setTargets(next);
     if (next.length > 0 && targetsError) setTargetsError(null);
   };
@@ -167,12 +170,14 @@ export function ReminderForm({
         />
 
         <FormItem>
-          <FormLabel>{isChore ? 'Linked items / systems (optional)' : 'Targets'}</FormLabel>
+          <FormLabel>{isChore ? 'Linked items / systems / parts (optional)' : 'Targets'}</FormLabel>
           <TargetsPicker
             value={targets}
             onChange={handleTargetsChange}
             availableItems={availableItems}
             availableSystems={availableSystems}
+            availableParts={availableParts}
+            allowParts
           />
           {targetsError && (
             <p className="text-sm text-destructive" role="alert">

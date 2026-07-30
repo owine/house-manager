@@ -5,10 +5,12 @@ import { ItemMetaCard } from '@/components/items/ItemMetaCard';
 import { ItemOverflowMenu } from '@/components/items/ItemOverflowMenu';
 import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
 import { ItemVendorsSection } from '@/components/items/ItemVendorsSection';
+import { PartsForParent } from '@/components/parts/PartsForParent';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
 import { getItem } from '@/lib/items/queries';
+import { listPartsForParent, listPartsForPicker } from '@/lib/parts/queries';
 import { listAllVendors } from '@/lib/vendors/queries';
 import { FilesTab } from './tabs/FilesTab';
 import { NotesTab } from './tabs/NotesTab';
@@ -26,7 +28,15 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return { title: item?.name ?? 'Not found' };
 }
 
-const VALID_TABS = ['overview', 'warranties', 'service', 'notes', 'files', 'reminders'] as const;
+const VALID_TABS = [
+  'overview',
+  'parts',
+  'warranties',
+  'service',
+  'notes',
+  'files',
+  'reminders',
+] as const;
 
 function parseTab(raw: string | undefined): TabSlug {
   return (VALID_TABS as readonly string[]).includes(raw ?? '') ? (raw as TabSlug) : 'overview';
@@ -42,10 +52,12 @@ export default async function ItemDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const tab = parseTab(sp.tab);
-  const [item, vendors, tz] = await Promise.all([
+  const [item, vendors, tz, partLinks, pickerParts] = await Promise.all([
     getItem(id),
     listAllVendors(),
     getHouseTimezone(),
+    listPartsForParent({ itemId: id }),
+    listPartsForPicker(),
   ]);
   if (!item) notFound();
 
@@ -93,6 +105,9 @@ export default async function ItemDetailPage({
             <ItemTabs active={tab} itemId={item.id} />
             <div className="mt-6 space-y-6">
               {tab === 'overview' && <OverviewTab item={item} />}
+              {tab === 'parts' && (
+                <PartsForParent itemId={item.id} links={partLinks} pickerParts={pickerParts} />
+              )}
               {tab === 'warranties' && <WarrantiesTab item={item} tz={tz} />}
               {tab === 'service' && <ServiceTab item={item} />}
               {tab === 'reminders' && <RemindersTab item={item} />}

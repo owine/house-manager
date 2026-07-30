@@ -1,10 +1,18 @@
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-export type TabSlug = 'overview' | 'warranties' | 'service' | 'notes' | 'files' | 'reminders';
+export type TabSlug =
+  | 'overview'
+  | 'parts'
+  | 'warranties'
+  | 'service'
+  | 'notes'
+  | 'files'
+  | 'reminders';
 
 const TABS: { slug: TabSlug; label: string }[] = [
   { slug: 'overview', label: 'overview' },
+  { slug: 'parts', label: 'parts' },
   { slug: 'warranties', label: 'warranties' },
   { slug: 'service', label: 'service' },
   { slug: 'notes', label: 'notes' },

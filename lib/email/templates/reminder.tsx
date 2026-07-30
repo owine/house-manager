@@ -42,8 +42,8 @@ type ResolvedTarget = {
   label: string; // item, system or part name
   /**
    * Absolute, appUrl-rooted — or null to render the label as plain text.
-   * Parts have no detail route until PR 1b, and linking a part target to the
-   * app root (what the old `'(no target)'` fallback did) is worse than no link.
+   * Only the defensive `(no target)` fallback is unlinked now; linking it to
+   * the app root (what the old fallback did) is worse than no link.
    */
   href: string | null;
   due: string; // the stored calendar date, rendered in UTC
@@ -82,7 +82,7 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
     if (t.part) {
       return {
         label: t.part.name,
-        href: null,
+        href: `${data.appUrl}/parts/${t.part.id}`,
         due: formatDue(t.nextDueOn),
       };
     }

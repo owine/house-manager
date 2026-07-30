@@ -4,6 +4,7 @@ import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
+import { listPartsForPicker } from '@/lib/parts/queries';
 import { updateReminder } from '@/lib/reminders/actions';
 import { getReminder } from '@/lib/reminders/queries';
 import { parseRecurrence } from '@/lib/reminders/schema';
@@ -20,10 +21,11 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function EditReminderPage({ params }: { params: Params }) {
   const { id } = await params;
-  const [r, availableItems, availableSystems] = await Promise.all([
+  const [r, availableItems, availableSystems, availableParts] = await Promise.all([
     getReminder(id),
     listAllActiveItemsForPicker(),
     listSystemsWithItemsForPicker(),
+    listPartsForPicker(),
   ]);
   if (!r) notFound();
 
@@ -36,6 +38,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
       <ReminderForm
         availableItems={availableItems}
         availableSystems={availableSystems}
+        availableParts={availableParts}
         initialTargets={initialTargets}
         defaultValues={{
           id: r.id,

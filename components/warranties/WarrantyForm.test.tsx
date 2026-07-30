@@ -146,4 +146,23 @@ describe('WarrantyForm with TargetsPicker', () => {
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
     expect(action.mock.calls[0]?.[0]).toMatchObject({ targets: [{ systemId: 's1' }] });
   });
+
+  // `warranty_targets` has no partId column and keeps a two-way XOR CHECK. A
+  // part target emitted here would write item/system both NULL and be rejected
+  // by the database — a 500, not a form error. The picker must never offer one.
+  it('offers no Parts section', async () => {
+    const user = userEvent.setup();
+    const action = makeAction({ ok: true, data: { id: 'w-1' } });
+    render(
+      <WarrantyForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        action={action}
+        submitLabel="Add warranty"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^Parts/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Items/ }));
+    expect(screen.queryByTestId('targets-picker-parts-list')).not.toBeInTheDocument();
+  });
 });

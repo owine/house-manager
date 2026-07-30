@@ -116,7 +116,7 @@ describe('reminderEmail', () => {
   // rendered, the template fell through to `label: '(no target)'` with
   // `href: appUrl` — the "furnace filter is due" email shipped unlabelled and
   // linked to the app root.
-  it('labels a part target and does not link it to the bare app root', () => {
+  it('labels a part target and links it to its detail route', () => {
     const { html, text } = reminderEmail(
       baseData({
         targets: [
@@ -131,9 +131,11 @@ describe('reminderEmail', () => {
     expect(text).toContain('MERV-13 filter');
     expect(html).not.toContain('(no target)');
     expect(text).not.toContain('(no target)');
-    // The target line must not be a link to the app root. Parts have no detail
-    // route until PR 1b, so the label is plain text inside the <li>.
+    // The target line must never be a link to the bare app root.
     expect(html).not.toMatch(/<a[^>]*href="https:\/\/hm\.example"/);
+    // `/parts/[id]` exists as of PR 1b, so the label is a real link now.
+    expect(html).toMatch(/<a[^>]*href="https:\/\/hm\.example\/parts\/prt_1"/);
+    expect(text).toContain('https://hm.example/parts/prt_1');
   });
 
   it('renders the CTA labeled "View reminder" with the correct href', () => {

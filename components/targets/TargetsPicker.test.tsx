@@ -2,9 +2,14 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { TargetInput } from '@/lib/targets/schema';
+import type { PartTargetInput, TargetInput } from '@/lib/targets/schema';
 import { expectNoAxeViolations } from '@/tests/a11y/axe';
-import { type AvailableItem, type AvailableSystem, TargetsPicker } from './TargetsPicker';
+import {
+  type AvailableItem,
+  type AvailablePart,
+  type AvailableSystem,
+  TargetsPicker,
+} from './TargetsPicker';
 
 afterEach(() => {
   cleanup();
@@ -240,5 +245,137 @@ describe('TargetsPicker', () => {
     expect(screen.queryByTestId('targets-picker-items-list')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^Items/ }));
     expect(screen.getByTestId('targets-picker-items-list')).toBeInTheDocument();
+  });
+});
+
+const part = (
+  id: string,
+  name: string,
+  kind: string | null = 'AIR_FILTER',
+  archivedAt: Date | null = null,
+): AvailablePart => ({ id, name, kind, archivedAt });
+
+const parts: AvailablePart[] = [
+  part('p1', '20x25x1 furnace filter'),
+  part('p2', 'Fridge water filter', 'WATER_FILTER'),
+];
+
+describe('TargetsPicker parts support', () => {
+  it('renders a Parts section and emits { partId } when allowParts', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn<(next: PartTargetInput[]) => void>();
+    render(
+      <TargetsPicker
+        value={[]}
+        onChange={onChange}
+        availableItems={[]}
+        availableSystems={[]}
+        availableParts={parts}
+        allowParts
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Parts/ }));
+    const list = screen.getByTestId('targets-picker-parts-list');
+    await user.click(within(list).getByRole('checkbox', { name: /20x25x1 furnace filter/ }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith([{ partId: 'p1' }]);
+  });
+
+  it('shows a pre-selected part as a chip and removes it on X', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn<(next: PartTargetInput[]) => void>();
+    render(
+      <TargetsPicker
+        value={[{ partId: 'p2' }, { itemId: 'i1' }]}
+        onChange={onChange}
+        availableItems={[item('i1', 'Furnace blower')]}
+        availableSystems={[]}
+        availableParts={parts}
+        allowParts
+      />,
+    );
+    const chips = screen.getByTestId('targets-picker-chips');
+    expect(within(chips).getByText(/Fridge water filter/)).toBeInTheDocument();
+    await user.click(
+      within(chips).getByRole('button', { name: /Remove part Fridge water filter/ }),
+    );
+    expect(onChange).toHaveBeenCalledWith([{ itemId: 'i1' }]);
+  });
+
+  it('does not render archived parts even if passed by parent', async () => {
+    const user = userEvent.setup();
+    render(
+      <TargetsPicker
+        value={[]}
+        onChange={vi.fn()}
+        availableItems={[]}
+        availableSystems={[]}
+        availableParts={[part('pArchived', 'Old filter', 'AIR_FILTER', new Date('2025-01-01'))]}
+        allowParts
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Parts/ }));
+    expect(screen.queryByText('Old filter')).not.toBeInTheDocument();
+  });
+
+  it('renders no Parts section without allowParts', async () => {
+    const user = userEvent.setup();
+    render(
+      <TargetsPicker
+        value={[]}
+        onChange={vi.fn()}
+        availableItems={[]}
+        availableSystems={[]}
+        availableParts={parts}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^Parts/ })).not.toBeInTheDocument();
+    await expandSections(user);
+    expect(screen.queryByTestId('targets-picker-parts-list')).not.toBeInTheDocument();
+    expect(screen.queryByText('20x25x1 furnace filter')).not.toBeInTheDocument();
+  });
+
+  // THE data-loss test. A picker that silently drops a row it cannot render
+  // makes the parent form submit without it, and updateReminder's diff then
+  // DELETES the target. Every onChange must carry unknown rows through.
+  it('preserves a part row in value even when allowParts is off', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn<(next: PartTargetInput[]) => void>();
+    render(
+      <TargetsPicker
+        value={[{ partId: 'p1' }, { itemId: 'i1' }]}
+        onChange={onChange}
+        availableItems={[item('i1', 'Furnace blower'), item('i2', 'AC condenser')]}
+        availableSystems={[]}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Items/ }));
+    const list = screen.getByTestId('targets-picker-items-list');
+    // Toggle an unrelated item on…
+    await user.click(within(list).getByRole('checkbox', { name: 'AC condenser' }));
+    expect(onChange).toHaveBeenLastCalledWith([
+      { partId: 'p1' },
+      { itemId: 'i1' },
+      { itemId: 'i2' },
+    ]);
+    // …and toggle the known item off. The part row still rides along.
+    await user.click(within(list).getByRole('checkbox', { name: 'Furnace blower' }));
+    expect(onChange).toHaveBeenLastCalledWith([{ partId: 'p1' }]);
+  });
+
+  it('has no axe violations with the Parts section expanded', async () => {
+    const user = userEvent.setup();
+    render(
+      <TargetsPicker
+        value={[{ partId: 'p1' }]}
+        onChange={vi.fn()}
+        availableItems={[]}
+        availableSystems={[]}
+        availableParts={parts}
+        allowParts
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Parts/ }));
+    await expectNoAxeViolations();
   });
 });

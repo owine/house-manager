@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,6 +46,10 @@ const availableSystems = [
     kind: 'hvac',
     items: [{ id: 'i1', archivedAt: null }],
   },
+];
+
+const availableParts = [
+  { id: 'p1', name: '20x25x1 furnace filter', kind: 'AIR_FILTER', archivedAt: null },
 ];
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
@@ -115,7 +119,9 @@ describe('ServiceRecordForm with TargetsPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Save record' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/pick a vendor.*or at least one item\/system/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/pick a vendor.*at least one item, system, or part/i),
+      ).toBeInTheDocument();
     });
     expect(action).not.toHaveBeenCalled();
   });
@@ -166,6 +172,54 @@ describe('ServiceRecordForm with TargetsPicker', () => {
       vendorId: 'v1',
       summary: 'Annual tune-up',
     });
+  });
+
+  // Same silent-delete guard as ReminderForm: seeded part target, untouched
+  // save, assert the SUBMITTED PAYLOAD still carries it.
+  it('resubmits a seeded part target when the form is saved untouched', async () => {
+    const action = makeAction({ ok: true, data: { id: 'sr-1' } });
+    const user = userEvent.setup();
+    render(
+      <ServiceRecordForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        availableParts={availableParts}
+        vendors={[]}
+        initialTargets={[{ partId: 'p1' }]}
+        defaultValues={{ id: 'sr-1' }}
+        action={action}
+        submitLabel="Save changes"
+      />,
+    );
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({ targets: [{ partId: 'p1' }] });
+  });
+
+  it('offers parts in the picker and submits a newly-checked part target', async () => {
+    const action = makeAction({ ok: true, data: { id: 'sr-new' } });
+    const user = userEvent.setup();
+    render(
+      <ServiceRecordForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        availableParts={availableParts}
+        vendors={[]}
+        action={action}
+        submitLabel="Save record"
+      />,
+    );
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: /^Parts/ }));
+    await user.click(
+      within(screen.getByTestId('targets-picker-parts-list')).getByRole('checkbox', {
+        name: /20x25x1 furnace filter/,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save record' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({ targets: [{ partId: 'p1' }] });
   });
 
   it('submits with targets: [{ systemId }] when only a system is selected', async () => {
