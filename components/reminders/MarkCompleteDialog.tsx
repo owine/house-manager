@@ -16,10 +16,16 @@ import type { ActionResult } from '@/lib/result';
 
 export type ReminderTargetSummary = {
   id: string;
-  /** human label for the chip — vendor name, item name, system name, or generic */
+  /** human label for the chip — vendor name, item name, system name, part name, or generic */
   label: string;
-  /** small badge text — "Item" or "System" — for the row */
-  kind: 'item' | 'system';
+  /** small badge text — "Item", "System" or "Part" — for the row */
+  kind: 'item' | 'system' | 'part';
+};
+
+const KIND_LABELS: Record<ReminderTargetSummary['kind'], string> = {
+  item: 'Item',
+  system: 'System',
+  part: 'Part',
 };
 
 type CompleteReminderInput = {
@@ -119,7 +125,7 @@ export function MarkCompleteDialog({
                       />
                       <span className="text-sm">{t.label}</span>
                       <Badge variant="outline" className="ml-auto">
-                        {t.kind === 'system' ? 'System' : 'Item'}
+                        {KIND_LABELS[t.kind]}
                       </Badge>
                     </label>
                   </li>

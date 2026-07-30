@@ -112,6 +112,30 @@ describe('reminderEmail', () => {
     expect(html).toContain('July 15, 2026');
   });
 
+  // Part reminders are `kind: 'REMINDER'`, so they DO notify. Before parts were
+  // rendered, the template fell through to `label: '(no target)'` with
+  // `href: appUrl` — the "furnace filter is due" email shipped unlabelled and
+  // linked to the app root.
+  it('labels a part target and does not link it to the bare app root', () => {
+    const { html, text } = reminderEmail(
+      baseData({
+        targets: [
+          {
+            nextDueOn: asCalendarDate(new Date('2026-06-01T00:00:00Z')),
+            part: { id: 'prt_1', name: 'MERV-13 filter' },
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('MERV-13 filter');
+    expect(text).toContain('MERV-13 filter');
+    expect(html).not.toContain('(no target)');
+    expect(text).not.toContain('(no target)');
+    // The target line must not be a link to the app root. Parts have no detail
+    // route until PR 1b, so the label is plain text inside the <li>.
+    expect(html).not.toMatch(/<a[^>]*href="https:\/\/hm\.example"/);
+  });
+
   it('renders the CTA labeled "View reminder" with the correct href', () => {
     const { html } = reminderEmail(baseData());
     expect(html).toMatch(

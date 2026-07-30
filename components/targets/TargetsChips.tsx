@@ -15,6 +15,14 @@ export interface TargetSummary {
    */
   item: { id: string; name: string; systemId?: string | null } | null;
   system: { id: string; name: string } | null;
+  /**
+   * Part targets exist on `reminder_targets` and `service_record_targets` only.
+   * `warranty_targets` keeps a two-way XOR and never gains `partId`, and
+   * <WarrantyTable> shares this component — so both part fields are OPTIONAL.
+   * Making them required breaks the warranty caller.
+   */
+  partId?: string | null;
+  part?: { id: string; name: string } | null;
 }
 
 export interface TargetsChipsProps {
@@ -28,9 +36,20 @@ export interface TargetsChipsProps {
 
 type Resolved = {
   key: string;
-  kind: 'item' | 'system';
-  href: string;
+  kind: 'item' | 'system' | 'part';
+  /**
+   * null = render the label unlinked. Parts have no detail route yet (PR 1b
+   * adds /parts/[id]); linking there today would be a guaranteed 404, so a part
+   * chip deliberately renders as plain text.
+   */
+  href: string | null;
   name: string;
+};
+
+const KIND_LABELS: Record<Resolved['kind'], string> = {
+  item: 'Item',
+  system: 'System',
+  part: 'Part',
 };
 
 function resolve(targets: TargetSummary[]): Resolved[] {
@@ -57,8 +76,16 @@ function resolve(targets: TargetSummary[]): Resolved[] {
         href: `/items/${t.item.id}`,
         name: t.item.name,
       });
+    } else if (t.part) {
+      out.push({
+        key: t.id,
+        kind: 'part',
+        href: null,
+        name: t.part.name,
+      });
     }
-    // A target with neither item nor system is malformed; it renders nothing.
+    // A target with no item, system or part is malformed (or is a standalone
+    // chore's cadence-carrying sentinel row); it renders nothing.
   }
   return out;
 }
@@ -80,9 +107,9 @@ export function TargetsChips({ targets, inert = false }: TargetsChipsProps) {
         const label = (
           <Badge variant="secondary" className="gap-1.5" data-testid={`targets-chip-${r.key}`}>
             <span className="rounded-sm bg-foreground/10 px-1 text-[10px] font-semibold tracking-wide uppercase">
-              {r.kind === 'system' ? 'System' : 'Item'}
+              {KIND_LABELS[r.kind]}
             </span>
-            {inert ? (
+            {inert || r.href === null ? (
               <span data-testid={`targets-chip-text-${r.key}`}>{r.name}</span>
             ) : (
               <Link

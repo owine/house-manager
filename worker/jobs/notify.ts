@@ -32,6 +32,7 @@ export async function handleNotify(
           nextDueOn: true,
           item: { select: { id: true, name: true, systemId: true } },
           system: { select: { id: true, name: true } },
+          part: { select: { id: true, name: true } },
         },
       },
     },
@@ -132,6 +133,7 @@ export async function handleNotify(
       nextDueOn: t.nextDueOn,
       item: t.item ?? undefined,
       system: t.system ?? undefined,
+      part: t.part ?? undefined,
     })),
   });
   const r = await sendEmail(user.email, { subject, text, html });

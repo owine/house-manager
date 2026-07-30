@@ -121,6 +121,7 @@ model System {
   reminderTargets        ReminderTarget[]
   systemVendors          SystemVendor[]
   incomingEmailTargets   IncomingEmailTarget[]
+  links                  PartLink[]
 
   @@index([archivedAt])
   @@map("systems")
@@ -167,6 +168,7 @@ model Item {
   attachments     Attachment[]
   checklistItems  ChecklistItem[]
   incomingEmailTargets   IncomingEmailTarget[]
+  links                  PartLink[]
 
   @@index([categoryId])
   @@index([systemId])
@@ -301,18 +303,21 @@ model ServiceRecordTarget {
   serviceRecordId  String
   itemId           String?
   systemId         String?
+  partId           String?
 
   serviceRecord    ServiceRecord  @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
   item             Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
   system           System?        @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  part             Part?          @relation(fields: [partId], references: [id], onDelete: Cascade)
 
   // NOTE: the underlying unique index uses NULLS NOT DISTINCT (set in the
   // migration directly) so duplicates like (sr, itemId, NULL) are rejected.
   // Prisma 7.8 doesn't model that on @@unique, but the index is enforced at
   // the DB level and runtime queries still see it.
-  @@unique([serviceRecordId, itemId, systemId])
+  @@unique([serviceRecordId, itemId, systemId, partId], map: "sr_targets_record_item_system_part_key")
   @@index([itemId])
   @@index([systemId])
+  @@index([partId])
   @@map("service_record_targets")
 }
 
@@ -330,6 +335,77 @@ enum IncomingEmailKind {
 enum ReminderKind {
   REMINDER
   CHORE
+}
+
+enum PartKind {
+  BULB
+  AIR_FILTER
+  WATER_FILTER
+  BATTERY
+  BELT
+  FUSE
+  CHEMICAL      // softener salt, pool chlorine, descaler
+  OTHER
+}
+
+model Part {
+  id                   String    @id @default(cuid())
+  name                 String
+  kind                 PartKind  @default(OTHER)
+
+  // Describes an unlinked/generic part ("Kitchen can lights"). Per-installation
+  // location lives on PartLink.
+  location             String?
+
+  // Re-buy identity
+  manufacturer         String?
+  model                String?   // part number: BR30-927-DIM, FPR-20-25-1
+  sku                  String?
+  typicalCost          Decimal?  @db.Decimal(10, 2)
+  packQuantity         Int?      // how many come in a box
+  purchaseLinks        Json      @default("[]")   // [{ label?, url }]
+
+  metadata             Json      @default("{}")   // per-kind spec (PR 1b)
+  notes                String?   @db.Text
+
+  archivedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  links                PartLink[]
+  reminderTargets      ReminderTarget[]
+  serviceRecordTargets ServiceRecordTarget[]
+  attachments          Attachment[]
+
+  @@index([kind])
+  @@index([archivedAt])
+  @@map("parts")
+}
+
+model PartLink {
+  id                String   @id @default(cuid())
+  partId            String
+  itemId            String?
+  systemId          String?
+
+  // Per-installation facts: 24 S14s at the backyard lights, 6 BR30s in the
+  // kitchen. Distinct from Part.packQuantity (how many per box).
+  location          String?
+  quantityInstalled Int?
+
+  createdAt         DateTime @default(now())
+
+  part              Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  item              Item?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  system            System?  @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  // NULLS NOT DISTINCT set in the migration directly, matching the four
+  // existing target tables.
+  @@unique([partId, itemId, systemId])
+  @@index([partId])
+  @@index([itemId])
+  @@index([systemId])
+  @@map("part_links")
 }
 
 enum IncomingEmailState {
@@ -439,6 +515,8 @@ model Attachment {
   serviceRecordId String?
   noteId          String?
   incomingEmailId String?
+  partId          String?
+  part            Part?          @relation(fields: [partId], references: [id], onDelete: Cascade)
   item            Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
   warranty        Warranty?      @relation(fields: [warrantyId], references: [id], onDelete: Cascade)
   serviceRecord   ServiceRecord? @relation(fields: [serviceRecordId], references: [id], onDelete: Cascade)
@@ -463,6 +541,7 @@ model Attachment {
   @@index([serviceRecordId])
   @@index([noteId])
   @@index([incomingEmailId])
+  @@index([partId])
   @@map("attachments")
 }
 
@@ -493,21 +572,24 @@ model ReminderTarget {
   reminderId      String
   itemId          String?
   systemId        String?
+  partId          String?
   lastCompletedOn DateTime?
   nextDueOn       DateTime @db.Date
 
   reminder        Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
   item            Item?     @relation(fields: [itemId], references: [id], onDelete: Cascade)
   system          System?   @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  part            Part?     @relation(fields: [partId], references: [id], onDelete: Cascade)
   completions     ReminderCompletion[]
 
   // NOTE: the underlying unique index uses NULLS NOT DISTINCT (set in the
   // migration directly) so duplicates like (r, itemId, NULL) are rejected.
   // Prisma 7.8 doesn't model that on @@unique, but the index is enforced at
   // the DB level and runtime queries still see it.
-  @@unique([reminderId, itemId, systemId])
+  @@unique([reminderId, itemId, systemId, partId], map: "reminder_targets_reminder_item_system_part_key")
   @@index([itemId])
   @@index([systemId])
+  @@index([partId])
   @@index([nextDueOn])
   @@index([reminderId])
   @@map("reminder_targets")

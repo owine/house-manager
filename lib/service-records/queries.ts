@@ -36,6 +36,7 @@ export async function listServiceRecords(params: ListParams) {
           include: {
             item: { select: { id: true, name: true, systemId: true } },
             system: { select: { id: true, name: true } },
+            part: { select: { id: true, name: true } },
           },
         },
         vendor: { select: { id: true, name: true } },
@@ -55,6 +56,7 @@ export async function getServiceRecord(id: string) {
         include: {
           item: { select: { id: true, name: true } },
           system: { select: { id: true, name: true } },
+          part: { select: { id: true, name: true } },
         },
       },
       vendor: true,
@@ -93,6 +95,7 @@ export async function getServiceRecordsForSystem(systemId: string) {
         include: {
           item: { select: { id: true, name: true } },
           system: { select: { id: true, name: true } },
+          part: { select: { id: true, name: true } },
         },
       },
       vendor: { select: { id: true, name: true } },

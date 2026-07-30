@@ -9,7 +9,7 @@ import { formatCalendarDate } from '@/lib/format/date';
 import type { CalendarDate } from '@/lib/time/tz';
 
 export type TimelineTargetChip = {
-  kind: 'item' | 'system';
+  kind: 'item' | 'system' | 'part';
   id: string;
   name: string;
 };

@@ -7,7 +7,7 @@ import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
-import type { TargetInput } from '@/lib/targets/schema';
+import type { PartTargetInput } from '@/lib/targets/schema';
 import { startOfDayUtc } from '@/lib/time/tz';
 import { withWeeklyAnchor } from './anchor';
 import { computeNextDueOn } from './recurrence';
@@ -27,7 +27,7 @@ function ownedReminderWhere(id: string, userId: string) {
 }
 
 function revalidateReminderPaths(
-  targets: { itemId: string | null; systemId: string | null }[],
+  targets: { itemId: string | null; systemId: string | null; partId: string | null }[],
   reminderId: string,
 ) {
   revalidatePath('/reminders');
@@ -36,21 +36,23 @@ function revalidateReminderPaths(
   for (const t of targets) {
     if (t.itemId) revalidatePath(`/items/${t.itemId}`);
     if (t.systemId) revalidatePath(`/systems/${t.systemId}`);
+    if (t.partId) revalidatePath(`/parts/${t.partId}`);
   }
 }
 
 async function validateTargets(
-  targets: TargetInput[],
+  targets: PartTargetInput[],
   kind: 'REMINDER' | 'CHORE',
 ): Promise<string | null> {
   // Cardinality: REMINDER requires ≥1 link (asset-centric). CHORE allows
   // 0..N — a linkless chore is reconciled into a single standalone
-  // (both-NULL) ReminderTarget by the create/update paths below.
+  // (all-parents-NULL) ReminderTarget by the create/update paths below.
   if (kind === 'REMINDER' && targets.length === 0) {
-    return 'Select at least one item or system';
+    return 'Select at least one item, system, or part';
   }
   const itemIds = targets.map((t) => t.itemId).filter((v): v is string => Boolean(v));
   const systemIds = targets.map((t) => t.systemId).filter((v): v is string => Boolean(v));
+  const partIds = targets.map((t) => t.partId).filter((v): v is string => Boolean(v));
 
   if (itemIds.length > 0) {
     const found = await prisma.item.findMany({
@@ -65,6 +67,13 @@ async function validateTargets(
       select: { id: true },
     });
     if (found.length !== new Set(systemIds).size) return 'System not found';
+  }
+  if (partIds.length > 0) {
+    const found = await prisma.part.findMany({
+      where: { id: { in: partIds } },
+      select: { id: true },
+    });
+    if (found.length !== new Set(partIds).size) return 'Part not found';
   }
   return null;
 }
@@ -93,12 +102,12 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
   if (targetErr) return { ok: false, formError: targetErr };
 
   // CHORE with 0 user-submitted links → reconcile to a single "standalone"
-  // ReminderTarget row (both itemId and systemId NULL) that carries
+  // ReminderTarget row (itemId, systemId AND partId all NULL) that carries
   // nextDueOn / lastCompletedOn / completions. REMINDER never hits this
   // branch (validateTargets already rejected length === 0).
   const reconciledTargets =
     parsed.data.kind === 'CHORE' && targets.length === 0
-      ? [{ itemId: null, systemId: null } as TargetInput]
+      ? [{ itemId: null, systemId: null, partId: null } as PartTargetInput]
       : targets;
 
   const reminder = await prisma.reminder.create({
@@ -113,6 +122,7 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
         create: reconciledTargets.map((t) => ({
           itemId: t.itemId ?? null,
           systemId: t.systemId ?? null,
+          partId: t.partId ?? null,
           nextDueOn,
           // lastCompletedOn is null on creation
         })),
@@ -120,7 +130,7 @@ export async function createReminder(input: unknown): Promise<ActionResult<{ id:
     },
     select: {
       id: true,
-      targets: { select: { itemId: true, systemId: true } },
+      targets: { select: { itemId: true, systemId: true, partId: true } },
     },
   });
   await enqueueSearchIndex('reminder', reminder.id, 'upsert');
@@ -156,6 +166,15 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
           id: true,
           itemId: true,
           systemId: true,
+          // partId is load-bearing, not cosmetic: it feeds the diff `key()`
+          // below. Omit it and every persisted part row keys as "x||" while its
+          // submitted counterpart keys as "||p1" — the row is absent from
+          // wantSet, lands in toDelete, and the user's part target is silently
+          // destroyed. `key()`'s parameter is structurally typed with optional
+          // fields, so it would NOT flag the omission on its own; the only
+          // reason tsc catches it today is that revalidateReminderPaths
+          // requires a non-optional `partId`. Keep that requirement.
+          partId: true,
           lastCompletedOn: true,
           nextDueOn: true,
         },
@@ -221,21 +240,25 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
 
     if (targets !== undefined) {
       const isChore = (parsed.data.kind ?? existing.kind) === 'CHORE';
-      // Schema guarantees user-submitted rows are link-only (XOR per targetSchema),
-      // so we never see a both-NULL from `targets`. Split existing target rows
-      // into the two shapes — at most one standalone, the rest links.
+      // Schema guarantees user-submitted rows are link-only (exactly-one-of-three
+      // per partTargetSchema), so we never see an all-NULL row from `targets`.
+      // Split existing target rows into the two shapes — at most one standalone,
+      // the rest links. A part-only row IS a link: itemId/systemId are both NULL
+      // on it, so a two-column predicate would misfile it as the standalone.
       const submittedLinks = targets;
       const existingLinks = existing.targets.filter(
-        (t) => t.itemId !== null || t.systemId !== null,
+        (t) => t.itemId !== null || t.systemId !== null || t.partId !== null,
       );
-      // Invariant: a standalone (both-NULL) row only exists under a CHORE
-      // parent — server reconciliation never mints one alongside link rows,
-      // and the NULLS NOT DISTINCT unique caps them at 1/reminder. The three
-      // branches below rely on this; the schema's REMINDER+empty rejection
-      // keeps a CHORE→REMINDER kind flip with empty targets from sneaking
-      // into the standalone branch.
+      // Invariant: the standalone row is the one with NO parent at all — item,
+      // system AND part all NULL. (Before parts it was simply "both-NULL"; that
+      // shape is no longer unique, since a part link is also item/system-NULL.)
+      // It only exists under a CHORE parent — server reconciliation never mints
+      // one alongside link rows, and the NULLS NOT DISTINCT unique caps them at
+      // 1/reminder. The three branches below rely on this; the schema's
+      // REMINDER+empty rejection keeps a CHORE→REMINDER kind flip with empty
+      // targets from sneaking into the standalone branch.
       const existingStandalone = existing.targets.find(
-        (t) => t.itemId === null && t.systemId === null,
+        (t) => t.itemId === null && t.systemId === null && t.partId === null,
       );
 
       if (isChore && submittedLinks.length === 0) {
@@ -254,6 +277,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               reminderId: id,
               itemId: null,
               systemId: null,
+              partId: null,
               lastCompletedOn: seed?.lastCompletedOn ?? null,
               nextDueOn: seed?.nextDueOn ?? nextDueOn ?? houseToday,
             },
@@ -271,9 +295,11 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
         // still respect dedup against it for safety.
         const seedNext = existingStandalone.nextDueOn;
         const seedLast = existingStandalone.lastCompletedOn;
-        const haveKey = new Set(existingLinks.map((t) => `${t.itemId ?? ''}|${t.systemId ?? ''}`));
+        const haveKey = new Set(
+          existingLinks.map((t) => `${t.itemId ?? ''}|${t.systemId ?? ''}|${t.partId ?? ''}`),
+        );
         const toAdd = submittedLinks.filter(
-          (t) => !haveKey.has(`${t.itemId ?? ''}|${t.systemId ?? ''}`),
+          (t) => !haveKey.has(`${t.itemId ?? ''}|${t.systemId ?? ''}|${t.partId ?? ''}`),
         );
         if (toAdd.length > 0) {
           await tx.reminderTarget.createMany({
@@ -281,6 +307,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               reminderId: id,
               itemId: t.itemId ?? null,
               systemId: t.systemId ?? null,
+              partId: t.partId ?? null,
               nextDueOn: seedNext,
               lastCompletedOn: seedLast,
             })),
@@ -289,8 +316,11 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
         await tx.reminderTarget.delete({ where: { id: existingStandalone.id } });
       } else {
         // links → links: original diff behavior, scoped to link rows only.
-        const key = (t: { itemId?: string | null; systemId?: string | null }) =>
-          `${t.itemId ?? ''}|${t.systemId ?? ''}`;
+        const key = (t: {
+          itemId?: string | null;
+          systemId?: string | null;
+          partId?: string | null;
+        }) => `${t.itemId ?? ''}|${t.systemId ?? ''}|${t.partId ?? ''}`;
         const wantSet = new Set(submittedLinks.map(key));
         const haveSet = new Set(existingLinks.map(key));
 
@@ -317,6 +347,7 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
               reminderId: id,
               itemId: t.itemId ?? null,
               systemId: t.systemId ?? null,
+              partId: t.partId ?? null,
               nextDueOn: seedNextDueOn,
             })),
           });
@@ -339,7 +370,11 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
   revalidateReminderPaths(existing.targets, id);
   if (targets)
     revalidateReminderPaths(
-      targets.map((t) => ({ itemId: t.itemId ?? null, systemId: t.systemId ?? null })),
+      targets.map((t) => ({
+        itemId: t.itemId ?? null,
+        systemId: t.systemId ?? null,
+        partId: t.partId ?? null,
+      })),
       id,
     );
 
@@ -352,7 +387,7 @@ export async function deleteReminder(id: string): Promise<ActionResult> {
 
   const existing = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, session.user.id),
-    select: { targets: { select: { itemId: true, systemId: true } } },
+    select: { targets: { select: { itemId: true, systemId: true, partId: true } } },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
@@ -371,7 +406,7 @@ export async function setReminderActive(
 
   const existing = await prisma.reminder.findFirst({
     where: ownedReminderWhere(id, session.user.id),
-    select: { id: true, targets: { select: { itemId: true, systemId: true } } },
+    select: { id: true, targets: { select: { itemId: true, systemId: true, partId: true } } },
   });
   if (!existing) return { ok: false, formError: 'Not found' };
 
@@ -404,7 +439,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
       id: true,
       recurrence: true,
       autoCreateServiceRecord: true,
-      targets: { select: { id: true, itemId: true, systemId: true } },
+      targets: { select: { id: true, itemId: true, systemId: true, partId: true } },
     },
   });
   if (!reminder) return { ok: false, formError: 'Not found' };
@@ -455,9 +490,12 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
       });
 
       if (reminder.autoCreateServiceRecord && serviceRecord) {
-        // Mirror the target's parent (item or system) onto a fresh
+        // Mirror the target's parent (item, system or part) onto a fresh
         // ServiceRecord + ServiceRecordTarget so the multi-target shape
-        // stays consistent post-Task-2.
+        // stays consistent post-Task-2. All three columns must be carried:
+        // service_record_targets_parent_xor requires exactly one non-NULL, so
+        // dropping partId makes the row all-NULL and throws inside the
+        // transaction on the "complete the filter reminder, log the swap" path.
         const sr = await tx.serviceRecord.create({
           data: {
             // A calendar date, like every other performedOn. Written as an instant
@@ -474,6 +512,7 @@ export async function completeReminder(input: unknown): Promise<ActionResult<{ i
                 {
                   itemId: target.itemId ?? null,
                   systemId: target.systemId ?? null,
+                  partId: target.partId ?? null,
                 },
               ],
             },

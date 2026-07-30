@@ -7,7 +7,7 @@ import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { updateServiceRecord } from '@/lib/service-records/actions';
 import { getServiceRecord } from '@/lib/service-records/queries';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
-import type { TargetInput } from '@/lib/targets/schema';
+import { toTargetInputs } from '@/lib/targets/schema';
 import { listVendors } from '@/lib/vendors/queries';
 
 type Params = Promise<{ id: string }>;
@@ -25,9 +25,13 @@ export default async function EditServiceRecordPage({ params }: { params: Params
   if (!record) notFound();
 
   const vendorOptions = vendors.map((v) => ({ id: v.id, name: v.name }));
-  const initialTargets: TargetInput[] = record.targets.map((t) =>
-    t.itemId ? { itemId: t.itemId } : { systemId: t.systemId as string },
-  );
+  // Use the shared mapper rather than an inline copy: the duplicate is what hid
+  // part targets from this page (a part row mapped to `{ systemId: null }`, which
+  // then failed the XOR refine or submitted garbage that updateServiceRecord's
+  // diff deleted). ServiceRecordForm's prop is still the narrow TargetInput[] —
+  // the two types are mutually assignable, so a part row currently round-trips
+  // out of the form untouched. PR 1b widens the form chain to close that.
+  const initialTargets = toTargetInputs(record.targets);
 
   return (
     <FormPageShell header={<PageHeader title="edit service record" />}>

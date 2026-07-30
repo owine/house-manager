@@ -4,7 +4,11 @@ import { notFound } from 'next/navigation';
 import { ComponentsList } from '@/components/systems/ComponentsList';
 import { CostRollup } from '@/components/systems/CostRollup';
 import { SystemHeader } from '@/components/systems/SystemHeader';
-import { SystemTimeline, type TimelineEvent } from '@/components/systems/SystemTimeline';
+import {
+  SystemTimeline,
+  type TimelineEvent,
+  type TimelineTargetChip,
+} from '@/components/systems/SystemTimeline';
 import { SystemVendorsSection } from '@/components/systems/SystemVendorsSection';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { listOrphanItems } from '@/lib/items/queries';
@@ -29,17 +33,19 @@ type TargetWithRefs = {
   systemId: string | null;
   item: { id: string; name: string } | null;
   system: { id: string; name: string } | null;
+  /** Optional: `warranty_targets` has no `partId` and this helper serves it too. */
+  part?: { id: string; name: string } | null;
 };
 
 function buildTargets(
   systemId: string,
   targets: TargetWithRefs[],
 ): {
-  chips: { kind: 'item' | 'system'; id: string; name: string }[];
+  chips: TimelineTargetChip[];
   hasSystemTarget: boolean;
   hasItemTarget: boolean;
 } {
-  const chips: { kind: 'item' | 'system'; id: string; name: string }[] = [];
+  const chips: TimelineTargetChip[] = [];
   let hasSystemTarget = false;
   let hasItemTarget = false;
   for (const t of targets) {
@@ -49,6 +55,11 @@ function buildTargets(
     } else if (t.item) {
       hasItemTarget = true;
       chips.push({ kind: 'item', id: t.item.id, name: t.item.name });
+    } else if (t.part) {
+      // A part chip names the target but deliberately does NOT set
+      // `hasItemTarget` — the "Components" filter means item-level targets, and
+      // reusing it for parts would change what that filter selects.
+      chips.push({ kind: 'part', id: t.part.id, name: t.part.name });
     }
   }
   return { chips, hasSystemTarget, hasItemTarget };

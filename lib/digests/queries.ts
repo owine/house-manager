@@ -28,6 +28,7 @@ async function findAndProject(
         },
       },
       system: { select: { id: true, name: true } },
+      part: { select: { id: true, name: true } },
     },
     orderBy: { nextDueOn: sort },
   });
@@ -44,9 +45,12 @@ async function findAndProject(
         ? { kind: 'item' as const, id: t.item.id, name: t.item.name }
         : t.system != null
           ? { kind: 'system' as const, id: t.system.id, name: t.system.name }
-          : null;
+          : t.part != null
+            ? { kind: 'part' as const, id: t.part.id, name: t.part.name }
+            : null;
     // A system-targeted row attributes to itself; an item-targeted row to its
-    // parent; anything else is Unassigned.
+    // parent; anything else — including a part target, whose PartLinks may span
+    // several systems — is Unassigned.
     const system = t.system ?? t.item?.system ?? null;
     return {
       reminderId: t.reminder.id,

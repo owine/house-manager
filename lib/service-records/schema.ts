@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { targetSchema } from '@/lib/targets/schema';
+import { partTargetSchema } from '@/lib/targets/schema';
 
 // Service records are the one event type that meaningfully exists without an
 // item/system: vendor-only "the lawn got mowed" or "windows washed" records
@@ -7,7 +7,7 @@ import { targetSchema } from '@/lib/targets/schema';
 // for warranties + reminders (which inherently target something), so service
 // records use a looser local array + a cross-field refine that requires
 // at least one of vendor / targets to be set.
-const serviceRecordTargetsSchema = z.array(targetSchema);
+const serviceRecordTargetsSchema = z.array(partTargetSchema);
 
 const baseServiceRecordSchema = z.object({
   targets: serviceRecordTargetsSchema,
@@ -23,7 +23,10 @@ function requireAnchor(
   v: {
     vendorId?: string;
     selfPerformed?: boolean;
-    targets?: { itemId?: string | null; systemId?: string | null }[];
+    // Widened to three columns: a record targeting only a part ("replaced the
+    // filter") is legitimately anchored, so it must satisfy the vendor /
+    // self-performed / targets requirement below on its own.
+    targets?: { itemId?: string | null; systemId?: string | null; partId?: string | null }[];
   },
   ctx: z.RefinementCtx,
 ) {
@@ -33,7 +36,7 @@ function requireAnchor(
   if (!hasVendor && !hasTargets && !isSelf) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Pick a vendor, a self-performed marker, or at least one item/system',
+      message: 'Pick a vendor, a self-performed marker, or at least one item, system, or part',
       path: ['targets'],
     });
   }

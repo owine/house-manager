@@ -6,8 +6,10 @@ type ActivityTarget = {
   id: string;
   itemId: string | null;
   systemId: string | null;
+  partId: string | null;
   item: { id: string; name: string } | null;
   system: { id: string; name: string } | null;
+  part: { id: string; name: string } | null;
 };
 
 export type ActivityEvent = {
@@ -47,8 +49,10 @@ export async function recentActivity(limit = 10): Promise<ActivityEvent[]> {
             id: true,
             itemId: true,
             systemId: true,
+            partId: true,
             item: { select: { id: true, name: true } },
             system: { select: { id: true, name: true } },
+            part: { select: { id: true, name: true } },
           },
         },
       },

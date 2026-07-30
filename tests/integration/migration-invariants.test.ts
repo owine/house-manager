@@ -22,10 +22,21 @@ afterAll(async () => {
 
 describe('migration invariants', () => {
   describe('NULLS NOT DISTINCT on target unique indexes', () => {
+    // The reminder and service-record indexes were renamed when `partId`
+    // became a third parent column. Both carry an explicit `map:` on their
+    // `@@unique` because Prisma's default name for the service-record one
+    // (`service_record_targets_serviceRecordId_itemId_systemId_partId_key`)
+    // is 65 bytes — over Postgres's 63-byte identifier limit, where it would
+    // be truncated silently and disagree with the name Prisma expects.
+    //
+    // `warranty_targets` and `incoming_email_targets` keep their original
+    // names and two-column shape: parts are deliberately not targetable by
+    // warranties or inbound email.
     const indexNames = [
-      'service_record_targets_serviceRecordId_itemId_systemId_key',
+      'sr_targets_record_item_system_part_key',
       'warranty_targets_warrantyId_itemId_systemId_key',
-      'reminder_targets_reminderId_itemId_systemId_key',
+      'reminder_targets_reminder_item_system_part_key',
+      'part_links_partId_itemId_systemId_key',
     ];
 
     for (const name of indexNames) {
@@ -49,6 +60,7 @@ describe('migration invariants', () => {
       'reminder_targets_parent_at_most_one',
       'item_vendors_link_xor',
       'system_vendors_link_xor',
+      'part_links_parent_xor',
     ];
 
     for (const constraint of constraints) {

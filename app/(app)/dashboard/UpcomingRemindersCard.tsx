@@ -43,8 +43,9 @@ export function UpcomingRemindersCard({ reminders }: Props) {
                         reminderTitle={r.title}
                         targets={r.targets.map<ReminderTargetSummary>((t) => ({
                           id: t.id,
-                          label: t.item?.name ?? t.system?.name ?? '(unnamed target)',
-                          kind: t.systemId ? 'system' : 'item',
+                          label:
+                            t.item?.name ?? t.system?.name ?? t.part?.name ?? '(unnamed target)',
+                          kind: t.systemId ? 'system' : t.partId ? 'part' : 'item',
                         }))}
                       />
                     ) : (

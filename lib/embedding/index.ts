@@ -195,6 +195,7 @@ async function buildCanonical(
             select: {
               item: { select: { name: true } },
               system: { select: { name: true } },
+              part: { select: { name: true } },
             },
           },
         },
