@@ -53,6 +53,54 @@ describe('TargetsChips', () => {
     expect(within(screen.getByTestId('targets-chip-t2')).getByText('System')).toBeInTheDocument();
   });
 
+  // Before parts were rendered, `resolve()` branched on system/item only and a
+  // part-targeted row fell through the loop entirely: no chip, no placeholder,
+  // nothing. That made a part-targeted service record invisible in the main
+  // history table (ServiceRecordTable renders through this component).
+  it('renders a chip for a part target', () => {
+    render(
+      <TargetsChips
+        targets={[
+          {
+            id: 'tp',
+            itemId: null,
+            systemId: null,
+            partId: 'p1',
+            item: null,
+            system: null,
+            part: { id: 'p1', name: 'MERV-13 filter' },
+          },
+        ]}
+      />,
+    );
+    const list = screen.getByTestId('targets-chips');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    const chip = screen.getByTestId('targets-chip-tp');
+    expect(chip).toHaveTextContent('MERV-13 filter');
+    expect(within(chip).getByText('Part')).toBeInTheDocument();
+  });
+
+  // Parts have no detail route until PR 1b, so the chip must not link anywhere.
+  it('part chip renders unlinked (no /parts/:id route yet)', () => {
+    render(
+      <TargetsChips
+        targets={[
+          {
+            id: 'tp',
+            itemId: null,
+            systemId: null,
+            partId: 'p1',
+            item: null,
+            system: null,
+            part: { id: 'p1', name: 'MERV-13 filter' },
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId('targets-chip-link-tp')).not.toBeInTheDocument();
+    expect(screen.getByTestId('targets-chip-text-tp')).toHaveTextContent('MERV-13 filter');
+  });
+
   it('inert mode renders text instead of links', () => {
     render(<TargetsChips targets={TARGETS} inert />);
     expect(screen.queryByTestId('targets-chip-link-t1')).not.toBeInTheDocument();

@@ -45,7 +45,7 @@ export default async function ReminderDetailPage({ params }: { params: Params })
           <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} tz={houseTimezone} />
         )}
         <span className="text-muted-foreground">{describeRecurrence(recurrence)}</span>
-        {r.targets.some((t) => t.item !== null || t.system !== null) && (
+        {r.targets.some((t) => t.item !== null || t.system !== null || t.part !== null) && (
           <span className="flex items-center gap-2 text-muted-foreground">
             for <TargetsChips targets={r.targets} />
           </span>
@@ -101,8 +101,8 @@ export default async function ReminderDetailPage({ params }: { params: Params })
             reminderTitle={r.title}
             targets={r.targets.map<ReminderTargetSummary>((t) => ({
               id: t.id,
-              label: t.item?.name ?? t.system?.name ?? '(unnamed target)',
-              kind: t.systemId ? 'system' : 'item',
+              label: t.item?.name ?? t.system?.name ?? t.part?.name ?? '(unnamed target)',
+              kind: t.systemId ? 'system' : t.partId ? 'part' : 'item',
             }))}
           />
         ) : (

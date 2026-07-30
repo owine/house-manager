@@ -44,6 +44,7 @@ export async function getVendor(id: string) {
             include: {
               item: { select: { id: true, name: true, systemId: true } },
               system: { select: { id: true, name: true } },
+              part: { select: { id: true, name: true } },
             },
           },
         },

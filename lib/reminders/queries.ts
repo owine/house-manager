@@ -11,6 +11,7 @@ const TARGETS_INCLUDE = {
       // parent system is targeted by the same reminder.
       item: { select: { id: true, name: true, systemId: true } },
       system: { select: { id: true, name: true } },
+      part: { select: { id: true, name: true } },
     },
   },
 } as const;
@@ -142,8 +143,10 @@ export async function listUpcomingReminders(limit = 5) {
               id: true,
               itemId: true,
               systemId: true,
+              partId: true,
               item: { select: { id: true, name: true } },
               system: { select: { id: true, name: true } },
+              part: { select: { id: true, name: true } },
             },
           },
         },
@@ -164,8 +167,10 @@ export async function listUpcomingReminders(limit = 5) {
       id: string;
       itemId: string | null;
       systemId: string | null;
+      partId: string | null;
       item: { id: string; name: string } | null;
       system: { id: string; name: string } | null;
+      part: { id: string; name: string } | null;
     }[];
   }[] = [];
   for (const t of targets) {

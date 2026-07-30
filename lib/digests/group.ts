@@ -5,7 +5,7 @@ import type { CalendarDate } from '@/lib/time/tz';
 // live here precisely so they are testable without a database. See
 // docs/superpowers/specs/2026-07-27-digest-system-grouping-design.md.
 
-export type DigestTarget = { kind: 'item' | 'system'; id: string; name: string };
+export type DigestTarget = { kind: 'item' | 'system' | 'part'; id: string; name: string };
 
 /** One `ReminderTarget` row, with its system already resolved by the query. */
 export type DigestRow = {

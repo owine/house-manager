@@ -27,9 +27,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
   ]);
   if (!r) notFound();
 
-  // Drop standalone (both-null) chore targets so the form submits an empty
-  // targets list; mapping them to { systemId: null } would fail targetSchema's
-  // XOR refine and block every save of a standalone chore.
+  // See `toTargetInputs` (lib/targets/schema.ts) for why sentinel rows are dropped.
   const initialTargets = toTargetInputs(r.targets);
 
   const isChore = r.kind === 'CHORE';

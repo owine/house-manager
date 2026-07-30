@@ -124,6 +124,16 @@ describe('canonicalizeServiceRecord', () => {
     expect(out).toContain('Replaced air filter');
   });
 
+  // A part-targeted record's embedding silently omitted the target name, which
+  // undercuts retrieval ("when did I last change the furnace filter?").
+  it('includes a part target name', () => {
+    const out = canonicalizeServiceRecord({
+      summary: 'Filter swap',
+      targets: [{ part: { name: 'MERV-13 filter' } }, { item: { name: 'Carrier 58STA' } }],
+    });
+    expect(out).toContain('Targets: MERV-13 filter, Carrier 58STA');
+  });
+
   it('uses freeform vendor name as fallback', () => {
     const out = canonicalizeServiceRecord({
       summary: 'Lawn',

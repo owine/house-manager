@@ -12,6 +12,8 @@ type ReminderEmailTarget = {
   /** `systemId` is the item's parent system — it drives coverage suppression. */
   item?: { id: string; name: string; systemId?: string | null };
   system?: { id: string; name: string };
+  /** Part reminders are `kind: 'REMINDER'`, so they notify like any other. */
+  part?: { id: string; name: string };
 };
 
 export type ReminderEmailData = {
@@ -37,8 +39,13 @@ function formatDue(d: CalendarDate): string {
 }
 
 type ResolvedTarget = {
-  label: string; // item or system name
-  href: string; // absolute, appUrl-rooted
+  label: string; // item, system or part name
+  /**
+   * Absolute, appUrl-rooted — or null to render the label as plain text.
+   * Parts have no detail route until PR 1b, and linking a part target to the
+   * app root (what the old `'(no target)'` fallback did) is worse than no link.
+   */
+  href: string | null;
   due: string; // the stored calendar date, rendered in UTC
 };
 
@@ -54,9 +61,10 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
   }));
 
   return visible.map((t) => {
-    // Schema enforces XOR via parent-XOR check constraint: exactly one of
-    // item/system is present per target. If both are missing (shouldn't
-    // happen) we fall back to a non-link label so the email still sends.
+    // `reminder_targets` allows at most one of item/system/part. All three null
+    // is legal only for a standalone chore's cadence row, and chores never
+    // notify (reminders-tick filters `kind: 'REMINDER'`), so the last fallback
+    // is defensive rather than reachable.
     if (t.item) {
       return {
         label: t.item.name,
@@ -71,9 +79,16 @@ function resolveTargets(data: ReminderEmailData): ResolvedTarget[] {
         due: formatDue(t.nextDueOn),
       };
     }
+    if (t.part) {
+      return {
+        label: t.part.name,
+        href: null,
+        due: formatDue(t.nextDueOn),
+      };
+    }
     return {
       label: '(no target)',
-      href: data.appUrl,
+      href: null,
       due: formatDue(t.nextDueOn),
     };
   });
@@ -100,9 +115,13 @@ function Body({ data }: { data: ReminderEmailData }): ReactNode {
           {targets.map((t, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render
             <li key={i} style={{ margin: '0 0 4px 0' }}>
-              <a href={t.href} style={{ color: T.accent }}>
-                {t.label}
-              </a>
+              {t.href === null ? (
+                <span style={{ color: T.ink }}>{t.label}</span>
+              ) : (
+                <a href={t.href} style={{ color: T.accent }}>
+                  {t.label}
+                </a>
+              )}
               <span style={{ color: T.inkMuted }}> — due {t.due}</span>
             </li>
           ))}
@@ -138,7 +157,7 @@ function buildText(data: ReminderEmailData): string {
   lines.push('');
   for (const t of targets) {
     lines.push(`- ${t.label} — due ${t.due}`);
-    lines.push(`  ${t.href}`);
+    if (t.href !== null) lines.push(`  ${t.href}`);
   }
   if (targets.length > 0) lines.push('');
   if (data.description) {

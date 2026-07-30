@@ -45,7 +45,12 @@ export type ServiceRecordForCanonical = {
   notes?: string | null;
   vendor?: { name: string } | null;
   freeformVendorName?: string | null;
-  targets?: Array<{ item?: { name: string } | null; system?: { name: string } | null }>;
+  targets?: Array<{
+    item?: { name: string } | null;
+    system?: { name: string } | null;
+    /** `warranty_targets` has no `partId`, so this lives only on the SR shape. */
+    part?: { name: string } | null;
+  }>;
 };
 
 export type ChecklistItemForCanonical = {
@@ -134,7 +139,9 @@ export function canonicalizeNote(note: NoteForCanonical): string {
 
 export function canonicalizeServiceRecord(sr: ServiceRecordForCanonical): string {
   const vendorName = sr.vendor?.name ?? sr.freeformVendorName ?? null;
-  const targetNames = (sr.targets ?? []).map((t) => t.item?.name ?? t.system?.name).filter(present);
+  const targetNames = (sr.targets ?? [])
+    .map((t) => t.item?.name ?? t.system?.name ?? t.part?.name)
+    .filter(present);
   const lines: Array<string | null> = [
     `Service: ${sr.summary}`,
     sr.performedOn ? `Performed: ${fmtDate(sr.performedOn)}` : null,

@@ -11,6 +11,7 @@ let ctx: IntegrationContext;
 let userId: string;
 let categoryId: string;
 let itemId: string;
+let partId: string;
 let getOverdueForUser: (userId: string, tz: string, now?: Date) => Promise<DigestRow[]>;
 let getWeeklyForUser: (userId: string, tz: string, now?: Date) => Promise<DigestRow[]>;
 
@@ -33,6 +34,10 @@ beforeAll(async () => {
     data: { name: 'TestItem', categoryId },
   });
   itemId = item.id;
+  const part = await ctx.prisma.part.create({
+    data: { name: 'TestPart', kind: 'AIR_FILTER' },
+  });
+  partId = part.id;
 }, 180_000);
 
 afterAll(async () => {
@@ -72,6 +77,24 @@ describe('getOverdueForUser', () => {
     expect(rows[0]?.title).toBe('Overdue thing');
     expect(rows[0]?.daysOverdue).toBeGreaterThan(0);
     expect(rows[0]?.target).toMatchObject({ kind: 'item', id: itemId, name: 'TestItem' });
+  });
+
+  // A part-targeted row previously fell through to `target: null`, which is
+  // indistinguishable from a standalone chore — so the digest named no target
+  // at all for it.
+  it('surfaces a part target rather than null', async () => {
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Overdue part',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ partId, nextDueOn: YESTERDAY }] },
+      },
+    });
+    const rows = await getOverdueForUser(userId, TZ, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.target).toMatchObject({ kind: 'part', id: partId, name: 'TestPart' });
   });
 
   it('excludes inactive reminders', async () => {

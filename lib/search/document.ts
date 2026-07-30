@@ -285,6 +285,7 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
             select: {
               item: { select: { id: true, name: true } },
               system: { select: { id: true, name: true } },
+              part: { select: { id: true, name: true } },
             },
           },
         },
@@ -301,6 +302,9 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           names.push(t.item.name);
         }
         if (t.system) names.push(t.system.name);
+        // A part target contributes only a name — `itemId` stays the first
+        // *item* target's, since the facet filters item-scoped search.
+        if (t.part) names.push(t.part.name);
       }
       const { targets: _targets, ...rest } = row;
       return toDocument('service', {
