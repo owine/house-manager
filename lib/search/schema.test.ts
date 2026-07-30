@@ -42,7 +42,7 @@ describe('searchQuerySchema', () => {
 });
 
 describe('SEARCH_KINDS', () => {
-  it('includes all 7 kinds in the documented order', () => {
+  it('includes all 8 kinds in the documented order', () => {
     expect(SEARCH_KINDS).toEqual([
       'item',
       'vendor',
@@ -51,6 +51,7 @@ describe('SEARCH_KINDS', () => {
       'reminder',
       'attachment',
       'checklist',
+      'part',
     ]);
   });
 });

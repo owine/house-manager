@@ -40,6 +40,7 @@ beforeEach(async () => {
   await ctx.prisma.reminder.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.note.deleteMany();
+  await ctx.prisma.part.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.vendor.deleteMany();
   await ctx.meili.deleteIndex(SEARCH_INDEX_NAME).catch(() => {});
@@ -91,5 +92,48 @@ describe('handleSearchReindex', () => {
 
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('ACME');
     expect(res.hits[0]?.title).toBe('ACME');
+  });
+
+  it('indexes a part by its SPEC values, its parents and its re-buy identity', async () => {
+    const item = await ctx.prisma.item.create({
+      data: { name: 'Backyard string lights', categoryId },
+    });
+    const part = await ctx.prisma.part.create({
+      data: {
+        name: 'Backyard bulbs',
+        kind: 'BULB',
+        manufacturer: 'Feit',
+        model: 'ST19-LED-DIM',
+        sku: 'FEI-ST19-24',
+        notes: 'buy the 24-pack',
+        // `_provenance` is written by conversational capture and must never
+        // reach the index.
+        metadata: {
+          base: 'E26',
+          shape: 'S14',
+          colorTempK: 2200,
+          _provenance: { base: 'inferred' },
+        },
+        links: { create: [{ itemId: item.id }] },
+      },
+    });
+
+    const result = await handleSearchReindex();
+    if (result.lastTaskUid !== null) await ctx.meili.tasks.waitForTask(result.lastTaskUid);
+    const idx = ctx.meili.index(SEARCH_INDEX_NAME);
+
+    // THE assertion this PR exists for: a spec value, not a name.
+    for (const q of ['E26', 'S14', '2200', 'FEI-ST19-24', 'Backyard string lights']) {
+      const res = await idx.search(q);
+      expect(res.hits.map((h) => h.id)).toContain(`part-${part.id}`);
+    }
+
+    const doc = await idx.getDocument(`part-${part.id}`);
+    expect(doc.body).toContain('E26');
+    expect(doc.body).toContain('Bulb');
+    expect(doc.body).not.toContain('_provenance');
+    expect(doc.body).not.toContain('inferred');
+    expect(doc.href).toBe(`/parts/${part.id}`);
+    expect(doc.itemName).toBe('Backyard string lights');
   });
 });

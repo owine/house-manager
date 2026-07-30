@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db';
 import { enqueueSystemRenameCascade } from '@/lib/embedding/cascade';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { vendorLinkSchema } from '@/lib/vendor-links/schema';
 import { createSystemSchema, updateSystemWithIdSchema } from './schema';
 
@@ -233,13 +234,24 @@ export async function deleteSystemWithParts(input: {
       await tx.partLink.deleteMany({ where: { systemId } });
       await tx.system.delete({ where: { id: systemId } });
 
-      return { archivedCount: toArchive.length, keptCount: current.length - toArchive.length };
+      return {
+        archivedCount: toArchive.length,
+        keptCount: current.length - toArchive.length,
+        touchedPartIds: current.map((p) => p.id),
+      };
     });
 
     if (result === null) return { ok: false, formError: 'System not found' };
 
+    // Every part that was linked to this system loses that parent's name from
+    // its search doc, archived or kept alike.
+    const { touchedPartIds, ...counts } = result;
+    for (const partId of touchedPartIds) {
+      await enqueueSearchIndex('part', partId, 'upsert');
+    }
+
     revalidateAfterSystemDelete();
-    return { ok: true, data: result };
+    return { ok: true, data: counts };
   } catch (error) {
     if (error instanceof StaleSystemPartsError) {
       return { ok: false, hasParts: true, parts: error.parts };

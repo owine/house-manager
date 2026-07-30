@@ -76,5 +76,14 @@ async function listAllIds(kind: SearchKind): Promise<string[]> {
       return (await prisma.attachment.findMany({ select: { id: true } })).map((r) => r.id);
     case 'checklist':
       return (await prisma.checklist.findMany({ select: { id: true } })).map((r) => r.id);
+    case 'part':
+      // Unfiltered, exactly like `item` above: archived rows stay in the index
+      // and the search doc carries no archived flag. Note that a part's
+      // archived-ness is *derived* — see LIVE_PART / ARCHIVED_PART in
+      // lib/parts/queries.ts — so filtering here would need that predicate
+      // rather than a bare `archivedAt: null`, and would diverge from every
+      // other kind. If archived rows are ever excluded, do it for all kinds
+      // at once and use those two exported predicates for parts.
+      return (await prisma.part.findMany({ select: { id: true } })).map((r) => r.id);
   }
 }

@@ -23,6 +23,7 @@ const KIND_BY_MODEL: Record<string, string> = {
   reminder: 'reminder',
   attachment: 'attachment',
   checklist: 'checklist',
+  part: 'part',
 };
 
 // Mutating Prisma client methods. `findX` / `count` / `aggregate` are reads
@@ -59,6 +60,16 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
     reason:
       'updateMany only sets serviceRecordId to link inbox attachments to a service record; ' +
       'attachment search doc references the direct Item link, not serviceRecord',
+  },
+  {
+    file: 'lib/chat/schema.ts',
+    kind: 'part',
+    reason: 'no write — the scanner is matching `prisma.part.create` inside a prose comment',
+  },
+  {
+    file: 'lib/chat/resolve.ts',
+    kind: 'part',
+    reason: 'no write — the scanner is matching `prisma.part.update` inside a prose comment',
   },
   {
     file: 'worker/jobs/thumbnail.ts',

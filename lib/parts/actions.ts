@@ -8,12 +8,12 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { freeformMetadataSchema } from '@/lib/metadata/freeform';
 import type { ActionResult } from '@/lib/result';
+import { enqueueSearchIndex } from '@/lib/search/client';
 import { partKindSchemaFor } from './kinds';
 import { createPartSchema, updatePartSchema } from './schema';
 
-// NOTE: no `enqueueSearchIndex` / `enqueueEmbed` here. `'part'` is not in
-// `SEARCH_KINDS` and `PART` is not in `EmbeddingEntityType` until PR 3, and both
-// helpers are typed to those unions. Deliberate seam, not an oversight.
+// NOTE: no `enqueueEmbed` here yet — `PART` is not in `EmbeddingEntityType`,
+// and the helper is typed to that union. Deliberate seam, not an oversight.
 
 function revalidatePart(id?: string) {
   revalidatePath('/parts');
@@ -63,6 +63,8 @@ export async function createPart(input: unknown): Promise<ActionResult<{ id: str
     },
   });
 
+  await enqueueSearchIndex('part', part.id, 'upsert');
+
   revalidatePart();
   return { ok: true, data: { id: part.id } };
 }
@@ -107,6 +109,8 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
 
   await prisma.part.update({ where: { id }, data });
 
+  await enqueueSearchIndex('part', id, 'upsert');
+
   revalidatePart(id);
   return { ok: true, data: { id } };
 }
@@ -116,6 +120,8 @@ export async function archivePart(id: string): Promise<ActionResult> {
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
   await prisma.part.update({ where: { id }, data: { archivedAt: new Date() } });
+  // Upsert, not delete: archived rows stay in the index, same as items.
+  await enqueueSearchIndex('part', id, 'upsert');
 
   revalidatePart(id);
   return { ok: true, data: undefined };
@@ -126,6 +132,7 @@ export async function restorePart(id: string): Promise<ActionResult> {
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
   await prisma.part.update({ where: { id }, data: { archivedAt: null } });
+  await enqueueSearchIndex('part', id, 'upsert');
 
   revalidatePart(id);
   return { ok: true, data: undefined };
@@ -170,7 +177,7 @@ export async function linkPartToParent(input: unknown): Promise<ActionResult<{ i
         quantityInstalled: quantityInstalled ?? null,
       },
     });
-    revalidateLink(partId, itemId, systemId);
+    await revalidateLink(partId, itemId, systemId);
     return { ok: true, data: { id: link.id } };
   } catch (error) {
     // The `NULLS NOT DISTINCT` unique on (partId, itemId, systemId) makes a
@@ -181,7 +188,7 @@ export async function linkPartToParent(input: unknown): Promise<ActionResult<{ i
         where: { partId, itemId: itemId ?? null, systemId: systemId ?? null },
         select: { id: true },
       });
-      revalidateLink(partId, itemId, systemId);
+      await revalidateLink(partId, itemId, systemId);
       if (existing) return { ok: true, data: { id: existing.id } };
     }
     throw error;
@@ -203,11 +210,14 @@ export async function unlinkPart(input: unknown): Promise<ActionResult> {
   }
 
   const removed = await prisma.partLink.delete({ where: { id: parsed.data.linkId } });
-  revalidateLink(removed.partId, removed.itemId, removed.systemId);
+  await revalidateLink(removed.partId, removed.itemId, removed.systemId);
   return { ok: true, data: undefined };
 }
 
-function revalidateLink(partId: string, itemId?: string | null, systemId?: string | null) {
+// The part's search doc denormalizes its parents' names, so a link change
+// makes it stale — re-index alongside the revalidation.
+async function revalidateLink(partId: string, itemId?: string | null, systemId?: string | null) {
+  await enqueueSearchIndex('part', partId, 'upsert');
   revalidatePart(partId);
   if (itemId) revalidatePath(`/items/${itemId}`);
   if (systemId) revalidatePath(`/systems/${systemId}`);

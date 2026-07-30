@@ -8,6 +8,7 @@ export const SEARCH_KINDS = [
   'reminder',
   'attachment',
   'checklist',
+  'part',
 ] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
