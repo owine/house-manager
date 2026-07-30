@@ -63,15 +63,49 @@ Three facts that will otherwise cost you hours:
 | `lib/embedding/canonicalize.ts` | Part in `canonicalizeServiceRecord` |
 | `lib/reminders/queries.ts`, `lib/service-records/queries.ts`, `lib/warranties/queries.ts` | `part: { select: { id, name } }` on target selects — these feed `TargetsChips` and the edit pages |
 
-**This table is not exhaustive for Task 8.** Every render site needs `partId` /
-`part` selected by whichever query feeds it, and `pnpm typecheck` will name them
-one at a time. Expect roughly eight additional mechanical fallouts from Task 4's
-signature change alone (`TargetInput` is imported as a parameter type in
-`lib/reminders/actions.ts:10` and `lib/service-records/actions.ts:8`;
-`revalidateReminderPaths` is also called from `deleteReminder` at `:355`,
-`setReminderActive` at `:374`, and with an inline map at `:342`; `requireAnchor`
-in `lib/service-records/schema.ts:25` types targets as `{itemId?, systemId?}[]`).
-All are typecheck-caught — work through the list, don't try to predict it.
+**This table is not exhaustive for Task 8**, and the compiler will not complete it
+for you — see "Two discoveries" below. Every render site needs `partId` / `part`
+selected by whichever query feeds it, and every one must be found by grep.
+
+## Two discoveries that change how Tasks 6-8 must be done
+
+**1. `pnpm typecheck` will NOT find the remaining call sites.** `TargetInput` and
+`PartTargetInput` are *mutually assignable* — every field is
+`optional().nullable()`, so `TargetInput[]` flows into a `PartTargetInput[]`
+parameter and back without an excess-property check. Task 4 landed with typecheck
+fully green and **zero** fallout. This is the same structural-typing blindness as
+the diff-key `select`s: a widened contract is invisible to the compiler.
+
+So Tasks 6-8 are **grep-driven, not compiler-driven**. The working greps:
+
+```bash
+grep -rn 'TargetInput\b' lib app components worker | grep -v PartTargetInput
+grep -rn 'itemId ?? .*systemId ??' lib app components worker    # diff keys
+grep -rn 'item?.name ?? .*system?.name' lib app components      # labels
+grep -rn "kind: 'item' | 'system'" lib app components           # unions
+```
+
+`lib/reminders/actions.ts:101` is the sharpest single site: it casts a literal
+`[{ itemId: null, systemId: null } as TargetInput]` for the standalone chore row.
+
+**2. The form chain stays narrow in PR 1a — this is a boundary, not an omission.**
+`components/targets/TargetsPicker.tsx` is shared by **all four** target domains,
+including warranties (`WarrantyForm`) and incoming email (`LinkPicker`), whose
+tables keep a two-way XOR. Widening it would let a warranty form emit a part
+target and 500 at the database.
+
+So leave on `TargetInput`: `TargetsPicker`, `LinkPicker`, `ReminderForm`,
+`ServiceRecordForm`, `WarrantyForm`, and `app/(app)/{reminders,chores,service}/new/page.tsx`.
+
+This is safe in PR 1a **only because nothing can create a `Part`** — there is no
+`lib/parts/*`, no route, no nav. The hole is unreachable.
+
+> **PR 1b must close it.** Once the part picker ships, editing a part-targeted
+> reminder through a narrow form would drop the part row from the submitted
+> array, and `updateReminder`'s diff would then delete the target. PR 1b needs to
+> widen the reminder/service-record form chain **and** make `TargetsPicker`
+> pass through part rows it cannot itself render, while keeping warranties and
+> incoming email unable to produce them.
 
 **Deliberately NOT in this PR:** `lib/parts/*`, any route under `app/(app)/parts/`, the nav entry, the Parts tabs, the picker UI, `deleteSystemWithParts`, the `freeform.ts` extraction, seeds. Those are PR 1b.
 
