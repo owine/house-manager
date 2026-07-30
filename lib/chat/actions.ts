@@ -1116,10 +1116,6 @@ async function applyCreateServiceRecord(
   return { ok: true, data: { id: record.id } };
 }
 
-// NOTE for both part helpers: no `enqueueEmbed` yet. `PART` is not in
-// `EmbeddingEntityType` and the helper is typed to that union. Same deliberate
-// seam as lib/parts/actions.ts.
-
 /**
  * The spec a part proposal actually writes to `Part.metadata`.
  *
@@ -1195,6 +1191,7 @@ async function applyCreatePart(
   }
 
   await enqueueSearchIndex('part', part.id, 'upsert');
+  await enqueueEmbed('PART', part.id);
 
   await prisma.chatProposal.update({
     where: { id },
@@ -1263,6 +1260,7 @@ async function applyUpdatePart(
   }
 
   await enqueueSearchIndex('part', payload.partId, 'upsert');
+  await enqueueEmbed('PART', payload.partId);
 
   await prisma.chatProposal.update({
     where: { id },

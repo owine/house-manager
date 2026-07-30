@@ -6,14 +6,12 @@ import { z } from 'zod';
 
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { freeformMetadataSchema } from '@/lib/metadata/freeform';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { partKindSchemaFor } from './kinds';
 import { createPartSchema, updatePartSchema } from './schema';
-
-// NOTE: no `enqueueEmbed` here yet — `PART` is not in `EmbeddingEntityType`,
-// and the helper is typed to that union. Deliberate seam, not an oversight.
 
 function revalidatePart(id?: string) {
   revalidatePath('/parts');
@@ -64,6 +62,7 @@ export async function createPart(input: unknown): Promise<ActionResult<{ id: str
   });
 
   await enqueueSearchIndex('part', part.id, 'upsert');
+  await enqueueEmbed('PART', part.id);
 
   revalidatePart();
   return { ok: true, data: { id: part.id } };
@@ -110,6 +109,7 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
   await prisma.part.update({ where: { id }, data });
 
   await enqueueSearchIndex('part', id, 'upsert');
+  await enqueueEmbed('PART', id);
 
   revalidatePart(id);
   return { ok: true, data: { id } };
@@ -122,6 +122,9 @@ export async function archivePart(id: string): Promise<ActionResult> {
   await prisma.part.update({ where: { id }, data: { archivedAt: new Date() } });
   // Upsert, not delete: archived rows stay in the index, same as items.
   await enqueueSearchIndex('part', id, 'upsert');
+  // The embedding, unlike the search doc, is tombstoned for an archived part —
+  // buildCanonical returns null and embedEntity deletes the rows.
+  await enqueueEmbed('PART', id);
 
   revalidatePart(id);
   return { ok: true, data: undefined };
@@ -133,6 +136,7 @@ export async function restorePart(id: string): Promise<ActionResult> {
 
   await prisma.part.update({ where: { id }, data: { archivedAt: null } });
   await enqueueSearchIndex('part', id, 'upsert');
+  await enqueueEmbed('PART', id);
 
   revalidatePart(id);
   return { ok: true, data: undefined };
@@ -214,10 +218,12 @@ export async function unlinkPart(input: unknown): Promise<ActionResult> {
   return { ok: true, data: undefined };
 }
 
-// The part's search doc denormalizes its parents' names, so a link change
-// makes it stale — re-index alongside the revalidation.
+// The part's search doc and its embedding both denormalize its parents' names,
+// so a link change makes them stale — re-index and re-embed alongside the
+// revalidation.
 async function revalidateLink(partId: string, itemId?: string | null, systemId?: string | null) {
   await enqueueSearchIndex('part', partId, 'upsert');
+  await enqueueEmbed('PART', partId);
   revalidatePart(partId);
   if (itemId) revalidatePath(`/items/${itemId}`);
   if (systemId) revalidatePath(`/systems/${systemId}`);

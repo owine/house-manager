@@ -25,7 +25,7 @@ export type EmbedContentJob = {
  *      retry — re-trying a fatal Voyage error wastes budget.
  *
  * Called by every entity-actions enqueue point (items, notes, service
- * records, warranties, checklists) and by the Phase G admin Rebuild
+ * records, warranties, checklists, parts) and by the Phase G admin Rebuild
  * button + startup backfill.
  */
 export async function handleEmbedContent(jobs: { data: EmbedContentJob }[]): Promise<void> {

@@ -40,6 +40,7 @@ export async function handleEmbedBackfill(): Promise<void> {
     enqueueMissing('CHECKLIST_ITEM', () => checklistItemIdsMissingEmbeddings(), boss),
     enqueueMissing('WARRANTY', () => warrantyIdsMissingEmbeddings(), boss),
     enqueueMissing('ATTACHMENT', () => attachmentIdsMissingEmbeddings(), boss),
+    enqueueMissing('PART', () => partIdsMissingEmbeddings(), boss),
   ]);
 
   const total = counts.reduce((s, c) => s + c, 0);
@@ -132,6 +133,17 @@ async function attachmentIdsMissingEmbeddings(): Promise<string[]> {
     WHERE e.id IS NULL
       AND a."extractedText" IS NOT NULL
       AND a."aiIndexable" = true
+  `;
+  return rows.map((r) => r.id);
+}
+
+async function partIdsMissingEmbeddings(): Promise<string[]> {
+  // Archived parts are tombstoned by buildCanonical, so don't enqueue them.
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT p.id FROM parts p
+    LEFT JOIN embeddings e
+      ON e."entityType" = 'PART' AND e."entityId" = p.id
+    WHERE e.id IS NULL AND p."archivedAt" IS NULL
   `;
   return rows.map((r) => r.id);
 }

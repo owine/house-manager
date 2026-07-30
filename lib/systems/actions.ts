@@ -244,10 +244,12 @@ export async function deleteSystemWithParts(input: {
     if (result === null) return { ok: false, formError: 'System not found' };
 
     // Every part that was linked to this system loses that parent's name from
-    // its search doc, archived or kept alike.
+    // its search doc and its embedded text, archived or kept alike. An
+    // archived part additionally has its embeddings tombstoned by the worker.
     const { touchedPartIds, ...counts } = result;
     for (const partId of touchedPartIds) {
       await enqueueSearchIndex('part', partId, 'upsert');
+      await enqueueEmbed('PART', partId);
     }
 
     revalidateAfterSystemDelete();

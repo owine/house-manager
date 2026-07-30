@@ -27,10 +27,10 @@ import { enqueueEmbed } from './enqueue';
 /**
  * Item.name flows into: NOTE, SERVICE_RECORD (via ServiceTarget),
  * CHECKLIST_ITEM (direct itemId), WARRANTY (via WarrantyTarget),
- * ATTACHMENT (direct itemId).
+ * ATTACHMENT (direct itemId), PART (via PartLink).
  */
 export async function enqueueItemRenameCascade(itemId: string): Promise<void> {
-  const [notes, services, checklistItems, warranties, attachments] = await Promise.all([
+  const [notes, services, checklistItems, warranties, attachments, parts] = await Promise.all([
     prisma.note.findMany({ where: { itemId }, select: { id: true } }),
     prisma.serviceRecord.findMany({
       where: { targets: { some: { itemId } } },
@@ -42,6 +42,9 @@ export async function enqueueItemRenameCascade(itemId: string): Promise<void> {
       select: { id: true },
     }),
     prisma.attachment.findMany({ where: { itemId }, select: { id: true } }),
+    // canonicalizePart denormalizes its parents' names ("Installed in: …"),
+    // so a rename leaves every linked part answering with the old fixture.
+    prisma.part.findMany({ where: { links: { some: { itemId } } }, select: { id: true } }),
   ]);
   await Promise.all([
     ...notes.map((n) => enqueueEmbed('NOTE', n.id)),
@@ -49,6 +52,7 @@ export async function enqueueItemRenameCascade(itemId: string): Promise<void> {
     ...checklistItems.map((c) => enqueueEmbed('CHECKLIST_ITEM', c.id)),
     ...warranties.map((w) => enqueueEmbed('WARRANTY', w.id)),
     ...attachments.map((a) => enqueueEmbed('ATTACHMENT', a.id)),
+    ...parts.map((p) => enqueueEmbed('PART', p.id)),
   ]);
 }
 
@@ -65,10 +69,11 @@ export async function enqueueVendorRenameCascade(vendorId: string): Promise<void
 
 /**
  * System.name flows into: ITEM (direct systemId), SERVICE_RECORD (via
- * ServiceTarget.systemId), WARRANTY (via WarrantyTarget.systemId).
+ * ServiceTarget.systemId), WARRANTY (via WarrantyTarget.systemId),
+ * PART (via PartLink.systemId).
  */
 export async function enqueueSystemRenameCascade(systemId: string): Promise<void> {
-  const [items, services, warranties] = await Promise.all([
+  const [items, services, warranties, parts] = await Promise.all([
     prisma.item.findMany({ where: { systemId }, select: { id: true } }),
     prisma.serviceRecord.findMany({
       where: { targets: { some: { systemId } } },
@@ -78,10 +83,12 @@ export async function enqueueSystemRenameCascade(systemId: string): Promise<void
       where: { targets: { some: { systemId } } },
       select: { id: true },
     }),
+    prisma.part.findMany({ where: { links: { some: { systemId } } }, select: { id: true } }),
   ]);
   await Promise.all([
     ...items.map((i) => enqueueEmbed('ITEM', i.id)),
     ...services.map((s) => enqueueEmbed('SERVICE_RECORD', s.id)),
     ...warranties.map((w) => enqueueEmbed('WARRANTY', w.id)),
+    ...parts.map((p) => enqueueEmbed('PART', p.id)),
   ]);
 }
