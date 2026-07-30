@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
 import { Markdown } from '@/lib/markdown';
-import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
+import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
 
@@ -32,15 +32,10 @@ type Props = { item: Item };
 
 export function OverviewTab({ item }: Props) {
   // Reserved keys (`_provenance` et al) are internal bookkeeping — see
-  // lib/metadata/reserved-keys.ts. They're rejected at the write path and
-  // dropped from embedded text; the read path has to drop them too, or an
-  // AI-captured item renders a raw JSON blob in Additional Details.
-  const visibleMetadata =
-    item.metadata && typeof item.metadata === 'object'
-      ? Object.entries(item.metadata as Record<string, unknown>).filter(
-          ([key]) => !isReservedMetadataKey(key),
-        )
-      : [];
+  // lib/metadata/reserved-keys.ts. Rejected at the write path and dropped from
+  // embedded text; the read path has to drop them too, or an AI-captured item
+  // renders a raw JSON blob in Additional Details.
+  const visibleMetadata = visibleMetadataEntries(item.metadata);
   const hasMetadata = visibleMetadata.length > 0;
 
   return (

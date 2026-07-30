@@ -28,8 +28,20 @@ afterEach(() => {
 
 type ItemProp = Parameters<typeof OverviewTab>[0]['item'];
 
-function makeItem(metadata: Record<string, unknown>): ItemProp {
-  return {
+// `getItem` returns a deeply nested payload — category, system, itemVendors,
+// warrantyTargets, serviceRecordTargets, reminderTargets, attachments, notes,
+// checklistItems. OverviewTab reads nine scalar fields of it. Building the
+// whole shape would be forty lines of empty arrays that break whenever an
+// unrelated `include` is added to the query.
+//
+// So the cast stays, but `satisfies Partial<ItemProp>` type-checks every field
+// that IS present — a typo'd key or a wrong type still fails the build. Only
+// the omissions are unchecked. Narrowing OverviewTab's own prop type to just
+// what it reads would be better still, but all five sibling tabs share the
+// `NonNullable<Awaited<ReturnType<typeof getItem>>>` convention and diverging
+// one of them is a change for its own PR.
+function makeItem(metadata: NonNullable<ItemProp['metadata']>): ItemProp {
+  const item = {
     id: 'i1',
     name: 'Backyard String Lights',
     categoryId: 'c1',
@@ -49,7 +61,9 @@ function makeItem(metadata: Record<string, unknown>): ItemProp {
     includeInSuggestions: true,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     updatedAt: new Date('2026-07-01T00:00:00Z'),
-  } as unknown as ItemProp;
+  } satisfies Partial<ItemProp>;
+
+  return item as unknown as ItemProp;
 }
 
 describe('OverviewTab reserved metadata keys', () => {

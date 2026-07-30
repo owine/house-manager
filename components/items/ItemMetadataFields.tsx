@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { categoryConfigFor, metadataSchemaFor, visibleMetadataFields } from '@/lib/categories';
-import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
+import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 
 type Props = { slug: string };
 
@@ -194,15 +194,7 @@ export function ItemMetadataFields({ slug }: Props) {
   // touched. Structured categories already drop them via non-strict z.object.
   const defaultJson =
     currentMetadata && typeof currentMetadata === 'object'
-      ? JSON.stringify(
-          Object.fromEntries(
-            Object.entries(currentMetadata as Record<string, unknown>).filter(
-              ([key]) => !isReservedMetadataKey(key),
-            ),
-          ),
-          null,
-          2,
-        )
+      ? JSON.stringify(Object.fromEntries(visibleMetadataEntries(currentMetadata)), null, 2)
       : typeof currentMetadata === 'string'
         ? currentMetadata
         : '{}';
