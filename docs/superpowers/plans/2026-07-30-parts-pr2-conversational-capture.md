@@ -70,12 +70,16 @@ Other repo facts:
 
 - [ ] **Step 2: Add the two arms.** Every field is wrapped in `provenanced(...)` — read the existing arms and match exactly. Fields to carry:
 
-  - `CREATE_PART`: `name`, `kind` (the `PartKind` enum — note the collision with the payload's own `kind` discriminator, see below), `manufacturer`, `model`, `location`, `notes`, `typicalCost`
-  - `UPDATE_PART`: `partId` plus the same fields, all optional
+  - `CREATE_PART`: `name`, `partKind` (the `PartKind` enum — see the collision note below), `manufacturer`, `model`, `location`, `notes`, `typicalCost`, `metadata`, and an optional parent `itemId` / `systemId`
+  - `UPDATE_PART`: `partId` plus the same fields minus the parent link, all optional
 
   **The discriminator collision is the trap here.** The payload union discriminates on `kind` (`'CREATE_PART'`), and `Part` has its own `kind` column (`'BULB'`). Do not name the part's kind `kind` in the payload — Zod's `discriminatedUnion` keys on that field and the two meanings will collide confusingly even where it technically parses. `UPDATE_SYSTEM` already hit this and solved it: it calls `System.kind` **`kindLabel`**. Follow that precedent.
 
-  **Leave `metadata` out of the payload.** Per-kind spec fields are a structured blob validated against eight different schemas; letting the model write it invites malformed specs and expands the diff render enormously. `name`/`manufacturer`/`model` capture what a user dictates in practice. Revisit only with evidence.
+  **`metadata` IS in the payload** — this is what makes the PR close the reported bug rather than approach it. The bug was the model recording *base, wattage, colour temperature*; without this it would dump them into `notes` as free text, which is the same shoehorn one construct to the left, and every AI-captured part would have empty spec fields until the user retyped what they already dictated.
+
+  Type it loosely on the arm (`provenanced(z.record(z.string(), z.unknown()))` or similar) and validate it properly in `validateProposal` — see Task 3 Step 2. The schema cannot self-validate because the applicable spec schema depends on the sibling `partKind` field.
+
+  **`CREATE_PART` carries an optional parent link**: exactly one of `itemId` / `systemId`, or neither. Without it the model produces a floating part the user must then link by hand from `/parts` — the exact navigation the spec calls out as wrong ("nobody navigates to `/parts/new` and then hunts for the furnace"). `CREATE_SERVICE_RECORD.targets` already validates parent ids this way at `resolve.ts:58-69`; follow it. Neither-parent is legal — that is the standalone "generic bulbs" case.
 
   **`typicalCost` is a `Decimal`** — see Task 4. Emit it as a decimal string on the wire, matching how `pCalendarDate` handles dates, and **constrain it**: `provenanced(z.string().regex(/^\d{1,8}(\.\d{1,2})?$/))`. Dates get a `checkDate` in `validateProposal`; without the equivalent here a model emitting `"about $4.50"` or `"4.505"` passes the union, passes validation, and throws at `prisma.part.create` — surfacing a generic failure long after the user accepted the proposal.
 
@@ -95,7 +99,13 @@ Other repo facts:
 
   Extend `Snapshot` (`partIds`) and `SnapshotInput`, and add a `PARTS` block to `buildSnapshotBlock`.
 
-- [ ] **Step 2: Validate `partId` server-side.** `validateProposal` re-checks every id against the snapshot — the prompt's rule 1 is guidance, not enforcement. Match how `itemId` / `systemId` are checked.
+- [ ] **Step 2: Validate server-side — three things.** `validateProposal` re-checks every id against the snapshot; the prompt's rule 1 is guidance, not enforcement.
+
+  1. **`partId`** against `snapshot.partIds`, matching how `itemId`/`systemId` are checked.
+  2. **The optional parent** on `CREATE_PART` — exactly one of `itemId`/`systemId` or neither, each against the snapshot. Mirror `CREATE_SERVICE_RECORD.targets` (`resolve.ts:58-69`).
+  3. **`metadata` against `partKindSchemaFor(partKind)`** — one call, sitting in the same position `checkDate` occupies. Drop the proposal on failure, with `checkDate`'s discipline.
+
+     For `UPDATE_PART` without `partKind`, resolve the stored kind first — `lib/parts/actions.ts` already does exactly this and is the model to copy. A non-strict `z.object` drops unknown keys silently, so a model inventing `bulbColour` costs nothing; the validation is there to reject *wrong-typed* values, not unknown ones.
 
 - [ ] **Step 3: `lib/chat/resolve.ts`** — add the two kinds to the `targetType`/`targetId` switch (`targetType: 'PART'`).
 
@@ -124,7 +134,7 @@ Other repo facts:
   earlier draft of this plan suggested would have missed exactly the site that
   fails quietly.
 
-  Apply writes via `prisma.part.*` directly, as the other kinds do. **Do not call `enqueueSearchIndex` / `enqueueEmbed`** — `'part'` is not in `SEARCH_KINDS` and `PART` is not in `EmbeddingEntityType` until PR 3, and both helpers are typed to those unions.
+  Apply writes via `prisma.part.*` directly, as the other kinds do. `CREATE_PART` with a parent writes it as a nested `links: { create: { itemId } }` in the same call — the `part_links` XOR CHECK enforces the exactly-one rule at the database regardless. **Do not call `enqueueSearchIndex` / `enqueueEmbed`** — `'part'` is not in `SEARCH_KINDS` and `PART` is not in `EmbeddingEntityType` until PR 3, and both helpers are typed to those unions.
 
   `UPDATE_PART` needs the same optimistic-concurrency handling as `UPDATE_ITEM`: `baseUpdatedAt`, and `ORPHANED` when the row is gone.
 
@@ -182,11 +192,17 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
   Keep it concrete. An abstract rule ("prefer the most specific construct") will not change behaviour.
 
-- [ ] **Step 3:** `buildSnapshotBlock` gains a PARTS section, and rule 1's enumeration ("every item, system, category and note") must name parts too, or the rule contradicts the block below it.
+- [ ] **Step 3: Tell the model which spec fields belong to which kind.** This is the largest single addition to `CHAT_SYSTEM_PROMPT` and the reason `metadata` capture is the expensive half of this PR.
 
-- [ ] **Step 4:** Extend `lib/chat/prompt.test.ts` — the snapshot block includes parts and their kinds; the prompt names parts in its scope rule.
+  Keep it a compact table, not prose — kind, then its field names. **Generate it from `partKindConfigs`** rather than hand-writing a second copy that drifts the moment a field is added: iterate the config and emit `BULB: base, shape, technology, watts, lumens, colorTempK, cri, dimmable, voltage, ratedHours`. Enum-valued fields should list their options, since `base` and `shape` are the ones the model will otherwise invent values for.
 
-- [ ] **Step 5:** Commit `feat(chat): teach the model when a part is the right construct`
+  Say explicitly that spec fields are optional and that it should omit what the user did not say rather than guessing — the provenance rule (mark inferences `"inferred"`) covers enrichment it *does* choose to make.
+
+- [ ] **Step 4:** `buildSnapshotBlock` gains a PARTS section, and rule 1's enumeration ("every item, system, category and note") must name parts too, or the rule contradicts the block below it.
+
+- [ ] **Step 5:** Extend `lib/chat/prompt.test.ts` — the snapshot block includes parts and their kinds; the prompt names parts in its scope rule; the spec-field table is present and derived from `partKindConfigs` (assert a field that exists in the config appears in the prompt, so the two cannot drift).
+
+- [ ] **Step 6:** Commit `feat(chat): teach the model when a part is the right construct`
 
 ---
 
@@ -194,7 +210,9 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
 **Files:** `components/chat/ProposalCard.tsx`, `components/chat/proposal-mapping.ts`
 
-- [ ] **Step 1:** Add the two kinds to `KIND_LABELS` (`:27`) and `buildRows` (`:94`). Rows: name, kind label, manufacturer, model, location, typical cost (currency-formatted, per Task 4).
+- [ ] **Step 1:** Add the two kinds to `KIND_LABELS` (`:27`) and `buildRows` (`:94`). Rows: name, kind label, manufacturer, model, location, typical cost (currency-formatted, per Task 4), the parent link if present, and the spec fields.
+
+  **Spec fields are one generic loop**, not a `push()` per field — iterate `visibleMetadataEntries(payload.metadata)` and emit a row each, labelling with the same `toLabel`-style camelCase-to-words helper the item Overview tab uses. `visibleMetadataEntries` (`lib/metadata/reserved-keys.ts`) also strips `_provenance`, which the apply path writes.
 - [ ] **Step 2:** `components/chat/proposal-mapping.ts:25` — `stubPayload` needs both arms. Exhaustive-return, so typecheck catches it, but it is a step rather than a maybe.
 - [ ] **Step 3: Render the part kind through `components/parts/kind-labels.ts`** so the card shows "Air filter", not `AIR_FILTER`.
 - [ ] **Step 4:** Component tests, including a `CREATE_PART` card and an `UPDATE_PART` card with a before-snapshot.
@@ -214,7 +232,14 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
   ```
   Drift must show only the IVFFlat line. **Never lower a coverage threshold** — the floor only ratchets up.
 - [ ] **Step 2:** `pnpm test:e2e:local`
-- [ ] **Step 3: Exercise it against the real model.** Every other check here can pass while the model still reaches for `CREATE_ITEM`, which is the entire bug. Run the dev server and tell it something like *"the backyard string lights take 24 S14 bulbs, E26 base, 2700K"* and confirm it proposes a **part**, not an item. Report what it actually did.
+- [ ] **Step 3: Exercise it against the real model.** Every other check here can pass while the model still reaches for `CREATE_ITEM`, which is the entire bug. Run the dev server and tell it *"the backyard string lights take 24 S14 bulbs, E26 base, 2700K"*.
+
+  Confirm all three, and report what it actually did — verbatim, including the proposal JSON:
+  1. it proposes a **part**, not an item
+  2. the spec lands in **`metadata`** (`base: 'E26'`, `shape: 'S14'`, `colorTempK: 2700`) — not prose in `notes`
+  3. it **links** the part to the Backyard String Lights item if that item exists in the snapshot
+
+  If it gets the construct right but dumps the spec into `notes`, the prompt's spec-field table is not doing its job — that is a prompt fix, not a schema one.
 - [ ] **Step 4:** Check the diff size stays under Sourcery's 150k limit before pushing.
 
 ---
@@ -222,6 +247,8 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 ## What "done" looks like
 
 - Telling the assistant about bulbs or filters proposes a **part**, verified against the live model — not just permitted by the schema.
+- **The spec is captured as data.** "24 S14 bulbs, E26 base, 2700K" lands in `metadata` as `{ base: 'E26', shape: 'S14', colorTempK: 2700 }`, not as a sentence in `notes`. This is the half that makes the original bug actually fixed.
+- The part comes out **linked to its parent**, not floating.
 - `UPDATE_PART` works, which requires parts in the snapshot.
 - A `typicalCost` diff shows `$4.50` on both sides when nothing changed, not `4.5` vs `4.50`.
 - The stale schema comment about Decimals is replaced with the rule that supersedes it.
@@ -230,4 +257,4 @@ decimal.js defines `toJSON`, so it does **not** throw and does not store an obje
 
 Search and embedding indexing (PR 3) — hence no `enqueueSearchIndex`/`enqueueEmbed` in the part apply path. Part targets on `CREATE_SERVICE_RECORD` (its `targets` array is `{ itemId, systemId }` only; a natural follow-up, deliberately not here).
 
-**`CREATE_PART` cannot link the part to a parent.** The acceptance test in Task 7 Step 3 therefore produces an *unparented* part, which the user must then link by hand from `/parts` — the exact navigation the spec calls out as wrong ("nobody navigates to `/parts/new` and then hunts for the furnace"). Adding an optional `{ itemId | systemId }` to `CREATE_PART`, validated against the snapshot the way `CREATE_SERVICE_RECORD.targets` already is at `resolve.ts:58-69` and written as a nested `links: { create: … }`, is a small addition the `part_links` XOR CHECK already guards. Called out here so it is a decision rather than an omission.
+`UPDATE_PART` does not change a part's links — linking is a create-time convenience only. Re-parenting has a UI (PR 1b) and is not worth a proposal kind.
