@@ -233,7 +233,10 @@ const PART_ARMS = [
     })
     .refine(exactlyOneParentOrNone, {
       message: 'A part links to an item or a system, not both',
-      path: ['systemId'],
+      // Synthetic path: this schema validates model output, not a form, so the
+      // path only ever appears in a log line. `systemId` would read as though
+      // that field alone were at fault when the problem is the pair.
+      path: ['parent'],
     }),
   z.object({
     kind: z.literal('UPDATE_PART'),

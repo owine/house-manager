@@ -8,7 +8,9 @@ vi.mock('@/lib/db', () => ({
   prisma: { part: { findUnique: vi.fn(async () => ({ kind: 'BULB' })) } },
 }));
 
-const { PARTS_EXTRACT_PROMPT, parsePartProposals } = await import('./parts-extract');
+const { PARTS_EXTRACT_PROMPT, parsePartProposals, assemblePrefilledJson } = await import(
+  './parts-extract'
+);
 
 const snapshot: Snapshot = {
   itemIds: new Set(['item-1']),
@@ -127,5 +129,30 @@ describe('parsePartProposals', () => {
 
   it('accepts an empty proposals array — the common case', async () => {
     expect(await parsePartProposals('{"proposals":[]}', snapshot)).toEqual([]);
+  });
+});
+
+// Sourcery caught this on #332: the original code did `JSON_PREFILL + text`
+// unconditionally, so a model that emitted its own leading `{` produced `{{`.
+// That fails JSON.parse, and because extraction failure degrades to "no
+// proposals" by design, the feature would have gone quiet with no error.
+describe('assemblePrefilledJson', () => {
+  it('prepends the brace when the model continues after the prefill', () => {
+    expect(assemblePrefilledJson('"proposals":[]}')).toBe('{"proposals":[]}');
+  });
+
+  it('does NOT double the brace when the model emits its own', () => {
+    expect(assemblePrefilledJson('{"proposals":[]}')).toBe('{"proposals":[]}');
+  });
+
+  it('tolerates leading whitespace or a newline before either shape', () => {
+    expect(assemblePrefilledJson('\n  {"proposals":[]}')).toBe('{"proposals":[]}');
+    expect(assemblePrefilledJson('\n  "proposals":[]}')).toBe('{"proposals":[]}');
+  });
+
+  it('produces parseable JSON in both shapes', () => {
+    for (const body of ['"proposals":[]}', '{"proposals":[]}']) {
+      expect(() => JSON.parse(assemblePrefilledJson(body))).not.toThrow();
+    }
   });
 });

@@ -110,6 +110,21 @@ ${buildPartSpecTable()}
 /** Exported for the prompt-content tests; not used outside this module. */
 export const PARTS_EXTRACT_PROMPT = buildSystemPrompt();
 
+/**
+ * Reassemble the full JSON document from a prefilled assistant turn.
+ *
+ * We seed the assistant turn with `{` so the model emits JSON and not prose.
+ * Normally it continues *after* that brace, so the document is
+ * `JSON_PREFILL + body`. But that is a convention, not a guarantee: a model
+ * that echoes its own `{` would yield `{{`, which fails `JSON.parse` and costs
+ * the turn its part proposals — silently, because extraction failure degrades
+ * to "no proposals" by design.
+ */
+export function assemblePrefilledJson(body: string): string {
+  const trimmed = body.trimStart();
+  return trimmed.startsWith(JSON_PREFILL) ? trimmed : JSON_PREFILL + trimmed;
+}
+
 /** Concatenate the text blocks of a non-streaming Messages response. */
 function responseText(res: unknown): string {
   const content = (res as { content?: Array<{ type?: string; text?: string }> }).content ?? [];
@@ -173,7 +188,7 @@ async function runExtraction(args: {
         { role: 'assistant' as const, content: JSON_PREFILL },
       ],
     } as never);
-    raw = JSON_PREFILL + responseText(res);
+    raw = assemblePrefilledJson(responseText(res));
     usage = (res as unknown as { usage?: Record<string, number> }).usage ?? {};
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
