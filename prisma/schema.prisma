@@ -736,6 +736,7 @@ enum EmbeddingEntityType {
   CHECKLIST_ITEM
   WARRANTY
   ATTACHMENT
+  PART
 }
 
 model Embedding {

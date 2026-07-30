@@ -1,4 +1,6 @@
-import { isReservedMetadataKey } from '@/lib/metadata/reserved-keys';
+import type { PartKind } from '@prisma/client';
+import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
+import { isReservedMetadataKey, visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 
 // Canonical text builders for each entity type. The output is what gets
 // embedded by Voyage AND what the Ask LLM sees as context. Two design rules:
@@ -69,6 +71,21 @@ export type WarrantyForCanonical = {
   endsOn?: Date | null;
   cost?: number | string | null;
   targets?: Array<{ item?: { name: string } | null; system?: { name: string } | null }>;
+};
+
+export type PartForCanonical = {
+  name: string;
+  kind: PartKind;
+  location?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  sku?: string | null;
+  typicalCost?: number | string | null;
+  /** Per-kind spec blob. Reserved (`_`-prefixed) keys are dropped below. */
+  metadata?: unknown;
+  notes?: string | null;
+  /** Names of the items / systems the part is installed in. */
+  parentNames?: string[];
 };
 
 export type AttachmentForCanonical = {
@@ -176,6 +193,35 @@ export function canonicalizeWarranty(w: WarrantyForCanonical): string {
     w.coverage ? '---' : null,
     w.coverage ?? null,
   ]);
+}
+
+export function canonicalizePart(part: PartForCanonical): string {
+  const lines: Array<string | null> = [
+    `Part: ${part.name}`,
+    `Kind: ${PART_KIND_LABELS[part.kind]}`,
+    part.manufacturer ? `Manufacturer: ${part.manufacturer}` : null,
+    part.model ? `Model: ${part.model}` : null,
+    part.sku ? `SKU: ${part.sku}` : null,
+    part.location ? `Location: ${part.location}` : null,
+  ];
+
+  const parents = (part.parentNames ?? []).filter(present);
+  if (parents.length > 0) lines.push(`Installed in: ${parents.join(', ')}`);
+
+  const cost = fmtMoney(part.typicalCost ?? null);
+  if (cost) lines.push(`Typical cost: ${cost}`);
+
+  // The spec is the reason a part is embedded at all — "what bulb goes in the
+  // backyard string lights?" is answered by `base: E26`, not by the part's
+  // name. Enumerated through `visibleMetadataEntries` so `_provenance`
+  // (written by conversational capture) can never reach embedded text.
+  const spec = visibleMetadataEntries(part.metadata)
+    .filter(([, v]) => present(v))
+    .map(([k, v]) => `  ${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
+  if (spec.length > 0) lines.push('Spec:', ...spec);
+
+  if (part.notes) lines.push('Notes:', part.notes);
+  return joinLines(lines);
 }
 
 export function canonicalizeAttachment(a: AttachmentForCanonical): string {

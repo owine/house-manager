@@ -7,6 +7,7 @@ import {
   canonicalizeChecklistItem,
   canonicalizeItem,
   canonicalizeNote,
+  canonicalizePart,
   canonicalizeServiceRecord,
   canonicalizeWarranty,
 } from './canonicalize';
@@ -292,6 +293,57 @@ async function buildCanonical(
         filename: a.filename,
         extractedText: a.extractedText,
         parent,
+      });
+    }
+    case 'PART': {
+      // Every field below is read by `canonicalizePart` — including
+      // `metadata` (the spec, the whole point of embedding a part) and
+      // `links` (parent names, denormalized into the text). A canonicalizer
+      // that reads a column this select omits is silently inert; that
+      // already happened once in this repo.
+      const p = await prisma.part.findUnique({
+        where: { id: entityId },
+        select: {
+          name: true,
+          kind: true,
+          archivedAt: true,
+          location: true,
+          manufacturer: true,
+          model: true,
+          sku: true,
+          typicalCost: true,
+          metadata: true,
+          notes: true,
+          links: {
+            select: {
+              item: { select: { name: true } },
+              system: { select: { name: true } },
+            },
+          },
+        },
+      });
+      // Archived parts drop their embeddings, same as items. (Search keeps
+      // archived rows indexed; Ask deliberately does not answer from them.)
+      if (!p || p.archivedAt) return null;
+      const parentNames: string[] = [];
+      for (const l of p.links) {
+        if (l.item) parentNames.push(l.item.name);
+        if (l.system) parentNames.push(l.system.name);
+      }
+      return canonicalizePart({
+        name: p.name,
+        kind: p.kind,
+        location: p.location,
+        manufacturer: p.manufacturer,
+        model: p.model,
+        sku: p.sku,
+        // `String()`, not a cast: the pg adapter hands back a Prisma `Decimal`
+        // object, and `fmtMoney`'s `Number.isFinite` check silently drops it
+        // (it is neither a number nor a string). Verified against a seeded row.
+        typicalCost: p.typicalCost != null ? String(p.typicalCost) : null,
+        metadata: p.metadata,
+        notes: p.notes,
+        parentNames,
       });
     }
     default: {

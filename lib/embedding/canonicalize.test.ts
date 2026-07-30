@@ -5,6 +5,7 @@ import {
   canonicalizeChecklistItem,
   canonicalizeItem,
   canonicalizeNote,
+  canonicalizePart,
   canonicalizeServiceRecord,
   canonicalizeWarranty,
 } from './canonicalize';
@@ -193,5 +194,67 @@ describe('canonicalizeAttachment', () => {
     expect(out).toContain('Attachment: invoice.pdf');
     expect(out).toContain('Linked to serviceRecord: Spring tune-up');
     expect(out).toContain('ROSE PEST SOLUTIONS');
+  });
+});
+
+describe('canonicalizePart', () => {
+  it('emits the spec values and the parent names, not just the name', () => {
+    const out = canonicalizePart({
+      name: 'Backyard string light bulbs',
+      kind: 'BULB',
+      manufacturer: 'Feit',
+      model: 'S14/LED',
+      sku: 'S14-LED-24',
+      typicalCost: 32.5,
+      location: 'Garage shelf',
+      parentNames: ['Backyard string lights', 'Outdoor lighting'],
+      metadata: { base: 'E26', shape: 'S14', colorTempK: 2200, wattage: 1 },
+      notes: 'Buy the 24-pack.',
+    });
+    expect(out).toContain('Part: Backyard string light bulbs');
+    expect(out).toContain('Kind: Bulb');
+    expect(out).toContain('Manufacturer: Feit');
+    expect(out).toContain('Model: S14/LED');
+    expect(out).toContain('SKU: S14-LED-24');
+    expect(out).toContain('Typical cost: $32.50');
+    expect(out).toContain('Location: Garage shelf');
+    // The whole reason parts are embedded: the spec, not the name.
+    expect(out).toContain('base: E26');
+    expect(out).toContain('shape: S14');
+    expect(out).toContain('colorTempK: 2200');
+    // Denormalized parents — "what bulb goes in the backyard string lights?"
+    expect(out).toContain('Installed in: Backyard string lights, Outdoor lighting');
+    expect(out).toContain('Buy the 24-pack.');
+  });
+
+  it('renders the kind label, never the raw enum member', () => {
+    const out = canonicalizePart({
+      name: 'FPR 10 20x25x1',
+      kind: 'AIR_FILTER',
+      metadata: { nominalSize: '20x25x1', merv: 11 },
+    });
+    expect(out).toContain('Kind: Air filter');
+    expect(out).not.toContain('AIR_FILTER');
+    expect(out).toContain('nominalSize: 20x25x1');
+    expect(out).toContain('merv: 11');
+  });
+
+  it('drops reserved metadata keys', () => {
+    const out = canonicalizePart({
+      name: 'Softener salt',
+      kind: 'CHEMICAL',
+      metadata: {
+        form: 'pellet',
+        _provenance: { name: 'inferred', form: 'stated' },
+      },
+    });
+    expect(out).toContain('form: pellet');
+    expect(out).not.toContain('_provenance');
+    expect(out).not.toContain('inferred');
+  });
+
+  it('omits empty fields and handles a null/absent metadata blob', () => {
+    const out = canonicalizePart({ name: 'Mystery fuse', kind: 'FUSE', metadata: null });
+    expect(out).toBe('Part: Mystery fuse\nKind: Fuse');
   });
 });

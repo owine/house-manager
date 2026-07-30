@@ -1,4 +1,8 @@
+import type { PartKind } from '@prisma/client';
+
+import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { prisma } from '@/lib/db';
+import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 import type { SearchDocument, SearchKind } from './schema';
 
 // ─── Row types — minimal shapes that toDocument needs ───────────────────────
@@ -71,6 +75,24 @@ type ChecklistRow = {
   updatedAt: Date;
 };
 
+export type PartRow = {
+  id: string;
+  name: string;
+  kind: PartKind;
+  manufacturer: string | null;
+  model: string | null;
+  sku: string | null;
+  location: string | null;
+  notes: string | null;
+  /** The per-kind spec blob. Reserved keys are dropped by `toDocument`. */
+  metadata: unknown;
+  /** Names of every linked parent (item + system), for `itemName`. */
+  parentNames?: string[];
+  /** First *item* parent, supplying the `itemId` filter facet. */
+  item: { id: string; name: string } | null;
+  updatedAt: Date;
+};
+
 export type RowFor<K extends SearchKind> = K extends 'item'
   ? ItemRow
   : K extends 'vendor'
@@ -85,7 +107,9 @@ export type RowFor<K extends SearchKind> = K extends 'item'
             ? AttachmentRow
             : K extends 'checklist'
               ? ChecklistRow
-              : never;
+              : K extends 'part'
+                ? PartRow
+                : never;
 
 // ─── Pure transform per kind ────────────────────────────────────────────────
 
@@ -97,7 +121,37 @@ const ICON: Record<SearchKind, string> = {
   reminder: '⏰',
   attachment: '📎',
   checklist: '✅',
+  part: '🔩',
 };
+
+/**
+ * One spec entry rendered as searchable text.
+ *
+ * The key travels with the value because the queries this PR exists to serve
+ * are written that way — "MERV 11", "E26 base" — and a bare `11` matches
+ * nothing useful on its own. Arrays are flattened; objects are skipped rather
+ * than `[object Object]`-ed into the index.
+ */
+/**
+ * Flatten one spec entry into searchable tokens.
+ *
+ * Object values are JSON-stringified rather than dropped, matching
+ * `canonicalizePart` in `lib/embedding/canonicalize.ts`. The two paths used to
+ * disagree — search silently discarded objects while the embedding kept them —
+ * which meant a value could be askable but not findable.
+ *
+ * In practice neither branch fires: every `partKindConfigs` schema is a flat
+ * object of scalars, `freeformMetadataSchema` admits only string/number/
+ * boolean/null, and `_provenance` (the one object written directly via Prisma)
+ * is stripped upstream by `visibleMetadataEntries`. So this is about the two
+ * paths never disagreeing again, not about a shape that occurs today.
+ */
+function specText(key: string, value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  if (Array.isArray(value)) return value.flatMap((v) => specText(key, v));
+  if (typeof value === 'object') return [key, JSON.stringify(value)];
+  return [key, String(value)];
+}
 
 export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): SearchDocument {
   switch (kind) {
@@ -225,6 +279,40 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
         categorySlug: null,
         href: `/checklists/${r.id}`,
         iconHint: ICON.checklist,
+        updatedAt: Math.floor(r.updatedAt.getTime() / 1000),
+      };
+    }
+    case 'part': {
+      const r = row as PartRow;
+      // Indexing the name alone would be useless: nobody searches "Backyard
+      // bulbs", they search "E26" or "20x25x1". The spec values are the
+      // point of indexing a part at all — enumerated through
+      // `visibleMetadataEntries` so `_provenance` (written by conversational
+      // capture) can never reach the index.
+      const spec = visibleMetadataEntries(r.metadata).flatMap(([k, v]) => specText(k, v));
+      const bodyParts = [
+        PART_KIND_LABELS[r.kind],
+        r.manufacturer,
+        r.model,
+        r.sku,
+        r.location,
+        ...spec,
+        r.notes,
+      ].filter(Boolean);
+      return {
+        id: `part-${r.id}`,
+        kind: 'part',
+        recordId: r.id,
+        title: r.name,
+        body: bodyParts.join(' '),
+        tags: [],
+        // Parent names make "furnace filter" find a part actually named
+        // "FPR 10 20x25x1".
+        itemName: (r.parentNames ?? []).join(' ') || (r.item?.name ?? ''),
+        itemId: r.item?.id ?? null,
+        categorySlug: null,
+        href: `/parts/${r.id}`,
+        iconHint: ICON.part,
         updatedAt: Math.floor(r.updatedAt.getTime() / 1000),
       };
     }
@@ -357,6 +445,41 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
         },
       });
       return row ? toDocument('checklist', row) : null;
+    }
+    case 'part': {
+      const row = await prisma.part.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          manufacturer: true,
+          model: true,
+          sku: true,
+          location: true,
+          notes: true,
+          metadata: true,
+          updatedAt: true,
+          links: {
+            select: {
+              item: { select: { id: true, name: true } },
+              system: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+      if (!row) return null;
+      const names: string[] = [];
+      let firstItem: { id: string; name: string } | null = null;
+      for (const l of row.links) {
+        if (l.item) {
+          if (!firstItem) firstItem = l.item;
+          names.push(l.item.name);
+        }
+        if (l.system) names.push(l.system.name);
+      }
+      const { links: _links, ...rest } = row;
+      return toDocument('part', { ...rest, item: firstItem, parentNames: names });
     }
   }
 }

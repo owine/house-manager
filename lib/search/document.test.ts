@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type AttachmentRow, type ItemRow, type ReminderRow, toDocument } from './document';
+import {
+  type AttachmentRow,
+  type ItemRow,
+  type PartRow,
+  type ReminderRow,
+  toDocument,
+} from './document';
 
 const NOW = new Date('2026-05-01T12:00:00Z');
 
@@ -185,6 +191,88 @@ describe('toDocument', () => {
       });
       expect(doc.itemName).toBe('HVAC');
       expect(doc.itemId).toBeNull();
+    });
+  });
+
+  describe('part', () => {
+    const bulb: PartRow = {
+      id: 'p1',
+      name: 'Backyard bulbs',
+      kind: 'BULB',
+      manufacturer: 'Feit',
+      model: 'ST19-LED-DIM',
+      sku: 'FEI-ST19-24',
+      location: 'garage shelf',
+      notes: 'buy the 24-pack',
+      metadata: {
+        base: 'E26',
+        shape: 'S14',
+        colorTempK: 2200,
+        dimmable: true,
+        // Written by conversational capture — must never be indexed.
+        _provenance: { base: 'inferred' },
+      },
+      item: { id: 'i1', name: 'Backyard string lights' },
+      parentNames: ['Backyard string lights', 'Landscape lighting'],
+      updatedAt: NOW,
+    };
+
+    it('indexes the spec VALUES, not just the name — the point of the kind', () => {
+      const doc = toDocument('part', bulb);
+      expect(doc.id).toBe('part-p1');
+      expect(doc.kind).toBe('part');
+      expect(doc.title).toBe('Backyard bulbs');
+      expect(doc.body).toContain('E26');
+      expect(doc.body).toContain('S14');
+      expect(doc.body).toContain('2200');
+      // The key travels with the value so "MERV 11"-shaped queries match.
+      expect(doc.body).toContain('colorTempK');
+      expect(doc.href).toBe('/parts/p1');
+      expect(doc.iconHint).toBe('🔩');
+    });
+
+    it('indexes the re-buy identity and the rendered kind label', () => {
+      const doc = toDocument('part', bulb);
+      expect(doc.body).toContain('Feit');
+      expect(doc.body).toContain('ST19-LED-DIM');
+      expect(doc.body).toContain('FEI-ST19-24');
+      expect(doc.body).toContain('garage shelf');
+      expect(doc.body).toContain('buy the 24-pack');
+      expect(doc.body).toContain('Bulb');
+      expect(doc.body).not.toContain('BULB');
+    });
+
+    it('drops reserved metadata keys', () => {
+      const doc = toDocument('part', bulb);
+      expect(doc.body).not.toContain('_provenance');
+      expect(doc.body).not.toContain('inferred');
+    });
+
+    it('carries every parent name in itemName and the first item parent as the facet', () => {
+      const doc = toDocument('part', bulb);
+      expect(doc.itemName).toContain('Backyard string lights');
+      expect(doc.itemName).toContain('Landscape lighting');
+      expect(doc.itemId).toBe('i1');
+    });
+
+    it('handles a standalone part with no parents and an empty spec', () => {
+      const doc = toDocument('part', {
+        ...bulb,
+        id: 'p2',
+        metadata: {},
+        item: null,
+        parentNames: [],
+      });
+      expect(doc.itemName).toBe('');
+      expect(doc.itemId).toBeNull();
+      expect(doc.body).toContain('Feit');
+    });
+
+    it('tolerates a null / non-object metadata column', () => {
+      expect(() => toDocument('part', { ...bulb, metadata: null })).not.toThrow();
+      const doc = toDocument('part', { ...bulb, metadata: 'nonsense' });
+      expect(doc.body).toContain('Feit');
+      expect(doc.body).not.toContain('nonsense');
     });
   });
 });
