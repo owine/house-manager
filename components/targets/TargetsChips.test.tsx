@@ -80,8 +80,9 @@ describe('TargetsChips', () => {
     expect(within(chip).getByText('Part')).toBeInTheDocument();
   });
 
-  // Parts have no detail route until PR 1b, so the chip must not link anywhere.
-  it('part chip renders unlinked (no /parts/:id route yet)', () => {
+  // `/parts/[id]` exists as of PR 1b, so the chip links there like item and
+  // system chips do. It rendered as plain text before the route landed.
+  it('part chip links to the part detail route', () => {
     render(
       <TargetsChips
         targets={[
@@ -97,8 +98,10 @@ describe('TargetsChips', () => {
         ]}
       />,
     );
-    expect(screen.queryByTestId('targets-chip-link-tp')).not.toBeInTheDocument();
-    expect(screen.getByTestId('targets-chip-text-tp')).toHaveTextContent('MERV-13 filter');
+    const link = screen.getByTestId('targets-chip-link-tp');
+    expect(link).toHaveTextContent('MERV-13 filter');
+    expect(link).toHaveAttribute('href', '/parts/p1');
+    expect(screen.queryByTestId('targets-chip-text-tp')).not.toBeInTheDocument();
   });
 
   it('inert mode renders text instead of links', () => {

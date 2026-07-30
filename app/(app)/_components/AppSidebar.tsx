@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Boxes,
   Calendar,
   Home,
   Inbox,
@@ -58,6 +59,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/items', label: 'items', icon: Package },
       { href: '/systems', label: 'systems', icon: Layers },
+      // Parts are inventory (what do I own / re-buy?), not a workflow.
+      { href: '/parts', label: 'parts', icon: Boxes },
       { href: '/vendors', label: 'vendors', icon: Users },
     ],
   },

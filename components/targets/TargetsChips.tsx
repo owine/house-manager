@@ -38,9 +38,9 @@ type Resolved = {
   key: string;
   kind: 'item' | 'system' | 'part';
   /**
-   * null = render the label unlinked. Parts have no detail route yet (PR 1b
-   * adds /parts/[id]); linking there today would be a guaranteed 404, so a part
-   * chip deliberately renders as plain text.
+   * null = render the label unlinked. Every kind resolves to a route today;
+   * the nullable stays for `inert` and for any future target kind that lands
+   * before its detail page does.
    */
   href: string | null;
   name: string;
@@ -80,7 +80,7 @@ function resolve(targets: TargetSummary[]): Resolved[] {
       out.push({
         key: t.id,
         kind: 'part',
-        href: null,
+        href: `/parts/${t.part.id}`,
         name: t.part.name,
       });
     }
