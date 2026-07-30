@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,6 +38,10 @@ const availableSystems = [
     kind: 'hvac',
     items: [] as Array<{ id: string; archivedAt: Date | null }>,
   },
+];
+
+const availableParts = [
+  { id: 'p1', name: '20x25x1 furnace filter', kind: 'AIR_FILTER', archivedAt: null },
 ];
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
@@ -100,7 +104,7 @@ describe('ReminderForm with TargetsPicker', () => {
     await fillRequired(user);
     await user.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() => {
-      expect(screen.getByText(/at least one item or system/i)).toBeInTheDocument();
+      expect(screen.getByText(/at least one item, system, or part/i)).toBeInTheDocument();
     });
     expect(action).not.toHaveBeenCalled();
   });
@@ -140,7 +144,7 @@ describe('ReminderForm with TargetsPicker', () => {
       />,
     );
     // Label reads as optional for chores.
-    expect(screen.getByText(/Linked items \/ systems \(optional\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Linked items \/ systems \/ parts \(optional\)/i)).toBeInTheDocument();
     await fillRequired(user);
     await user.click(screen.getByRole('button', { name: 'Create chore' }));
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
@@ -150,7 +154,7 @@ describe('ReminderForm with TargetsPicker', () => {
       targets: [],
     });
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/reminders/c-new'));
-    expect(screen.queryByText(/at least one item or system/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/at least one item, system, or part/i)).not.toBeInTheDocument();
   });
 
   it('shows the autoComplete checkbox only when kind=CHORE', () => {
@@ -176,6 +180,53 @@ describe('ReminderForm with TargetsPicker', () => {
       />,
     );
     expect(screen.queryByRole('checkbox', { name: /auto-complete/i })).not.toBeInTheDocument();
+  });
+
+  // Regression guard for the silent-delete path: an edit form seeded with a
+  // part target and submitted UNTOUCHED must resubmit that target. If the
+  // picker dropped it, updateReminder's diff would see it in `have` but not
+  // `want` and delete the row. Asserts on the SUBMITTED PAYLOAD, not on chips.
+  it('resubmits a seeded part target when the form is saved untouched', async () => {
+    const action = makeAction({ ok: true, data: { id: 'r-1' } });
+    const user = userEvent.setup();
+    render(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        availableParts={availableParts}
+        initialTargets={[{ partId: 'p1' }]}
+        defaultValues={{ id: 'r-1', title: 'Swap filter', nextDueOn: new Date('2026-02-01') }}
+        action={action}
+        submitLabel="Save changes"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({ targets: [{ partId: 'p1' }] });
+  });
+
+  it('offers parts in the picker and submits a newly-checked part target', async () => {
+    const action = makeAction({ ok: true, data: { id: 'r-new' } });
+    const user = userEvent.setup();
+    render(
+      <ReminderForm
+        availableItems={availableItems}
+        availableSystems={availableSystems}
+        availableParts={availableParts}
+        action={action}
+        submitLabel="Create reminder"
+      />,
+    );
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: /^Parts/ }));
+    await user.click(
+      within(screen.getByTestId('targets-picker-parts-list')).getByRole('checkbox', {
+        name: /20x25x1 furnace filter/,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    expect(action.mock.calls[0]?.[0]).toMatchObject({ targets: [{ partId: 'p1' }] });
   });
 
   it('submits with targets: [{ systemId }] for a system-only reminder', async () => {

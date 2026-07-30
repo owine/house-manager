@@ -12,6 +12,7 @@ import {
 import { VendorAutocomplete } from '@/components/service-records/VendorAutocomplete';
 import {
   type AvailableItem,
+  type AvailablePart,
   type AvailableSystem,
   TargetsPicker,
 } from '@/components/targets/TargetsPicker';
@@ -31,7 +32,7 @@ import { addAttachmentLink, uploadAttachment } from '@/lib/attachments/actions';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import type { ActionResult } from '@/lib/result';
 import type { CreateServiceRecordInput } from '@/lib/service-records/schema';
-import type { TargetInput } from '@/lib/targets/schema';
+import type { PartTargetInput } from '@/lib/targets/schema';
 
 const formSchema = z.object({
   selfPerformed: z.boolean().default(false),
@@ -58,8 +59,9 @@ type Props = {
   vendors: { id: string; name: string }[];
   availableItems: AvailableItem[];
   availableSystems: AvailableSystem[];
-  /** Pre-seeded targets used both for "create from item/system page" and edit. */
-  initialTargets?: TargetInput[];
+  availableParts?: AvailablePart[];
+  /** Pre-seeded targets used both for "create from item/system/part page" and edit. */
+  initialTargets?: PartTargetInput[];
   defaultValues?: FormDefaults;
   action: (
     input: CreateServiceRecordInput | (CreateServiceRecordInput & { id: string }),
@@ -71,6 +73,7 @@ export function ServiceRecordForm({
   vendors,
   availableItems,
   availableSystems,
+  availableParts,
   initialTargets,
   defaultValues,
   action,
@@ -78,7 +81,7 @@ export function ServiceRecordForm({
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [targets, setTargets] = useState<TargetInput[]>(initialTargets ?? []);
+  const [targets, setTargets] = useState<PartTargetInput[]>(initialTargets ?? []);
   const [targetsError, setTargetsError] = useState<string | null>(null);
   const [staged, setStaged] = useState<StagedAttachments>({ files: [], links: [] });
 
@@ -117,7 +120,9 @@ export function ServiceRecordForm({
     const hasVendor = Boolean((formData as { vendorId?: string }).vendorId);
     const isSelf = Boolean((formData as { selfPerformed?: boolean }).selfPerformed);
     if (!hasVendor && !isSelf && targets.length === 0) {
-      setTargetsError('Pick a vendor, a self-performed marker, or at least one item/system');
+      setTargetsError(
+        'Pick a vendor, a self-performed marker, or at least one item, system, or part',
+      );
       return;
     }
     setTargetsError(null);
@@ -161,7 +166,7 @@ export function ServiceRecordForm({
     });
   });
 
-  const handleTargetsChange = (next: TargetInput[]) => {
+  const handleTargetsChange = (next: PartTargetInput[]) => {
     setTargets(next);
     if (next.length > 0 && targetsError) setTargetsError(null);
   };
@@ -182,6 +187,8 @@ export function ServiceRecordForm({
             onChange={handleTargetsChange}
             availableItems={availableItems}
             availableSystems={availableSystems}
+            availableParts={availableParts}
+            allowParts
           />
           {targetsError && (
             <p className="text-sm text-destructive" role="alert">

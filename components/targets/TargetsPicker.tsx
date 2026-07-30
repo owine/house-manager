@@ -2,18 +2,27 @@
 
 import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { expandSystemSelection } from '@/lib/targets/expand';
-import type { TargetInput } from '@/lib/targets/schema';
+import type { PartTargetInput } from '@/lib/targets/schema';
 
 export interface AvailableItem {
   id: string;
   name: string;
   categoryName: string | null;
+  archivedAt: Date | null;
+}
+
+export interface AvailablePart {
+  id: string;
+  name: string;
+  /** `PartKind` as a plain string; rendered through PART_KIND_LABELS. */
+  kind: string | null;
   archivedAt: Date | null;
 }
 
@@ -26,30 +35,64 @@ export interface AvailableSystem {
 }
 
 export interface TargetsPickerProps {
-  value: TargetInput[];
-  onChange: (next: TargetInput[]) => void;
+  /**
+   * The full target set. Rows this picker cannot render (a part row when
+   * `allowParts` is off) are still carried through every `onChange` — see the
+   * note on `allowParts`.
+   */
+  value: PartTargetInput[];
+  onChange: (next: PartTargetInput[]) => void;
   availableItems: AvailableItem[];
   availableSystems: AvailableSystem[];
+  availableParts?: AvailablePart[];
+  /**
+   * Opt-in Parts section. OFF by default, and deliberately so: only
+   * `reminder_targets` and `service_record_targets` count three columns in
+   * their CHECK constraint. `warranty_targets` and `incoming_email_targets`
+   * keep a two-way XOR and have no `partId` column, so a part target emitted
+   * from those forms would be rejected by the database — a 500, not a form
+   * error.
+   *
+   * The TYPE stays wide for all four consumers (TargetInput and
+   * PartTargetInput are mutually assignable), because every mutation below is
+   * derived from `value` and filters on its own kind. That is what lets an
+   * unrenderable part row survive a round-trip instead of being dropped and
+   * then diff-deleted by the update action. Keep it that way.
+   */
+  allowParts?: boolean;
   /** Optional id used to associate label / aria attrs in the parent form. */
   id?: string;
 }
 
 const UNCATEGORIZED = 'Uncategorized';
 
-function hasItem(value: TargetInput[], itemId: string): boolean {
+function hasItem(value: PartTargetInput[], itemId: string): boolean {
   return value.some((t) => t.itemId === itemId);
 }
 
-function hasSystem(value: TargetInput[], systemId: string): boolean {
+function hasSystem(value: PartTargetInput[], systemId: string): boolean {
   return value.some((t) => t.systemId === systemId);
 }
 
-function removeItem(value: TargetInput[], itemId: string): TargetInput[] {
+function hasPart(value: PartTargetInput[], partId: string): boolean {
+  return value.some((t) => t.partId === partId);
+}
+
+function removeItem(value: PartTargetInput[], itemId: string): PartTargetInput[] {
   return value.filter((t) => t.itemId !== itemId);
 }
 
-function removeSystem(value: TargetInput[], systemId: string): TargetInput[] {
+function removeSystem(value: PartTargetInput[], systemId: string): PartTargetInput[] {
   return value.filter((t) => t.systemId !== systemId);
+}
+
+function removePart(value: PartTargetInput[], partId: string): PartTargetInput[] {
+  return value.filter((t) => t.partId !== partId);
+}
+
+function partKindLabel(kind: string | null): string | null {
+  if (!kind) return null;
+  return PART_KIND_LABELS[kind as keyof typeof PART_KIND_LABELS] ?? kind;
 }
 
 function matches(haystack: string | null | undefined, needle: string): boolean {
@@ -63,15 +106,23 @@ export function TargetsPicker({
   onChange,
   availableItems,
   availableSystems,
+  availableParts,
+  allowParts = false,
   id,
 }: TargetsPickerProps) {
   const [query, setQuery] = useState('');
   const [systemsOpen, setSystemsOpen] = useState(false);
   const [itemsOpen, setItemsOpen] = useState(false);
+  const [partsOpen, setPartsOpen] = useState(false);
 
   const activeItems = useMemo(
     () => availableItems.filter((i) => i.archivedAt === null),
     [availableItems],
+  );
+
+  const activeParts = useMemo(
+    () => (availableParts ?? []).filter((p) => p.archivedAt === null),
+    [availableParts],
   );
 
   const filteredSystems = useMemo(
@@ -107,8 +158,25 @@ export function TargetsPicker({
     return map;
   }, [availableSystems]);
 
+  const filteredParts = useMemo(
+    () =>
+      activeParts.filter((p) => matches(p.name, query) || matches(partKindLabel(p.kind), query)),
+    [activeParts, query],
+  );
+
+  const partNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of availableParts ?? []) map.set(p.id, p.name);
+    return map;
+  }, [availableParts]);
+
   const selectedSystems = value.filter((t): t is { systemId: string } => Boolean(t.systemId));
   const selectedItems = value.filter((t): t is { itemId: string } => Boolean(t.itemId));
+  // Part chips only render where parts are offered. Elsewhere a part row is
+  // invisible but still present in `value` — and still round-trips out.
+  const selectedParts = allowParts
+    ? value.filter((t): t is { partId: string } => Boolean(t.partId))
+    : [];
 
   const toggleItem = (itemId: string, checked: boolean) => {
     if (checked) {
@@ -129,6 +197,15 @@ export function TargetsPicker({
     }
   };
 
+  const togglePart = (partId: string, checked: boolean) => {
+    if (checked) {
+      if (hasPart(value, partId)) return;
+      onChange([...value, { partId }]);
+    } else {
+      onChange(removePart(value, partId));
+    }
+  };
+
   return (
     <div id={id} className="space-y-3">
       {/* Search */}
@@ -139,7 +216,9 @@ export function TargetsPicker({
         />
         <Input
           type="search"
-          placeholder="Search systems and items…"
+          placeholder={
+            allowParts ? 'Search systems, items and parts…' : 'Search systems and items…'
+          }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-8"
@@ -148,7 +227,7 @@ export function TargetsPicker({
       </div>
 
       {/* Selected chips */}
-      {(selectedSystems.length > 0 || selectedItems.length > 0) && (
+      {(selectedSystems.length > 0 || selectedItems.length > 0 || selectedParts.length > 0) && (
         <div className="flex flex-wrap gap-1.5" data-testid="targets-picker-chips">
           {selectedSystems.map((t) => (
             <Badge key={`s:${t.systemId}`} variant="secondary" className="gap-1 pr-1">
@@ -174,6 +253,21 @@ export function TargetsPicker({
                 size="icon-xs"
                 aria-label={`Remove item ${itemNameById.get(t.itemId) ?? t.itemId}`}
                 onClick={() => onChange(removeItem(value, t.itemId))}
+                className="size-4 rounded-sm hover:bg-foreground/10"
+              >
+                <X className="size-3" />
+              </Button>
+            </Badge>
+          ))}
+          {selectedParts.map((t) => (
+            <Badge key={`p:${t.partId}`} variant="outline" className="gap-1 pr-1">
+              <span>Part: {partNameById.get(t.partId) ?? t.partId}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Remove part ${partNameById.get(t.partId) ?? t.partId}`}
+                onClick={() => onChange(removePart(value, t.partId))}
                 className="size-4 rounded-sm hover:bg-foreground/10"
               >
                 <X className="size-3" />
@@ -300,6 +394,66 @@ export function TargetsPicker({
           )}
         </CardContent>
       </Card>
+
+      {/* Parts section — only where the table's CHECK counts a partId column. */}
+      {allowParts && (
+        <Card size="sm">
+          <CardContent className="space-y-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-mx-2 w-full justify-start gap-2 px-2 font-medium"
+              onClick={() => setPartsOpen((v) => !v)}
+              aria-expanded={partsOpen}
+              aria-controls={partsOpen ? 'targets-picker-parts-list' : undefined}
+            >
+              {partsOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+              Parts
+              {selectedParts.length > 0 && (
+                <Badge variant="secondary" className="ml-1">
+                  {selectedParts.length} selected
+                </Badge>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">{filteredParts.length}</span>
+            </Button>
+            {partsOpen && (
+              <div
+                id="targets-picker-parts-list"
+                data-testid="targets-picker-parts-list"
+                className="space-y-1 pl-6"
+              >
+                {filteredParts.length === 0 ? (
+                  <p className="py-1 text-xs text-muted-foreground">no parts match.</p>
+                ) : (
+                  filteredParts.map((part) => {
+                    const checked = hasPart(value, part.id);
+                    const cbId = `targets-part-${part.id}`;
+                    const kindLabel = partKindLabel(part.kind);
+                    return (
+                      <label
+                        key={part.id}
+                        htmlFor={cbId}
+                        className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          id={cbId}
+                          checked={checked}
+                          onCheckedChange={(next) => togglePart(part.id, next)}
+                        />
+                        <span className="text-sm">{part.name}</span>
+                        {kindLabel && (
+                          <span className="text-xs text-muted-foreground">({kindLabel})</span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
