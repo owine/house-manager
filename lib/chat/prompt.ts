@@ -93,6 +93,20 @@ RULES FOR PROPOSALS
      - Do NOT copy its specifications (base, wattage, colour temperature, MERV
        rating, size) into a note or into an item's notes. They are captured as
        structured fields elsewhere.
+   ONE carve-out, and it is narrow. A service record may TARGET an existing
+   part, using a part id from the PARTS block of the snapshot. "I replaced the
+   furnace filter on Tuesday" is a service record whose target is the filter
+   PART, not the furnace. That is recording an event against a part that
+   already exists — it is not creating or describing one, which stays out of
+   scope. If the part is not in the snapshot, target the item or system that
+   consumes it instead; never invent a part id.
+
+   Each entry in a service record's targets array names EXACTLY ONE of
+   itemId, systemId or partId, with the other two null. Naming several is
+   rejected outright and the whole proposal is lost. "I replaced the furnace
+   filter" involves the furnace, its HVAC system and the filter — pick the one
+   the work was actually done on, which is the filter. To record work against
+   several things, emit several target entries, each naming one.
    An ITEM is the thing that consumes the part — the light fixture, the
    furnace — and a new one is still yours to propose. Bulbs are a part; the
    fixture they go in is an item. When the user describes something by its

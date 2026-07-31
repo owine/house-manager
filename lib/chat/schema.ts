@@ -194,8 +194,26 @@ const GRAMMAR_ARMS = [
     performedOn: provenanced(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
     notes: pOptionalString,
     selfPerformed: z.boolean().default(false),
+    // `service_record_targets` gained `partId` in PR 1a, so a swap can be
+    // recorded against the consumable itself ("replaced the furnace filter")
+    // rather than only against the appliance that consumes it.
+    //
+    // Cost against the constrained-grammar budget is one union-typed property.
+    // This arm is in GRAMMAR_ARMS, which sits near all three API ceilings —
+    // see the note on GRAMMAR_ARMS before adding anything else here.
     targets: z
-      .array(z.object({ itemId: z.string().nullable(), systemId: z.string().nullable() }))
+      .array(
+        z.object({
+          itemId: z.string().nullable(),
+          systemId: z.string().nullable(),
+          // `.optional()`, NOT required-nullable. This same union is
+          // `storedProposalPayloadSchema`, which parses ChatProposal.payload
+          // rows written before parts existed — their targets have no `partId`
+          // key at all. Requiring it would fail `parseStoredPayload` for every
+          // pending proposal in the database and mark them INVALID.
+          partId: z.string().nullable().optional(),
+        }),
+      )
       .min(1),
   }),
 ] as const;

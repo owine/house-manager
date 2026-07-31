@@ -285,3 +285,32 @@ describe('stripNullish', () => {
     });
   });
 });
+
+// `partId` is `.optional()` rather than required-nullable specifically so that
+// ChatProposal.payload rows written before parts existed keep parsing. If it
+// were required, `parseStoredPayload` would reject every pending proposal in
+// the database and applyProposal would mark them INVALID — a silent data
+// migration nobody asked for.
+describe('CREATE_SERVICE_RECORD targets stay backwards compatible', () => {
+  it('parses a stored payload whose targets predate partId', () => {
+    const legacy = {
+      kind: 'CREATE_SERVICE_RECORD',
+      summary: { value: 'Annual service', source: 'user' },
+      performedOn: { value: '2026-05-01', source: 'user' },
+      selfPerformed: false,
+      targets: [{ itemId: 'i1', systemId: null }],
+    };
+    expect(parseStoredPayload(legacy)).not.toBeNull();
+  });
+
+  it('still parses one that carries partId', () => {
+    const current = {
+      kind: 'CREATE_SERVICE_RECORD',
+      summary: { value: 'Replaced filter', source: 'user' },
+      performedOn: { value: '2026-07-30', source: 'user' },
+      selfPerformed: true,
+      targets: [{ itemId: null, systemId: null, partId: 'p1' }],
+    };
+    expect(parseStoredPayload(current)).not.toBeNull();
+  });
+});
