@@ -58,12 +58,27 @@ export type ReminderRow = {
   updatedAt: Date;
 };
 
+/**
+ * Which record an attachment hangs off.
+ *
+ * Attachment carries six nullable parent FKs and has no route of its own, so
+ * this single value drives both `href` and `itemName`. `name` is the parent's
+ * human label — `Item.name`, `ServiceRecord.summary`, `Warranty.provider`,
+ * `Note.title`, `Part.name` — matching what `canonicalizeAttachment` writes
+ * into the embedding text.
+ */
+type AttachmentParent = {
+  kind: 'item' | 'serviceRecord' | 'warranty' | 'note' | 'part' | 'incomingEmail';
+  id: string;
+  name: string;
+};
+
 export type AttachmentRow = {
   id: string;
   filename: string | null; // schema field is String?
   displayLabel: string | null; // fallback for external-URL attachments with no filename
   extractedText: string | null;
-  item: { id: string; name: string } | null;
+  parent: AttachmentParent | null;
   createdAt: Date; // Attachment has no updatedAt column — use createdAt as the sort key
 };
 
@@ -122,6 +137,26 @@ const ICON: Record<SearchKind, string> = {
   attachment: '📎',
   checklist: '✅',
   part: '🔩',
+};
+
+/**
+ * Where an attachment search hit sends you. There is no /attachments/[id]
+ * route, so every href points at the parent's detail page, each of which
+ * renders that parent's files.
+ *
+ * Only `items` reads a `tab` search param server-side (see
+ * app/(app)/items/[id]/page.tsx). `parts` uses DetailPageShell, whose tabs are
+ * client state with no URL binding — `?tab=files` there would be ignored, so
+ * it isn't sent. Notes, service records and warranties list their attachments
+ * inline with no tab at all.
+ */
+const ATTACHMENT_PARENT_HREF: Record<AttachmentParent['kind'], (id: string) => string> = {
+  item: (id) => `/items/${id}?tab=files`,
+  serviceRecord: (id) => `/service/${id}`,
+  warranty: (id) => `/warranties/${id}`,
+  note: (id) => `/notes/${id}`,
+  part: (id) => `/parts/${id}`,
+  incomingEmail: (id) => `/inbox/${id}`,
 };
 
 /**
@@ -245,11 +280,9 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
     }
     case 'attachment': {
       const r = row as AttachmentRow;
-      // The current app has no /attachments/[id] route. Linking the search
-      // hit to the parent item's page is the closest useful target — the
-      // Item page's Files tab lists the attachments. If there's no parent
-      // item, fall back to /items (better than a guaranteed 404).
-      const href = r.item?.id ? `/items/${r.item.id}?tab=files` : '/items';
+      // A parentless attachment shouldn't exist (every upload path sets one),
+      // but /items beats a guaranteed 404 if one ever does.
+      const href = r.parent ? ATTACHMENT_PARENT_HREF[r.parent.kind](r.parent.id) : '/items';
       return {
         id: `attachment-${r.id}`,
         kind: 'attachment',
@@ -257,8 +290,13 @@ export function toDocument<K extends SearchKind>(kind: K, row: RowFor<K>): Searc
         title: r.filename ?? r.displayLabel ?? '',
         body: r.extractedText ?? '',
         tags: [],
-        itemName: r.item?.name ?? '',
-        itemId: r.item?.id ?? null,
+        // An IncomingEmail has no name worth searching and is not a
+        // SearchKind, so it contributes an href and nothing else — the same
+        // omission canonicalizeAttachment makes on the embedding side.
+        itemName: r.parent && r.parent.kind !== 'incomingEmail' ? r.parent.name : '',
+        // `itemId` is the item-scoped search filter facet, so only a real
+        // item parent may set it. A part or note parent leaves it null.
+        itemId: r.parent?.kind === 'item' ? r.parent.id : null,
         categorySlug: null,
         href,
         iconHint: ICON.attachment,
@@ -429,9 +467,44 @@ export async function buildDocument(kind: SearchKind, id: string): Promise<Searc
           extractedText: true,
           createdAt: true, // Attachment has no updatedAt — use createdAt
           item: { select: { id: true, name: true } },
+          serviceRecord: { select: { id: true, summary: true } },
+          warranty: { select: { id: true, provider: true } },
+          note: { select: { id: true, title: true } },
+          part: { select: { id: true, name: true } },
+          incomingEmail: { select: { id: true } },
         },
       });
-      return row ? toDocument('attachment', row) : null;
+      if (!row) return null;
+      // Same parent ladder, same precedence, as the ATTACHMENT branch of
+      // buildCanonical in lib/embedding/index.ts. Two ladders that disagree
+      // would be worse than one that's incomplete, so they are kept in step:
+      // adding a parent FK to the Attachment model means adding a rung to
+      // both. A missing rung is silent here too — it yields `parent: null`
+      // and the hit falls back to /items.
+      const parent: AttachmentParent | null =
+        row.item != null
+          ? { kind: 'item', id: row.item.id, name: row.item.name }
+          : row.serviceRecord != null
+            ? { kind: 'serviceRecord', id: row.serviceRecord.id, name: row.serviceRecord.summary }
+            : row.warranty != null
+              ? { kind: 'warranty', id: row.warranty.id, name: row.warranty.provider }
+              : row.note != null
+                ? { kind: 'note', id: row.note.id, name: row.note.title }
+                : row.part != null
+                  ? { kind: 'part', id: row.part.id, name: row.part.name }
+                  : row.incomingEmail != null
+                    ? { kind: 'incomingEmail', id: row.incomingEmail.id, name: '' }
+                    : null;
+      const {
+        item: _item,
+        serviceRecord: _serviceRecord,
+        warranty: _warranty,
+        note: _note,
+        part: _part,
+        incomingEmail: _incomingEmail,
+        ...rest
+      } = row;
+      return toDocument('attachment', { ...rest, parent });
     }
     case 'checklist': {
       const row = await prisma.checklist.findUnique({
