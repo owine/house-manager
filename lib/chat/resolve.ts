@@ -119,13 +119,19 @@ export async function validateProposal(
         if (t.itemId && !snap.itemIds.has(t.itemId)) return bad('target itemId not in snapshot');
         if (t.systemId && !snap.systemIds.has(t.systemId))
           return bad('target systemId not in snapshot');
-        // XOR, both directions. `service_record_targets` carries a hand-written
-        // CHECK constraint (squashed migration.sql:747) that Prisma cannot
-        // regenerate. Letting a both-set target through would throw a Prisma
+        if (t.partId && !snap.partIds.has(t.partId)) return bad('target partId not in snapshot');
+        // Exactly one of three. `service_record_targets` carries a hand-written
+        // CHECK — `num_nonnulls("itemId","systemId","partId") = 1`, generalized
+        // from the original pairwise XOR in PR 1a — that Prisma cannot
+        // regenerate. Letting a bad shape through would throw a Prisma
         // constraint error from inside a server action, violating the
         // never-throw skeleton.
-        if (!t.itemId && !t.systemId) return bad('target must name an item or a system');
-        if (t.itemId && t.systemId) return bad('target must name exactly one of item or system');
+        //
+        // Counted rather than enumerated: the pairwise form needed one clause
+        // per pair and would need six at four columns.
+        const parents = [t.itemId, t.systemId, t.partId].filter(Boolean).length;
+        if (parents === 0) return bad('target must name an item, a system, or a part');
+        if (parents > 1) return bad('target must name exactly one of item, system, or part');
       }
       return { ok: true };
     }

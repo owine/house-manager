@@ -1083,6 +1083,7 @@ async function applyCreateServiceRecord(
           create: payload.targets.map((t) => ({
             itemId: t.itemId ?? null,
             systemId: t.systemId ?? null,
+            partId: t.partId ?? null,
           })),
         },
       },

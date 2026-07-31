@@ -248,3 +248,53 @@ describe('snapshotLogIds', () => {
     ).toEqual([]);
   });
 });
+
+// CREATE_SERVICE_RECORD gained `partId` so a swap can be recorded against the
+// consumable itself. `service_record_targets` enforces
+// num_nonnulls(itemId, systemId, partId) = 1 in the database, and a bad shape
+// reaching Prisma would throw from inside a server action — violating the
+// never-throw skeleton. So validation has to catch all of it here.
+describe('CREATE_SERVICE_RECORD part targets', () => {
+  const snap = {
+    itemIds: new Set(['i1']),
+    systemIds: new Set(['s1']),
+    categoryIds: new Set(['c1']),
+    noteIds: new Set<string>(),
+    partIds: new Set(['p1']),
+  };
+  const base = {
+    kind: 'CREATE_SERVICE_RECORD' as const,
+    summary: { value: 'Replaced filter', source: 'user' as const },
+    performedOn: { value: '2026-07-30', source: 'user' as const },
+    selfPerformed: true,
+  };
+  // validateProposal became async in PR 2 (UPDATE_PART without partKind has to
+  // read the stored kind), so every assertion awaits.
+  const withTargets = (t: Array<Record<string, string | null>>) =>
+    validateProposal({ ...base, targets: t } as never, snap);
+
+  it('accepts a part target that is in the snapshot', async () => {
+    expect((await withTargets([{ itemId: null, systemId: null, partId: 'p1' }])).ok).toBe(true);
+  });
+
+  it('rejects a part id absent from the snapshot', async () => {
+    const r = await withTargets([{ itemId: null, systemId: null, partId: 'nope' }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/partId not in snapshot/);
+  });
+
+  it('rejects two parents, including the new item+part pair', async () => {
+    expect((await withTargets([{ itemId: 'i1', systemId: null, partId: 'p1' }])).ok).toBe(false);
+    expect((await withTargets([{ itemId: 'i1', systemId: 's1', partId: null }])).ok).toBe(false);
+    expect((await withTargets([{ itemId: null, systemId: 's1', partId: 'p1' }])).ok).toBe(false);
+  });
+
+  it('rejects a target naming nothing at all', async () => {
+    expect((await withTargets([{ itemId: null, systemId: null, partId: null }])).ok).toBe(false);
+  });
+
+  it('still accepts the pre-existing item and system shapes', async () => {
+    expect((await withTargets([{ itemId: 'i1', systemId: null, partId: null }])).ok).toBe(true);
+    expect((await withTargets([{ itemId: null, systemId: 's1', partId: null }])).ok).toBe(true);
+  });
+});
