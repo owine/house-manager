@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { freeformMetadataSchema } from '@/lib/metadata/freeform';
+import { enqueuePartRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { partKindSchemaFor } from './kinds';
@@ -110,6 +111,11 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
 
   await enqueueSearchIndex('part', id, 'upsert');
   await enqueueEmbed('PART', id);
+  // Unconditional — no `if (nameChanged)` guard, same reasoning as the item and
+  // system rename cascades: the embed worker hashes canonical text and skips
+  // no-op re-embeds, so paying one query batch per update is cheaper than
+  // maintaining a correct dirty check.
+  await enqueuePartRenameCascade(id);
 
   revalidatePart(id);
   return { ok: true, data: { id } };

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { httpUrlSchema } from '@/lib/http-url';
 
-const PARENT_TYPES = ['item', 'warranty', 'serviceRecord', 'note'] as const;
+const PARENT_TYPES = ['item', 'warranty', 'serviceRecord', 'note', 'part'] as const;
 export type ParentType = (typeof PARENT_TYPES)[number];
 
 export const uploadAttachmentSchema = z.object({

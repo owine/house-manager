@@ -275,10 +275,15 @@ async function buildCanonical(
           warranty: { select: { provider: true } },
           serviceRecord: { select: { summary: true } },
           note: { select: { title: true } },
+          part: { select: { name: true } },
         },
       });
       if (!a) return null;
       if (a.aiIndexable === false) return null; // user opted out
+      // Nothing enforces that this ladder covers every parent FK — a missing
+      // branch just yields `parent: null`, and canonicalizeAttachment omits the
+      // line silently. Adding a parent type to lib/attachments/schema.ts means
+      // adding a rung here too.
       const parent =
         a.item != null
           ? { kind: 'item', name: a.item.name }
@@ -288,7 +293,9 @@ async function buildCanonical(
               ? { kind: 'warranty', name: a.warranty.provider }
               : a.note != null
                 ? { kind: 'note', name: a.note.title }
-                : null;
+                : a.part != null
+                  ? { kind: 'part', name: a.part.name }
+                  : null;
       return canonicalizeAttachment({
         filename: a.filename,
         extractedText: a.extractedText,
