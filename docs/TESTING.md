@@ -8,7 +8,7 @@ The app has four test surfaces — **unit**, **integration**, **e2e**, and **smo
 |---|---|---|---|
 | PR gate (CI) | (automatic on push / PR) | lint, typecheck, migrate-check, ggshield, **unit**, **integration**, and **e2e `@critical` only** | Every push and PR. Heavy jobs skip on docs-only changes (see CI tiers below). |
 | Pre-merge (local) | `pnpm test:local` | unit → integration → **full** e2e → coverage check | Before opening a PR / before merge. The umbrella command. |
-| Smoke (opt-in) | `pnpm test:smoke` | Real-Anthropic-API contract checks | Manually, when touching AI prompt/response code or verifying the live contract. Needs `ANTHROPIC_API_KEY`. Never in PR CI. |
+| Smoke (opt-in) | `pnpm test:smoke` | Live external-API contract checks — Anthropic (suggest) and Voyage (embeddings) | Manually, when touching AI prompt/response or embedding code, or verifying the live contract. Needs a real `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY`; each file self-skips without one. Never in PR CI. |
 
 `pnpm test:local` is the single command to run before merge — it chains `test:unit && test:integration && test:e2e:local && test:coverage:check`. CI runs only the cheap subset (e2e is restricted to `@critical`), so the full e2e suite and the coverage floor are your responsibility locally.
 
@@ -112,6 +112,17 @@ guards the wiring and skips itself when there is no `.env`.
 Note that an optional var left empty in an env file (`VOYAGE_API_KEY=`) parses
 as unset rather than failing the whole schema — see `optionalEnv` in
 `lib/env.ts`.
+
+The checked-in `.env` holds placeholders for the paid APIs, so the smoke tier
+self-skips on it. Inject real keys for a live run without writing them to disk
+— an env file of `op://` references and:
+
+```bash
+op run --env-file=live.env -- pnpm test:smoke
+```
+
+Injected vars beat `.env` (the shell-wins rule above), which is what lets a
+real key override the checked-in placeholder for one run.
 
 ## Running e2e locally
 
