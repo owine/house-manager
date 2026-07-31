@@ -85,6 +85,34 @@ This ties into the spec/plan workflow: a plan task that ships a user-facing flow
 
 **Why the floor looks low (do not misread it):** the scope includes `components/**`, and React components are largely exercised by **e2e (Playwright)**, whose coverage V8 unit-coverage does **not** count. So a chunk of the component code shows as "uncovered" in this number while being thoroughly tested through the browser. The threshold is therefore a **regression ratchet on business logic (`lib`/`worker`) plus whatever component unit coverage exists** — *not* a signal that "half the code is untested." Component/UI correctness is guarded by the e2e suite and the `@critical` rule, not by this percentage.
 
+## Env in Vitest
+
+Vitest reads `.env` — but only because `vitest.config.ts` makes it. Vite loads
+`.env` into `import.meta.env` for `VITE_`-prefixed keys only, so nothing was
+putting it on `process.env`, and `getEnv()` threw inside every worker on a
+fully configured machine. `vitest.env.ts` closes that with Vite's `loadEnv`
+escape hatch; `vitest.smoke.config.ts` uses the same helper, since a live
+Anthropic call needs the real key.
+
+Two rules it holds to, both worth preserving if you touch it:
+
+- **The shell wins over the file.** Already-exported vars are filtered out, not
+  overwritten — CI's job env, a one-off `DATABASE_URL=… pnpm exec vitest`, and
+  `NODE_ENV` (this repo's `.env` says `development`; Vitest has already set
+  `test` before the config is evaluated).
+- **CI is unchanged.** There is no `.env` there, so `loadEnv` returns nothing.
+
+Practical consequence: a test that needs one env var can still `vi.mock`
+`@/lib/env` — most integration tests do, narrowing to the single var they read
+rather than demanding a dozen production secrets. But a test that wants the
+**real** path (a live Voyage embed, a real email compose) can now just call
+`getEnv()`, which was not possible before. `tests/unit/env-loading.test.ts`
+guards the wiring and skips itself when there is no `.env`.
+
+Note that an optional var left empty in an env file (`VOYAGE_API_KEY=`) parses
+as unset rather than failing the whole schema — see `optionalEnv` in
+`lib/env.ts`.
+
 ## Running e2e locally
 
 `pnpm test:e2e:local` needs your local infra up first:
