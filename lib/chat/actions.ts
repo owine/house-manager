@@ -17,7 +17,11 @@ import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import { partKindSchemaFor } from '@/lib/parts/kinds';
 import { LIVE_PART } from '@/lib/parts/queries';
-import { enqueueItemRenameCascade, enqueueSystemRenameCascade } from '@/lib/rename-cascade';
+import {
+  enqueueItemRenameCascade,
+  enqueuePartRenameCascade,
+  enqueueSystemRenameCascade,
+} from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { parseCalendarDate, resolveAnchorDay } from './dates';
@@ -1262,6 +1266,17 @@ async function applyUpdatePart(
 
   await enqueueSearchIndex('part', payload.partId, 'upsert');
   await enqueueEmbed('PART', payload.partId);
+  // Same shape as the item/system cascades above: unconditional, and wrapped
+  // because cascade.ts does not guard its own DB calls while the part write has
+  // already landed under an ACCEPTED claim.
+  try {
+    await enqueuePartRenameCascade(payload.partId);
+  } catch (err) {
+    logger.warn(
+      { err, proposalId: id, partId: payload.partId },
+      'chat.apply: part rename cascade failed (non-fatal)',
+    );
+  }
 
   await prisma.chatProposal.update({
     where: { id },

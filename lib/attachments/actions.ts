@@ -16,11 +16,15 @@ const logger = getLogger('attachments.actions');
 
 const MAX_BYTES = 25_000_000;
 
-const FK_FIELD: Record<ParentType, 'itemId' | 'warrantyId' | 'serviceRecordId' | 'noteId'> = {
+const FK_FIELD: Record<
+  ParentType,
+  'itemId' | 'warrantyId' | 'serviceRecordId' | 'noteId' | 'partId'
+> = {
   item: 'itemId',
   warranty: 'warrantyId',
   serviceRecord: 'serviceRecordId',
   note: 'noteId',
+  part: 'partId',
 };
 
 const REVALIDATE_PATH: Record<ParentType, (id: string) => string[]> = {
@@ -28,6 +32,7 @@ const REVALIDATE_PATH: Record<ParentType, (id: string) => string[]> = {
   warranty: (id) => [`/warranties/${id}`, '/dashboard'],
   serviceRecord: (id) => [`/service/${id}`, '/dashboard'],
   note: (id) => [`/notes/${id}`, '/dashboard'],
+  part: (id) => [`/parts/${id}`, '/dashboard'],
 };
 
 async function parentExists(parentType: ParentType, id: string): Promise<boolean> {
@@ -40,6 +45,8 @@ async function parentExists(parentType: ParentType, id: string): Promise<boolean
       return !!(await prisma.serviceRecord.findUnique({ where: { id }, select: { id: true } }));
     case 'note':
       return !!(await prisma.note.findUnique({ where: { id }, select: { id: true } }));
+    case 'part':
+      return !!(await prisma.part.findUnique({ where: { id }, select: { id: true } }));
   }
 }
 
@@ -138,7 +145,13 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
 
   const row = await prisma.attachment.findUnique({
     where: { id },
-    select: { itemId: true, warrantyId: true, serviceRecordId: true, noteId: true },
+    select: {
+      itemId: true,
+      warrantyId: true,
+      serviceRecordId: true,
+      noteId: true,
+      partId: true,
+    },
   });
   if (!row) return { ok: false, formError: 'Not found' };
 
@@ -152,6 +165,7 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   if (row.warrantyId) revalidatePath(`/warranties/${row.warrantyId}`);
   if (row.serviceRecordId) revalidatePath(`/service/${row.serviceRecordId}`);
   if (row.noteId) revalidatePath(`/notes/${row.noteId}`);
+  if (row.partId) revalidatePath(`/parts/${row.partId}`);
   revalidatePath('/dashboard');
 
   return { ok: true, data: undefined };

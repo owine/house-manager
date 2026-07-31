@@ -40,6 +40,19 @@ import { enqueueSearchIndex } from '@/lib/search/client';
  * Bolting `enqueueSearchIndex` beside each `enqueueEmbed` would therefore miss
  * reminders and pointlessly re-index checklists.
  *
+ * A **part** rename has its own asymmetry, in the same spirit. Part.name is
+ * denormalized into exactly two derived surfaces:
+ *
+ * | consumer of Part.name        | embedding | search doc carries the part name |
+ * |------------------------------|-----------|----------------------------------|
+ * | service record (ServiceTarget.partId) | yes — canonicalizeServiceRecord's `targetNames` | yes — the service document's `targetNames` pushes `t.part.name` |
+ * | attachment (Attachment.partId)        | yes — "Linked to part: …" | NO — AttachmentRow projects only `item`, so a part-attached file's `itemName` is '' either way |
+ *
+ * So service records go to both halves and attachments to the embedding half
+ * alone. Reminders are absent from both: a reminder targeting a part is not
+ * embedded (no REMINDER type) *and* its search document reads only its first
+ * item target, never a part.
+ *
  * A **system** rename reaches only parts, whose `parentNames` joins item and
  * system names. A **vendor** rename reaches no search document at all — a
  * service record's body is its notes, not its vendor.
@@ -107,6 +120,30 @@ export async function enqueueVendorRenameCascade(vendorId: string): Promise<void
     select: { id: true },
   });
   await Promise.all(services.map((s) => enqueueEmbed('SERVICE_RECORD', s.id)));
+}
+
+/**
+ * Part.name flows into: SERVICE_RECORD (via ServiceRecordTarget.partId),
+ * ATTACHMENT (direct partId).
+ */
+export async function enqueuePartRenameCascade(partId: string): Promise<void> {
+  const [services, attachments] = await Promise.all([
+    prisma.serviceRecord.findMany({
+      where: { targets: { some: { partId } } },
+      select: { id: true },
+    }),
+    prisma.attachment.findMany({ where: { partId }, select: { id: true } }),
+  ]);
+  await Promise.all([
+    ...services.map((s) => enqueueEmbed('SERVICE_RECORD', s.id)),
+    ...attachments.map((a) => enqueueEmbed('ATTACHMENT', a.id)),
+
+    // Search index: service documents aggregate every target's name into
+    // `targetNames`, so they must be refreshed. Attachment documents do NOT —
+    // AttachmentRow carries only `item`, so a part-attached file's `itemName`
+    // is '' before and after the rename, and re-indexing it is pure waste.
+    ...services.map((s) => enqueueSearchIndex('service', s.id, 'upsert')),
+  ]);
 }
 
 /**

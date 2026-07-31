@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { LocalDate } from '@/components/ui/LocalDate';
 import { archivePart, restorePart } from '@/lib/parts/actions';
 import { getPart } from '@/lib/parts/queries';
+import { FilesTab } from './tabs/FilesTab';
 import { LinksTab } from './tabs/LinksTab';
 import { OverviewTab } from './tabs/OverviewTab';
 import { RemindersTab } from './tabs/RemindersTab';
@@ -66,6 +67,7 @@ export default async function PartDetailPage({ params }: { params: Params }) {
         { value: 'links', label: 'Links', content: <LinksTab part={part} /> },
         { value: 'reminders', label: 'Reminders', content: <RemindersTab part={part} /> },
         { value: 'service', label: 'Service', content: <ServiceTab part={part} /> },
+        { value: 'files', label: 'Files', content: <FilesTab part={part} /> },
       ]}
     />
   );
