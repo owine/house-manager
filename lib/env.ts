@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+/**
+ * An optional var whose empty string means "unset".
+ *
+ * Any env-file mechanism produces empty strings for values nobody filled in:
+ * the Dockerfile's `ARG X` + `ENV X=$X` pattern with no `--build-arg`, a
+ * `.env` line left as `VOYAGE_API_KEY=`, a compose file interpolating an
+ * unset variable. Without this, `.optional()` rejects them — `''` is neither
+ * `undefined` nor a value that clears `.min(1)` / `.url()` — and the whole
+ * process fails to boot over a var it was told is optional. That already cost
+ * one prod docker build (see the SENTRY_DSN note below) and, on the way in
+ * here, blocked `getEnv()` in every Vitest worker on a dev machine whose .env
+ * carries an empty `VOYAGE_API_KEY=`.
+ */
+function optionalEnv<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+}
+
 const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   DATABASE_URL: z.string().url(),
@@ -32,15 +49,18 @@ const EnvSchema = z.object({
   //   - INBOUND_EMAIL_HMAC_KEY must match ForwardEmail's "Webhook Signature
   //     Payload Verification Key" exactly. The actual secret; never traverses
   //     the wire once configured.
-  INBOUND_EMAIL_TOKEN: z.string().min(16).optional(),
-  INBOUND_EMAIL_HMAC_KEY: z.string().min(16).optional(),
-  APP_URL: z.string().url().optional(),
+  INBOUND_EMAIL_TOKEN: optionalEnv(z.string().min(16)),
+  INBOUND_EMAIL_HMAC_KEY: optionalEnv(z.string().min(16)),
+  APP_URL: optionalEnv(z.string().url()),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
   // Empty string is tolerated alongside undefined: the Dockerfile's
   // `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN` pattern produces an
   // empty-string ENV when no --build-arg is passed, which a bare
   // `.url().optional()` would reject. Consumer code already truthy-checks
-  // (`if (process.env.SENTRY_DSN)`), so empty string degrades cleanly.
+  // (`if (process.env.SENTRY_DSN)`), so empty string degrades cleanly. These
+  // two keep `''` as a value rather than using `optionalEnv` — the observable
+  // behaviour is identical for a truthy check, and rewriting them would churn
+  // the schema that shipped the original fix.
   SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
   SENTRY_AUTH_TOKEN: z.string().optional(),
@@ -50,7 +70,7 @@ const EnvSchema = z.object({
   // OCR_BACKEND switches the attachment-text extractor: 'tesseract' runs
   // local OCR for image PDFs / image attachments; 'none' is for CI to
   // avoid the Tesseract.js wasm load.
-  VOYAGE_API_KEY: z.string().min(1).optional(),
+  VOYAGE_API_KEY: optionalEnv(z.string().min(1)),
   // Truthy literals from the env file collapse to a single boolean.
   ASK_ENABLED: z
     .enum(['true', 'false', '1', '0'])

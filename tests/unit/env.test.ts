@@ -108,6 +108,43 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...baseValid, SENTRY_DSN: 'not-a-url' })).toThrow();
   });
 
+  // Same failure mode as the SENTRY_DSN case above, on every other optional
+  // var: an env file line left as `VOYAGE_API_KEY=` yields '', which is
+  // neither undefined nor a value that clears `.min(1)` / `.url()`. Before
+  // `optionalEnv`, that made the whole process fail to boot over a var the
+  // schema calls optional — and made getEnv() throw in every Vitest worker on
+  // a machine whose .env has one.
+  it('treats an empty optional var as unset', () => {
+    const baseValid = {
+      ANTHROPIC_API_KEY: 'sk-ant-test-fixture',
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+      AUTH_SECRET: 'a'.repeat(32),
+      AUTH_OIDC_ISSUER: 'https://auth.example.com',
+      AUTH_OIDC_CLIENT_ID: 'house-manager',
+      AUTH_OIDC_CLIENT_SECRET: 'secret',
+      MEILI_HOST: 'http://meilisearch:7700',
+      MEILI_KEY: 'key',
+      FILES_DIR: '/data/files',
+      NODE_ENV: 'test',
+      WEB_PUSH_VAPID_PUBLIC_KEY: 'test-vapid-public-key-fixture',
+      WEB_PUSH_VAPID_PRIVATE_KEY: 'test-vapid-private-key-fixture',
+      WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
+      FORWARDEMAIL_API_KEY: 'test-api-key',
+      FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+    };
+    const env = parseEnv({
+      ...baseValid,
+      VOYAGE_API_KEY: '',
+      APP_URL: '',
+      INBOUND_EMAIL_TOKEN: '',
+      INBOUND_EMAIL_HMAC_KEY: '',
+    });
+    expect(env.VOYAGE_API_KEY).toBeUndefined();
+    expect(env.APP_URL).toBeUndefined();
+    expect(env.INBOUND_EMAIL_TOKEN).toBeUndefined();
+    expect(env.INBOUND_EMAIL_HMAC_KEY).toBeUndefined();
+  });
+
   it('rejects too-short INBOUND_EMAIL_TOKEN / INBOUND_EMAIL_HMAC_KEY (16 char min)', () => {
     const baseValid = {
       ANTHROPIC_API_KEY: 'sk-ant-test-fixture',

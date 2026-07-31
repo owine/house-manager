@@ -1,13 +1,17 @@
 import { defineConfig } from 'vitest/config';
+import { dotenvFallbacks } from './vitest.env';
 
 // One config, two test surfaces. Unit and integration are split by directory
 // path in the package.json scripts (test:unit / test:integration). This is
 // simpler than Vitest's `projects` feature and avoids version-coupling.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: {
     alias: { '@': new URL('./', import.meta.url).pathname },
   },
   test: {
+    // Lets a test exercise a real getEnv() consumer instead of mocking
+    // @/lib/env. See vitest.env.ts for why this isn't automatic.
+    env: dotenvFallbacks(mode),
     globals: false,
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
@@ -45,4 +49,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
