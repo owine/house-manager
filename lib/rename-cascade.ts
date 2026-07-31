@@ -46,12 +46,11 @@ import { enqueueSearchIndex } from '@/lib/search/client';
  * | consumer of Part.name        | embedding | search doc carries the part name |
  * |------------------------------|-----------|----------------------------------|
  * | service record (ServiceTarget.partId) | yes — canonicalizeServiceRecord's `targetNames` | yes — the service document's `targetNames` pushes `t.part.name` |
- * | attachment (Attachment.partId)        | yes — "Linked to part: …" | NO — AttachmentRow projects only `item`, so a part-attached file's `itemName` is '' either way |
+ * | attachment (Attachment.partId)        | yes — "Linked to part: …" | yes — AttachmentRow's `parent` resolves whichever FK is set, so a part-attached file's `itemName` is the part's name |
  *
- * So service records go to both halves and attachments to the embedding half
- * alone. Reminders are absent from both: a reminder targeting a part is not
- * embedded (no REMINDER type) *and* its search document reads only its first
- * item target, never a part.
+ * So both consumers go to both halves. Reminders are absent from both: a
+ * reminder targeting a part is not embedded (no REMINDER type) *and* its
+ * search document reads only its first item target, never a part.
  *
  * A **system** rename reaches only parts, whose `parentNames` joins item and
  * system names. A **vendor** rename reaches no search document at all — a
@@ -61,7 +60,11 @@ import { enqueueSearchIndex } from '@/lib/search/client';
  *     ServiceRecord.summary → ATTACHMENT (via serviceRecordId),
  *     Warranty.provider → ATTACHMENT (via warrantyId),
  *     Note.title → ATTACHMENT (via noteId). Add helpers here when those
- *     rename paths become user-facing.
+ *     rename paths become user-facing. Those three now leave a stale *search*
+ *     document as well as a stale embedding: the attachment document's
+ *     `itemName` reads whichever parent is set, so renaming a note, warranty
+ *     or service record leaves its attached files findable only by the old
+ *     name until the nightly search.reindex rebuilds the index.
  */
 
 /**
@@ -139,10 +142,11 @@ export async function enqueuePartRenameCascade(partId: string): Promise<void> {
     ...attachments.map((a) => enqueueEmbed('ATTACHMENT', a.id)),
 
     // Search index: service documents aggregate every target's name into
-    // `targetNames`, so they must be refreshed. Attachment documents do NOT —
-    // AttachmentRow carries only `item`, so a part-attached file's `itemName`
-    // is '' before and after the rename, and re-indexing it is pure waste.
+    // `targetNames`, and attachment documents denormalize their parent's name
+    // into `itemName` — a part-attached file is findable by the part's name,
+    // so it goes stale on a rename just like the service record does.
     ...services.map((s) => enqueueSearchIndex('service', s.id, 'upsert')),
+    ...attachments.map((a) => enqueueSearchIndex('attachment', a.id, 'upsert')),
   ]);
 }
 

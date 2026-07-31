@@ -76,7 +76,7 @@ describe('toDocument', () => {
         filename: 'manual.pdf',
         displayLabel: null,
         extractedText: null, // dormant until Plan 4c
-        item: { id: 'i1', name: 'Furnace' },
+        parent: { kind: 'item', id: 'i1', name: 'Furnace' },
         createdAt: NOW, // Attachment has createdAt only — no updatedAt column
       };
       const doc = toDocument('attachment', row);
@@ -92,7 +92,7 @@ describe('toDocument', () => {
         filename: null,
         displayLabel: 'Vendor portal',
         extractedText: null,
-        item: { id: 'i1', name: 'Furnace' },
+        parent: { kind: 'item', id: 'i1', name: 'Furnace' },
         createdAt: NOW,
       };
       const doc = toDocument('attachment', row);
@@ -105,7 +105,7 @@ describe('toDocument', () => {
         filename: null,
         displayLabel: null,
         extractedText: null,
-        item: null,
+        parent: null,
         createdAt: NOW,
       });
       expect(doc.title).toBe('');
@@ -117,11 +117,94 @@ describe('toDocument', () => {
         filename: 'receipt.pdf',
         displayLabel: null,
         extractedText: 'Total: $42.00',
-        item: null,
+        parent: null,
         createdAt: NOW,
       };
       const doc = toDocument('attachment', row);
       expect(doc.body).toBe('Total: $42.00');
+    });
+
+    // Attachment has no route of its own, so the href is the parent's detail
+    // page. Every non-item parent used to fall through to the /items list —
+    // a hit on a note- or part-attached file sent you somewhere unrelated.
+    it.each([
+      ['item', '/items/p1?tab=files'],
+      ['serviceRecord', '/service/p1'],
+      ['warranty', '/warranties/p1'],
+      ['note', '/notes/p1'],
+      ['part', '/parts/p1'],
+      ['incomingEmail', '/inbox/p1'],
+    ] as const)('links a %s-attached file to its parent', (kind, href) => {
+      const doc = toDocument('attachment', {
+        id: 'a5',
+        filename: 'spec.pdf',
+        displayLabel: null,
+        extractedText: null,
+        parent: { kind, id: 'p1', name: 'Parent' },
+        createdAt: NOW,
+      });
+      expect(doc.href).toBe(href);
+    });
+
+    it('carries the parent name in itemName for every named parent kind', () => {
+      for (const kind of ['item', 'serviceRecord', 'warranty', 'note', 'part'] as const) {
+        const doc = toDocument('attachment', {
+          id: 'a6',
+          filename: 'spec.pdf',
+          displayLabel: null,
+          extractedText: null,
+          parent: { kind, id: 'p1', name: 'Spring tune-up' },
+          createdAt: NOW,
+        });
+        expect(doc.itemName).toBe('Spring tune-up');
+      }
+    });
+
+    // itemId is the item-scoped search FILTER facet. Setting it from a part
+    // or note parent would make those files leak into an item-filtered query.
+    it('sets itemId only for an item parent', () => {
+      const base = {
+        id: 'a7',
+        filename: 'spec.pdf',
+        displayLabel: null,
+        extractedText: null,
+        createdAt: NOW,
+      };
+      expect(
+        toDocument('attachment', { ...base, parent: { kind: 'item', id: 'i1', name: 'Furnace' } })
+          .itemId,
+      ).toBe('i1');
+      for (const kind of ['serviceRecord', 'warranty', 'note', 'part', 'incomingEmail'] as const) {
+        expect(
+          toDocument('attachment', { ...base, parent: { kind, id: 'p1', name: 'x' } }).itemId,
+        ).toBeNull();
+      }
+    });
+
+    it('leaves itemName empty for an incoming-email parent', () => {
+      const doc = toDocument('attachment', {
+        id: 'a8',
+        filename: 'invoice.pdf',
+        displayLabel: null,
+        extractedText: null,
+        parent: { kind: 'incomingEmail', id: 'e1', name: '' },
+        createdAt: NOW,
+      });
+      expect(doc.itemName).toBe('');
+      expect(doc.href).toBe('/inbox/e1');
+    });
+
+    it('falls back to /items when an attachment somehow has no parent', () => {
+      const doc = toDocument('attachment', {
+        id: 'a9',
+        filename: 'orphan.pdf',
+        displayLabel: null,
+        extractedText: null,
+        parent: null,
+        createdAt: NOW,
+      });
+      expect(doc.href).toBe('/items');
+      expect(doc.itemId).toBeNull();
     });
   });
 

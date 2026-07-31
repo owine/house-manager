@@ -180,9 +180,10 @@ describe('a part-attached file embeds its parent name', () => {
 
 /**
  * The part half of the two-pipeline divergence documented in
- * lib/rename-cascade.ts. Service records land in BOTH pipelines; attachments
- * land in the embedding half only, because AttachmentRow in
- * lib/search/document.ts projects `item` and nothing else.
+ * lib/rename-cascade.ts. Both service records and attachments land in BOTH
+ * pipelines: the service document denormalizes every target's name into
+ * `targetNames`, and the attachment document denormalizes its parent's name
+ * into `itemName`.
  */
 describe('enqueuePartRenameCascade', () => {
   async function seed() {
@@ -235,18 +236,33 @@ describe('enqueuePartRenameCascade', () => {
     expect(searchCalls).toContainEqual({ kind: 'service', id: sr.id });
   });
 
-  it('does NOT re-index a part-attached attachment, whose document carries no part name', async () => {
+  it('re-indexes a part-attached attachment, whose document carries the part name', async () => {
     const { part, att } = await seed();
     searchCalls.length = 0;
     embedCalls.length = 0;
 
     await cascade.enqueuePartRenameCascade(part.id);
 
-    // The embedding half DOES cover it ("Linked to part: …")...
+    // Both halves cover it: "Linked to part: …" in the embedding text, and
+    // `itemName` in the search document.
     expect(embedCalls).toContainEqual({ type: 'ATTACHMENT', id: att.id });
-    // ...while AttachmentRow projects only `item`, so the document is byte-for-byte
-    // identical after the rename and re-indexing it is pure waste.
-    expect(searchCalls.map((c) => c.id)).not.toContain(att.id);
+    expect(searchCalls).toContainEqual({ kind: 'attachment', id: att.id });
+  });
+
+  it('rebuilds the attachment document with the new part name', async () => {
+    const { part, att } = await seed();
+    const { buildDocument } = await import('@/lib/search/document');
+
+    const before = await buildDocument('attachment', att.id);
+    expect(before?.itemName).toBe('FPR 10 20x25x1');
+    expect(before?.href).toBe(`/parts/${part.id}`);
+    // A part parent must not claim the item-scoped filter facet.
+    expect(before?.itemId).toBeNull();
+
+    await ctx.prisma.part.update({ where: { id: part.id }, data: { name: 'MERV 13 20x25x1' } });
+
+    const after = await buildDocument('attachment', att.id);
+    expect(after?.itemName).toBe('MERV 13 20x25x1');
   });
 
   it('updatePart fires the cascade', async () => {
