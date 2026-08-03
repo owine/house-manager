@@ -309,16 +309,27 @@ broken test. It bit both the dockerized harness (#325) and the host in the same 
 ## Conventions
 
 - **Dependency pinning:** every dep is pinned to an exact version (`x.y.z`, no range
-  prefix) — as are `engines` and `packageManager`. `.npmrc` enforces `save-exact=true`,
-  and the shared Renovate preset (`github>owine/renovate-config`) uses
+  prefix) — as are `engines` and `packageManager`. `pnpm-workspace.yaml` enforces
+  `savePrefix: ""`, and the shared Renovate preset (`github>owine/renovate-config`) uses
   `rangeStrategy: "pin"`. Renovate drives updates; don't hand-edit versions or
   reintroduce `~`/`^`. Verify a dep is on its current major and actively maintained
   before adding it.
-- **`.npmrc` supply-chain settings:** `minimum-release-age=10080` quarantines newly
-  published versions for 7 days, so a Renovate PR can sit un-mergeable until the window
-  clears — that's the fence working, not a stuck bot. `prefer-frozen-lockfile=true` makes
-  a stale `pnpm-lock.yaml` fail CI rather than silently self-repair, which is why a
-  long-lived branch should be rebased before merge.
+- **pnpm settings live in `pnpm-workspace.yaml`, not `.npmrc`.** pnpm 11 reads only
+  registry, authentication and certificate settings from INI files; every other key
+  there is silently ignored — no warning, no error. This repo had four inert keys in a
+  root `.npmrc` for exactly that reason; the file is gone. Add settings in
+  `pnpm-workspace.yaml` (camelCase) and confirm with `pnpm config get <key>` — a
+  setting that answers `undefined` is not in effect.
+- **Release-age soak belongs to Renovate.** The shared preset gates every update on age
+  (3 days minor/patch, 7 days majors, 0 for CVEs and lockfile maintenance). Do not add
+  `minimumReleaseAge` here. A pnpm-side soak double-gates against Renovate: Renovate's
+  gate decides when a PR opens, pnpm's decides when a lockfile can be written, so a
+  release in the gap gets bumped in `package.json` and then refused by the resolver —
+  `renovate/artifacts` fails, the lockfile goes stale, and `--frozen-lockfile` rejects
+  the PR. The 0-day CVE tier fails hardest. `pnpm-workspace.yaml` carries the full
+  rationale. `preferFrozenLockfile: true` makes a stale `pnpm-lock.yaml` fail CI rather
+  than silently self-repair, which is why a long-lived branch should be rebased before
+  merge.
 - **Env:** `lib/env.ts` exports a lazy Zod-validated `getEnv()`. Lazy is deliberate —
   eager validation breaks tests at import time.
 - **Logging:** secrets are scrubbed centrally in `lib/logger.ts` + `lib/log-scrub.ts`

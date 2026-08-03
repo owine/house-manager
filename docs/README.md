@@ -147,7 +147,7 @@ because it lints with Biome.)
 - **Auth gate**: `app/(app)/layout.tsx` is the sole authentication boundary. Protected routes must live under that route group. `middleware.ts` was removed in Task 12 due to an Auth.js v5 JWE-vs-database-session incompatibility; if Plan 2+ adds many protected route groups, switch to JWT sessions and re-introduce middleware.
 - **Worker**: runs via `tsx` directly in both dev and prod (no compile step). Avoids the path-alias / ESM-extension friction between tsc-emitted JS and Node ESM.
 - **Env validation**: `lib/env.ts` exports a lazy `getEnv()` (Zod-validated). Eager validation would break tests on import; the lazy pattern fails fast at first call but doesn't fire during module load.
-- **Dependency pinning**: exact-pinned (`x.y.z`, no range prefix), including `engines` and `packageManager`; `.npmrc` enforces `save-exact=true`. Renovate (`renovate.json`, extending `github>owine/renovate-config`) drives updates with `rangeStrategy: pin`.
+- **Dependency pinning**: exact-pinned (`x.y.z`, no range prefix), including `engines` and `packageManager`; `pnpm-workspace.yaml` enforces `savePrefix: ""`. Renovate (`renovate.json`, extending `github>owine/renovate-config`) drives updates with `rangeStrategy: pin`, and owns the release-age soak — pnpm's `minimumReleaseAge` is deliberately unset to avoid double-gating.
 - **Commit signing**: SSH signing via 1Password's `op-ssh-sign` is enabled; `commit.gpgsign=true` in repo config.
 
 ## Plans status
