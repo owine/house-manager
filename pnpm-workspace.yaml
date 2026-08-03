@@ -21,5 +21,7 @@ allowBuilds:
 # so v11 reads them — v11 stopped reading the package.json field in
 # pnpm@11.0.0. Same comparator-key syntax works in both v10 and v11.
 overrides:
+  # next pins postcss to an exact 8.4.31 (XSS via unescaped </style>), so this
+  # one is permanent until Next itself moves — every other consumer already
+  # asks for ^8.5.x and resolves current on its own.
   "postcss@<8.5.12": "8.5.25"
-  "@hono/node-server@<2.0.1": "2.0.12"
