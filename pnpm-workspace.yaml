@@ -21,7 +21,14 @@ allowBuilds:
 # so v11 reads them — v11 stopped reading the package.json field in
 # pnpm@11.0.0. Same comparator-key syntax works in both v10 and v11.
 overrides:
-  # next pins postcss to an exact 8.4.31 (XSS via unescaped </style>), so this
-  # one is permanent until Next itself moves — every other consumer already
-  # asks for ^8.5.x and resolves current on its own.
+  # next pins postcss to an exact 8.4.31, which sits below every current fix
+  # line: GHSA-qx2v-qp2m-jg93 (CVE-2026-41305, XSS via unescaped </style>,
+  # fixed 8.5.10), GHSA-6g55-p6wh-862q (CVE-2026-45623, sourceMappingURL file
+  # read, fixed 8.5.12 — the floor below) and GHSA-r28c-9q8g-f849 (source-map
+  # path traversal, fixed 8.5.18, cleared by the 8.5.23 target).
+  #
+  # Unlike the other overrides this one cannot expire: it fights an *exact*
+  # pin, which never drifts upward on its own. Every other consumer asks for
+  # ^8.5.x and resolves current without help. Don't delete it — doing so
+  # silently reinstates 8.4.31 for next.
   "postcss@<8.5.12": "8.5.23"
