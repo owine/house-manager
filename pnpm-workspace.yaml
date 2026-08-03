@@ -22,7 +22,7 @@ allowBuilds:
 # pnpm@11.0.0. Same comparator-key syntax works in both v10 and v11.
 overrides:
   "postcss@<8.5.12": "8.5.23"
-  "@hono/node-server@<2.0.1": "2.0.11"
+  "@hono/node-server@<2.0.1": "2.0.12"
   # CVE-2026-47219 (GHSA-c96f-x56v-gq3h, High) — DDoS via HTTP/2.
   # Reaches the production image through prisma -> @prisma/dev, which is
   # never executed at runtime (it powers `prisma dev`), but `prisma` is a
