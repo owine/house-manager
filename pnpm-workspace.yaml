@@ -1,4 +1,44 @@
+# `pnpm add` writes exact versions, never caret/tilde ranges. This is the only
+# knob for that behaviour — `saveExact` is deliberately NOT also set, since two
+# settings governing one outcome can only ever disagree.
 savePrefix: ""
+
+# Settings below were moved out of `.npmrc`, which pnpm 11 no longer reads them
+# from. As of pnpm 11, INI files (.npmrc, the global rc) hold ONLY registry,
+# authentication and certificate settings; every other setting lives in YAML —
+# pnpm-workspace.yaml per project, config.yaml globally. Keys left in .npmrc are
+# not rejected, they are simply never parsed: no warning, no error, no effect.
+# Verify a setting is actually live with `pnpm config get <camelCaseKey>`.
+
+# CI safety: `pnpm install` errors if the lockfile has drifted from package.json
+# rather than silently repairing it, so a stale lockfile on a long-lived branch
+# fails the PR instead of resolving to something nobody reviewed.
+preferFrozenLockfile: true
+
+# `pnpm audit` fails on moderate-and-above advisories.
+# (`audit.level` supersedes the older top-level `auditLevel`, added in 11.15.)
+audit:
+  level: moderate
+
+# Release-age soak lives in Renovate, NOT here.
+#
+# The shared preset (github>owine/renovate-config) already gates every update on
+# age: 3 days for minor/patch, 7 days for majors, 0 for CVEs and lockfile
+# maintenance. Renovate is the only thing that adds dependencies to this repo,
+# so that gate is the one that matters.
+#
+# `minimumReleaseAge` is therefore deliberately absent. A second, pnpm-side soak
+# is not defence in depth — the two gates guard different moments. Renovate's
+# decides when a PR may open; pnpm's decides when a lockfile may be written. Any
+# release landing in the gap between them yields a PR that can never pass CI:
+# Renovate bumps package.json to a version pnpm then refuses to resolve,
+# `renovate/artifacts` fails, the lockfile stays stale, and
+# `pnpm install --frozen-lockfile` rejects the result. The 0-day CVE tier fails
+# hardest — a security fix could not land at all. See owine/resume PR #53
+# (wrangler 4.110.0) for the worked example.
+#
+# A stricter soak here does not make the repo safer; it stops updates from
+# landing, which over time makes it less safe.
 
 # Build-script allowlist. pnpm 11+ defaults strictDepBuilds: true so any
 # package not listed here errors at install time rather than silently
