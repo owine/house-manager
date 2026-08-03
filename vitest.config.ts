@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { dotenvFallbacks } from './vitest.env';
+import { dotenvFallbacks } from './vitest.env.ts';
 
 // One config, two test surfaces. Unit and integration are split by directory
 // path in the package.json scripts (test:unit / test:integration). This is
