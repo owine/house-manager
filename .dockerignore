@@ -1,13 +1,19 @@
-node_modules
-.next
+# Dockerfile does `COPY . .`, and Docker's matcher anchors bare patterns to the
+# context root (unlike .gitignore, where a bare pattern matches at any depth).
+# Dependency/build-output dirs use `**/` so they stay ignored if this ever grows
+# a workspace package with its own installs; `**` matches zero or more segments,
+# so the root case is still covered. Everything below is root-only by intent.
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+
 .git
 .env
 .env.local
 data
-dist
-playwright-report
-test-results
-coverage
 docs
 tests
 .vscode
