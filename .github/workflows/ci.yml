@@ -135,7 +135,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+        image: pgvector/pgvector:pg18@sha256:691673308c99d2161ba298736f3147f1f22d79de2fb7ec93ae9b4afcab870b62
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -253,7 +253,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+        image: pgvector/pgvector:pg18@sha256:691673308c99d2161ba298736f3147f1f22d79de2fb7ec93ae9b4afcab870b62
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -265,7 +265,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       meilisearch:
-        image: getmeili/meilisearch:v1.50@sha256:9694a59df43ee3f54b3fda9c5de381a3ee9852678e3e31cadf37d6bddea7fc1b
+        image: getmeili/meilisearch:v1.51@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14
         env:
           MEILI_MASTER_KEY: test
           MEILI_ENV: development
@@ -330,7 +330,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
+        image: pgvector/pgvector:pg18@sha256:691673308c99d2161ba298736f3147f1f22d79de2fb7ec93ae9b4afcab870b62
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -342,7 +342,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       meilisearch:
-        image: getmeili/meilisearch:v1.50@sha256:9694a59df43ee3f54b3fda9c5de381a3ee9852678e3e31cadf37d6bddea7fc1b
+        image: getmeili/meilisearch:v1.51@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14
         env:
           MEILI_MASTER_KEY: test
           MEILI_ENV: development
