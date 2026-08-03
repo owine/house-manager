@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { dotenvFallbacks } from './vitest.env';
+import { dotenvFallbacks } from './vitest.env.ts';
 
 // The smoke suite calls the real Anthropic API. It's intentionally separate
 // from the unit/integration configs so a CI run of `pnpm test:unit` or

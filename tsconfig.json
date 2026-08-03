@@ -9,6 +9,11 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    // Lets vitest.config.ts import ./vitest.env.ts with its extension, which
+    // Vite's `configLoader: 'native'` requires (it becomes the default in a
+    // future major). Permissive, not mandatory — nothing else needs changing.
+    // Safe here only because noEmit is set; tsc refuses the pair otherwise.
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
