@@ -140,15 +140,29 @@ describe('DeleteSystemPartsDialog', () => {
   // The invariant that made the test above flaky is itself worth asserting:
   // the confirm button is the double-submit guard, and a click landing while a
   // confirm is in flight must not produce a second server call.
-  it('does not fire a second confirm while the first is still in flight', async () => {
-    const onConfirm = vi.fn(() => new Promise<never>(() => {})); // never settles
+  //
+  // The in-flight window is held open with a promise this test resolves itself
+  // rather than one that never settles, so the whole lifecycle is observable:
+  // disabled while in flight, re-enabled once it resolves. That re-enable is
+  // the transition the stale-prompt test above waits on, so asserting it here
+  // is what makes that wait meaningful rather than decorative.
+  it('blocks a second confirm while the first is in flight, and re-enables after', async () => {
+    let settle!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const onConfirm = vi.fn(async () => {
+      await inFlight;
+      return { ok: true as const, archivedCount: 1, keptCount: 1 };
+    });
+
     render(
       <DeleteSystemPartsDialog
         open
         onOpenChange={() => {}}
         systemName="HVAC"
         parts={PARTS}
-        onConfirm={onConfirm as never}
+        onConfirm={onConfirm}
       />,
     );
 
@@ -157,7 +171,12 @@ describe('DeleteSystemPartsDialog', () => {
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
     expect(confirm).toBeDisabled();
 
+    // Dropped, not queued: userEvent does not throw on a disabled control.
     await userEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    settle();
+    await waitFor(() => expect(confirm).toBeEnabled());
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
