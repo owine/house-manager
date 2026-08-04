@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/node';
 import { ANTHROPIC_MODEL } from '@/lib/ai/client';
-import { createSuggestionLog } from '@/lib/ai/log';
+import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
@@ -140,10 +140,7 @@ async function classifyOne(id: string): Promise<void> {
       inventorySnapshotIds: [],
       response: result as unknown as Prisma.InputJsonValue,
       model: ANTHROPIC_MODEL,
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
-      cacheReadTokens: usage.cache_read_input_tokens,
-      cacheCreationTokens: usage.cache_creation_input_tokens,
+      ...usageLogFields(usage),
       latencyMs: Date.now() - start,
     });
 

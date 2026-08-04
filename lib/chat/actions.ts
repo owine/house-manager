@@ -1,12 +1,22 @@
 'use server';
+import type { ParsedMessage } from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { ChatProposal, ChatProposalKind, PartKind, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
-import { createSuggestionLog } from '@/lib/ai/log';
+import {
+  ANTHROPIC_CHAT_MAX_TOKENS,
+  ANTHROPIC_CHAT_TIMEOUT_MS,
+  ANTHROPIC_MODEL,
+  getAnthropic,
+} from '@/lib/ai/client';
+import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
-import { classifyAnthropicError, userFacingMessage } from '@/lib/ai/suggest/_shared';
+import {
+  classifyAnthropicError,
+  classifyStopReason,
+  userFacingMessage,
+} from '@/lib/ai/suggest/_shared';
 import { retrieveTopK } from '@/lib/ask/retrieve';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -480,18 +490,21 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     snapshot,
   });
 
-  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
+  let result: ParsedMessage<z.infer<typeof chatTurnOutputSchema>>;
   try {
-    result = await getAnthropic().messages.parse({
-      model: ANTHROPIC_MODEL,
-      max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
-      system: [
-        { type: 'text', text: CHAT_SYSTEM_PROMPT },
-        { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: anthropicMessages,
-      output_config: { format: zodOutputFormat(chatTurnOutputSchema) },
-    } as never);
+    result = await getAnthropic().messages.parse(
+      {
+        model: ANTHROPIC_MODEL,
+        max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
+        system: [
+          { type: 'text', text: CHAT_SYSTEM_PROMPT },
+          { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
+        ],
+        messages: anthropicMessages,
+        output_config: { format: zodOutputFormat(chatTurnOutputSchema) },
+      },
+      { timeout: ANTHROPIC_CHAT_TIMEOUT_MS },
+    );
   } catch (e) {
     // Settle the in-flight parts request before returning, so its own logging
     // finishes inside the action rather than after the response.
@@ -522,9 +535,37 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     return { ok: false, formError: errorReply };
   }
 
-  const rawOutput = (result as { parsed_output: { reply: string; proposals: unknown[] } })
-    .parsed_output;
-  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
+  // `parsed_output` is `T | null` on the SDK type. A null here reaches the same
+  // place a thrown call does: an ASSISTANT turn is still persisted carrying the
+  // error text, so the session never shows a user turn with nothing after it.
+  if (!result.parsed_output) {
+    // Distinguish a truncated or refused turn from an unparseable one.
+    const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
+    const log = await createSuggestionLog({
+      userId,
+      kind: 'chat',
+      userPrompt: turnText,
+      inventorySnapshotIds: snapshotLogIds(snapshot),
+      response: null,
+      errorReason,
+      model: ANTHROPIC_MODEL,
+      latencyMs: Date.now() - start,
+      retrievedChunkIds,
+    });
+    logger.info({ event: 'chat', userId, ok: false, errorReason }, 'no parsed output');
+    const errorReply = userFacingMessage(errorReason);
+    await persistTurn({
+      userId,
+      sessionId,
+      turnText,
+      replyText: errorReply,
+      logId: log.id,
+      proposals: [],
+    });
+    return { ok: false, formError: errorReply };
+  }
+  const rawOutput = result.parsed_output;
+  const usage = result.usage;
 
   let reply = rawOutput.reply;
   let droppedForLength = false;
@@ -593,10 +634,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { reply: rawOutput.reply, proposals: rawOutput.proposals } as Prisma.InputJsonValue,
     model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
     retrievedChunkIds,
   });

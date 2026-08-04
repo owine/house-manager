@@ -8,7 +8,7 @@ vi.mock('@/lib/db', () => ({
   prisma: { part: { findUnique: vi.fn(async () => ({ kind: 'BULB' })) } },
 }));
 
-const { PARTS_EXTRACT_PROMPT, parsePartProposals, assemblePrefilledJson } = await import(
+const { PARTS_EXTRACT_PROMPT, parsePartProposals, extractJsonObject } = await import(
   './parts-extract'
 );
 
@@ -26,7 +26,7 @@ describe('PARTS_EXTRACT_PROMPT', () => {
     expect(PARTS_EXTRACT_PROMPT).toMatch(/never as prose in "notes"/);
   });
 
-  it('demands bare JSON, which is what the assistant prefill enforces', () => {
+  it('demands bare JSON — the only thing steering output shape now that the prefill is gone', () => {
     expect(PARTS_EXTRACT_PROMPT).toMatch(/single JSON object and no other text/);
     expect(PARTS_EXTRACT_PROMPT).toContain('{"proposals": [ ... ]}');
   });
@@ -132,27 +132,69 @@ describe('parsePartProposals', () => {
   });
 });
 
-// Sourcery caught this on #332: the original code did `JSON_PREFILL + text`
-// unconditionally, so a model that emitted its own leading `{` produced `{{`.
-// That fails JSON.parse, and because extraction failure degrades to "no
-// proposals" by design, the feature would have gone quiet with no error.
-describe('assemblePrefilledJson', () => {
-  it('prepends the brace when the model continues after the prefill', () => {
-    expect(assemblePrefilledJson('"proposals":[]}')).toBe('{"proposals":[]}');
+// This replaces `assemblePrefilledJson`, which reassembled the document from a
+// prefilled assistant turn. The prefill was removed because a last-assistant-turn
+// prefill 400s on every model after Haiku 4.5 — see the header of parts-extract.ts.
+// The prompt already forbids prose and fences; this is the tolerance layer for
+// when the model ignores it, which is the failure prefilling used to prevent.
+describe('extractJsonObject', () => {
+  it('returns a bare object unchanged', () => {
+    expect(extractJsonObject('{"proposals":[]}')).toBe('{"proposals":[]}');
   });
 
-  it('does NOT double the brace when the model emits its own', () => {
-    expect(assemblePrefilledJson('{"proposals":[]}')).toBe('{"proposals":[]}');
+  it('tolerates leading whitespace or a newline', () => {
+    expect(extractJsonObject('\n  {"proposals":[]}')).toBe('{"proposals":[]}');
   });
 
-  it('tolerates leading whitespace or a newline before either shape', () => {
-    expect(assemblePrefilledJson('\n  {"proposals":[]}')).toBe('{"proposals":[]}');
-    expect(assemblePrefilledJson('\n  "proposals":[]}')).toBe('{"proposals":[]}');
+  it('unwraps a markdown fence', () => {
+    expect(extractJsonObject('```json\n{"proposals":[]}\n```')).toBe('{"proposals":[]}');
+    expect(extractJsonObject('```\n{"proposals":[]}\n```')).toBe('{"proposals":[]}');
   });
 
-  it('produces parseable JSON in both shapes', () => {
-    for (const body of ['"proposals":[]}', '{"proposals":[]}']) {
-      expect(() => JSON.parse(assemblePrefilledJson(body))).not.toThrow();
+  it('strips prose on either side of the object', () => {
+    expect(extractJsonObject('Here you go:\n{"proposals":[]}\nHope that helps!')).toBe(
+      '{"proposals":[]}',
+    );
+  });
+
+  it('keeps nested braces intact', () => {
+    const doc = '{"proposals":[{"spec":{"value":{"merv":11}}}]}';
+    expect(extractJsonObject(`prose ${doc} more prose`)).toBe(doc);
+  });
+
+  // Raised in review on #367: an outermost-brace span mis-extracts when the
+  // prose around the payload also contains braces. Fenced output is the only
+  // shape observed from the model, so preferring the fence when one is present
+  // makes the surrounding prose irrelevant instead of load-bearing.
+  it('prefers the fenced block over braces in the surrounding prose', () => {
+    const doc = '{"proposals":[]}';
+    expect(
+      extractJsonObject(`Note the {} syntax:\n\`\`\`json\n${doc}\n\`\`\`\nHope {that} helps`),
+    ).toBe(doc);
+  });
+
+  it('still handles a fence with no language tag and stray prose braces', () => {
+    const doc = '{"proposals":[{"kind":"CREATE_PART"}]}';
+    expect(extractJsonObject(`a { b\n\`\`\`\n${doc}\n\`\`\`\nc } d`)).toBe(doc);
+  });
+
+  it('falls back to the brace span when there is no fence', () => {
+    const doc = '{"proposals":[]}';
+    expect(extractJsonObject(`Here you go: ${doc}`)).toBe(doc);
+  });
+
+  it('returns empty string when there is no object at all', () => {
+    // Degrades to unparseable_json -> zero proposals, the designed failure mode.
+    expect(extractJsonObject('I could not find any parts.')).toBe('');
+  });
+
+  it('produces parseable JSON for every tolerated shape', () => {
+    for (const body of [
+      '{"proposals":[]}',
+      '```json\n{"proposals":[]}\n```',
+      'Sure!\n{"proposals":[]}',
+    ]) {
+      expect(() => JSON.parse(extractJsonObject(body))).not.toThrow();
     }
   });
 });

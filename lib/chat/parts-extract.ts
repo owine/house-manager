@@ -1,6 +1,12 @@
-import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
-import { createSuggestionLog } from '@/lib/ai/log';
-import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
+import type { Message, TextBlock, Usage } from '@anthropic-ai/sdk/resources/messages';
+import {
+  ANTHROPIC_CHAT_MAX_TOKENS,
+  ANTHROPIC_CHAT_TIMEOUT_MS,
+  ANTHROPIC_MODEL,
+  getAnthropic,
+} from '@/lib/ai/client';
+import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
+import { classifyAnthropicError, classifyStopReason } from '@/lib/ai/suggest/_shared';
 import { getLogger } from '@/lib/logger';
 import { buildPartSpecTable } from './prompt';
 import { type Snapshot, snapshotLogIds, validateProposal } from './resolve';
@@ -25,15 +31,17 @@ const logger = getLogger('chat.parts-extract');
 // Conversational capture already treats an unusable payload as a non-event —
 // `parseStoredPayload` returns null and the proposal goes INVALID — so this
 // matches the posture the pipeline already has.
+//
+// No assistant prefill, either. This call used to seed the assistant turn with
+// `{` so the model's first token continued an object rather than starting a
+// sentence. That works on Haiku 4.5 and 400s on every model after it — a
+// last-assistant-turn prefill is rejected across the 4.6-and-later line (Opus
+// 4.6+, Sonnet 4.6+, Opus 5, Sonnet 5, Fable 5). Because extraction failure
+// degrades to "no proposals" by design, bumping `ANTHROPIC_MODEL` would have
+// turned parts capture off silently rather than loudly. Two things replace it:
+// the prompt forbids prose and fences, and `extractJsonObject` tolerates them
+// anyway when the model ignores that.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Forcing JSON without a grammar: prefill the assistant turn with an opening
- * brace so the model's first token continues an object rather than starting a
- * sentence, then glue the brace back on before parsing. Measured 3/3 correct
- * with this; without it the model prefixes prose often enough to matter.
- */
-const JSON_PREFILL = '{';
 
 function buildSystemPrompt(): string {
   return `You extract PARTS from what the user just said about their house.
@@ -111,26 +119,52 @@ ${buildPartSpecTable()}
 export const PARTS_EXTRACT_PROMPT = buildSystemPrompt();
 
 /**
- * Reassemble the full JSON document from a prefilled assistant turn.
+ * Pull the JSON document out of an unconstrained completion.
  *
- * We seed the assistant turn with `{` so the model emits JSON and not prose.
- * Normally it continues *after* that brace, so the document is
- * `JSON_PREFILL + body`. But that is a convention, not a guarantee: a model
- * that echoes its own `{` would yield `{{`, which fails `JSON.parse` and costs
- * the turn its part proposals — silently, because extraction failure degrades
- * to "no proposals" by design.
+ * Prefers the contents of a markdown fence when there is one, and otherwise
+ * takes the outermost `{`…`}` span of the whole reply. Returns `''` when there
+ * is no object at all, so the caller's `JSON.parse` throws and the turn
+ * degrades to zero part proposals — the same designed failure mode as any
+ * other unusable payload.
+ *
+ * **This is load-bearing, not defensive padding.** Haiku 4.5 wraps its answer
+ * in a ```json fence on every observed call — 3/3 in the live smoke, across
+ * two parts-bearing messages and one that correctly proposes nothing — despite
+ * the prompt's "no other text, no markdown fence". The prompt does not win that
+ * argument, so something has to unwrap it. That is also why removing the old
+ * assistant prefill required this in the same change rather than after it: the
+ * prefill was masking the fence, and dropping it while keeping the old
+ * brace-prepending assembler would have yielded `{```json{…}```` on every turn
+ * — unparseable, zero proposals, no error anywhere.
+ *
+ * The brace span alone would be enough for every output observed so far, and it
+ * remains the fallback because the model has more ways to wrap an object than
+ * it has fence syntaxes. Checking the fence first is belt-and-braces for the
+ * case raised in review on #367: prose that itself contains braces, on either
+ * side of the payload, would otherwise drag the span past the real object.
  */
-export function assemblePrefilledJson(body: string): string {
-  const trimmed = body.trimStart();
-  return trimmed.startsWith(JSON_PREFILL) ? trimmed : JSON_PREFILL + trimmed;
+export function extractJsonObject(text: string): string {
+  // Prefer the fenced block when there is one. The fence is the shape actually
+  // observed from the model, and honouring it makes any prose outside the fence
+  // irrelevant — including prose that contains braces of its own, which would
+  // otherwise drag the brace span past the real payload.
+  const fenced = /```(?:[a-zA-Z0-9_-]+)?\s*\n([\s\S]*?)\n?```/.exec(text);
+  return braceSpan(fenced ? fenced[1] : text);
+}
+
+/** Outermost `{`…`}`. Returns '' when there is no object to find. */
+function braceSpan(text: string): string {
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first === -1 || last <= first) return '';
+  return text.slice(first, last + 1);
 }
 
 /** Concatenate the text blocks of a non-streaming Messages response. */
-function responseText(res: unknown): string {
-  const content = (res as { content?: Array<{ type?: string; text?: string }> }).content ?? [];
-  return content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text ?? '')
+function responseText(res: Message): string {
+  return res.content
+    .filter((b): b is TextBlock => b.type === 'text')
+    .map((b) => b.text)
     .join('');
 }
 
@@ -171,25 +205,61 @@ async function runExtraction(args: {
   const start = Date.now();
 
   let raw: string;
-  let usage: Record<string, number> = {};
+  let usage: Usage | undefined;
   try {
-    const res = await getAnthropic().messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
-      system: [
-        { type: 'text', text: PARTS_EXTRACT_PROMPT },
-        // Same block, same cache_control breakpoint as the main call, so the
-        // snapshot is billed as a cache read on whichever request lands second.
-        { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: [
-        ...priorMessages,
-        { role: 'user' as const, content: turnText },
-        { role: 'assistant' as const, content: JSON_PREFILL },
-      ],
-    } as never);
-    raw = assemblePrefilledJson(responseText(res));
-    usage = (res as unknown as { usage?: Record<string, number> }).usage ?? {};
+    const res = await getAnthropic().messages.create(
+      {
+        model: ANTHROPIC_MODEL,
+        max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
+        system: [
+          { type: 'text', text: PARTS_EXTRACT_PROMPT },
+          // This breakpoint does NOT share the main call's cache entry, and cannot:
+          // caching is a prefix match, and the block ahead of this one differs
+          // (PARTS_EXTRACT_PROMPT here, CHAT_SYSTEM_PROMPT there), so the two
+          // calls have different cache keys no matter that the snapshot text is
+          // byte-identical. Nor does it currently write an entry of its own —
+          // this prefix measures 2.7–3.0k tokens in production against Haiku
+          // 4.5's 4096-token minimum, so the marker is inert (verified: six
+          // `chat-parts` rows, cacheCreationTokens and cacheReadTokens both 0).
+          //
+          // Kept because it costs nothing and starts working the moment the
+          // prefix clears the minimum — a larger snapshot, or a model with a
+          // lower one. Do NOT try to fix it by moving the snapshot ahead of the
+          // system prompt to create a shared prefix: the snapshot alone is
+          // smaller still, so neither call would cache and the main call's
+          // currently-working ~5k entry would be lost.
+          { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
+        ],
+        messages: [...priorMessages, { role: 'user' as const, content: turnText }],
+      },
+      // Shares the chat turn's budget: it runs concurrently with the main call
+      // and the user is waiting on both.
+      { timeout: ANTHROPIC_CHAT_TIMEOUT_MS },
+    );
+    usage = res.usage;
+    // A truncated document is not a model that "emitted garbage" — it is a
+    // token ceiling, and it should not be logged as `unparseable_json` and
+    // sent to someone to go re-read the prompt. Same for a refusal.
+    const stopIssue = classifyStopReason(res.stop_reason);
+    if (stopIssue) {
+      logger.warn(
+        { event: 'chat.parts.dropped', userId, reason: stopIssue, stopReason: res.stop_reason },
+        'parts extraction unusable',
+      );
+      await createSuggestionLog({
+        userId,
+        kind: 'chat-parts',
+        userPrompt: turnText,
+        inventorySnapshotIds: snapshotLogIds(snapshot),
+        response: null,
+        errorReason: stopIssue,
+        model: ANTHROPIC_MODEL,
+        ...usageLogFields(usage),
+        latencyMs: Date.now() - start,
+      });
+      return [];
+    }
+    raw = extractJsonObject(responseText(res));
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     logger.warn(
@@ -216,10 +286,7 @@ async function runExtraction(args: {
     inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { partsExtract: raw },
     model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
   });
 

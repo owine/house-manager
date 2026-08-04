@@ -19,3 +19,4 @@ dist
 # .claude/settings.json, if ever added, stays trackable)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+live.env

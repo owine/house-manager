@@ -1,4 +1,5 @@
 'use server';
+import type { ParsedMessage } from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -12,11 +13,16 @@ import { enqueueSearchIndex } from '@/lib/search/client';
 import { startOfDayUtc } from '@/lib/time/tz';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext } from '../context-builder';
-import { createSuggestionLog, markAccepted } from '../log';
+import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
-import { ChecklistNotFoundError, classifyAnthropicError, userFacingMessage } from './_shared';
+import {
+  ChecklistNotFoundError,
+  classifyAnthropicError,
+  classifyStopReason,
+  userFacingMessage,
+} from './_shared';
 
 const logger = getLogger('ai.suggest.checklist');
 
@@ -100,7 +106,7 @@ export async function proposeChecklist(
   const ctx = await buildSuggestContext({ today: houseToday });
 
   const start = Date.now();
-  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
+  let result: ParsedMessage<z.infer<typeof proposeChecklistResponseSchema>>;
   try {
     result = await getAnthropic().messages.parse({
       model: ANTHROPIC_MODEL,
@@ -112,7 +118,7 @@ export async function proposeChecklist(
       }),
       messages: [{ role: 'user', content: buildChecklistUserMessage(input, appendingTo?.name) }],
       output_config: { format: zodOutputFormat(proposeChecklistResponseSchema) },
-    } as never);
+    });
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     await createSuggestionLog({
@@ -132,12 +138,37 @@ export async function proposeChecklist(
     return { ok: false, formError: userFacingMessage(errorReason) };
   }
 
-  const parsedResp = (
-    result as {
-      parsed_output: { name: string; description?: string; items: ProposedChecklistItem[] };
-    }
-  ).parsed_output;
-  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
+  // `parsed_output` is `T | null` on the SDK type — see the same guard in
+  // ./reminders.ts. The old cast asserted non-null and the next read threw a
+  // raw TypeError outside the try, past every error path below.
+  const parsedResp = result.parsed_output;
+  if (!parsedResp) {
+    // A truncated or refused response is a distinct diagnosis from "the
+    // model returned a shape we could not parse" — record which it was.
+    const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
+    await createSuggestionLog({
+      userId,
+      kind: 'checklist',
+      userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
+      inventorySnapshotIds: ctx.inventorySnapshotIds,
+      response: null,
+      errorReason,
+      model: ANTHROPIC_MODEL,
+      latencyMs: Date.now() - start,
+    });
+    logger.info(
+      {
+        event: 'ai.suggest',
+        kind: 'checklist',
+        userId,
+        ok: false,
+        errorReason,
+      },
+      'no parsed output',
+    );
+    return { ok: false, formError: userFacingMessage(errorReason) };
+  }
+  const usage = result.usage;
 
   const log = await createSuggestionLog({
     userId,
@@ -146,10 +177,7 @@ export async function proposeChecklist(
     inventorySnapshotIds: ctx.inventorySnapshotIds,
     response: parsedResp,
     model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
   });
 

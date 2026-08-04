@@ -1,9 +1,11 @@
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import type { ContentBlockParam, Usage } from '@anthropic-ai/sdk/resources/messages';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
 import {
   type IncomingEmailClassifyExtract,
   incomingEmailClassifyExtractSchema,
 } from '@/lib/ai/schemas';
+import { classifyStopReason } from '@/lib/ai/suggest/_shared';
 import type { ClassifyEntity, ClassifyVendor } from '@/lib/incoming-email/classify';
 import type { LoadedPdf } from '@/lib/incoming-email/pdf-attachments';
 
@@ -97,15 +99,12 @@ export type AiClassifyExtractInput = {
  */
 export async function aiClassifyExtract(
   input: AiClassifyExtractInput,
-): Promise<{ result: IncomingEmailClassifyExtract; usage: Record<string, number> }> {
+): Promise<{ result: IncomingEmailClassifyExtract; usage: Usage }> {
   const userText = buildUserText(input);
 
   // Documents first (Anthropic recommends documents BEFORE instruction text),
   // then the metadata + body + candidate lists.
-  const content: Array<
-    | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
-    | { type: 'text'; text: string }
-  > = [];
+  const content: ContentBlockParam[] = [];
   for (const pdf of input.pdfs) {
     content.push({
       type: 'document',
@@ -120,11 +119,20 @@ export async function aiClassifyExtract(
     system: [{ type: 'text', text: SYSTEM_PROMPT }],
     messages: [{ role: 'user', content }],
     output_config: { format: zodOutputFormat(incomingEmailClassifyExtractSchema) },
-  } as never);
+  });
 
-  const result = (apiResult as { parsed_output: IncomingEmailClassifyExtract }).parsed_output;
-  const usage = (apiResult as unknown as { usage?: Record<string, number> }).usage ?? {};
-  return { result, usage };
+  // `parsed_output` is `T | null`. Errors propagate here by contract — the
+  // caller falls back to the heuristic classifier — so a missing parse is a
+  // throw rather than a guard-and-return like the suggest actions use.
+  const result = apiResult.parsed_output;
+  if (!result) {
+    // Naming the stop reason matters most here: a PDF-heavy invoice is the
+    // likeliest thing in the app to hit the token ceiling, and the caller's
+    // fallback to the heuristic classifier would otherwise hide why.
+    const reason = classifyStopReason(apiResult.stop_reason) ?? 'no parsed output';
+    throw new Error(`Anthropic email classification unusable: ${reason}`);
+  }
+  return { result, usage: apiResult.usage };
 }
 
 /**
