@@ -2,11 +2,15 @@
 // boss.on('error') handler (which calls Sentry.captureException) has a
 // live SDK to report through. The DSN gate makes init a no-op when unset.
 import * as Sentry from '@sentry/node';
+import { getEnv } from '@/lib/env';
+import { checkHealth } from '@/lib/health';
 import { getLogger } from '@/lib/logger';
 import { startMemoryWatchdog } from '@/lib/observability/memory-watchdog';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
+import { createHealthServer, WORKER_HEALTH_PORT } from './health-server';
+import { createHeartbeat } from './heartbeat';
 import { handleChoreAutoCompleteTick } from './jobs/chore-auto-complete-tick';
 import {
   type ClassifyIncomingEmailJob,
@@ -40,6 +44,26 @@ if (process.env.SENTRY_DSN) {
 const logger = getLogger('worker.lifecycle');
 
 async function main() {
+  // Start the health server before pg-boss so that a worker wedged connecting
+  // to Postgres reports unhealthy rather than being unprobeable. Until the
+  // first successful beat it answers 503 `starting`.
+  const env = getEnv();
+  const heartbeat = createHeartbeat({
+    // pg-boss 12 has no getQueueSize; getQueue is DB-backed and proves both
+    // that the connection works and that the schema is intact.
+    probe: async () => {
+      const b = await getBoss();
+      await b.getQueue(Queue.Notify);
+    },
+  });
+  const healthServer = createHealthServer({
+    heartbeat,
+    checkDeps: () => checkHealth({ databaseUrl: env.DATABASE_URL, meiliUrl: env.MEILI_HOST }),
+  });
+  healthServer.listen(WORKER_HEALTH_PORT, () => {
+    logger.info({ port: WORKER_HEALTH_PORT }, 'worker health server listening');
+  });
+
   const boss = await getBoss();
 
   await boss.work<ThumbnailJob>(Queue.Thumbnail, { batchSize: 2 }, async (jobs) => {
@@ -175,12 +199,19 @@ async function main() {
   // through the Plan 5a integration.
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
+  // First beat now so the container can go healthy without waiting a full
+  // interval; the interval keeps it fresh thereafter.
+  await heartbeat.beat();
+  heartbeat.start();
+
   logger.info(
     'registered thumbnail, reminders.tick + notify, search.index + search.reindex, pg-dump, notify-log.sweep, digest.tick, chore-auto-complete.tick, incoming-email.classify, embed.content, embed.backfill, attachment.extract-text jobs',
   );
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'received shutdown signal');
+    heartbeat.stop();
+    healthServer.close();
     await boss.stop({ graceful: true });
     process.exit(0);
   };
