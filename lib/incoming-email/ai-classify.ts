@@ -5,6 +5,7 @@ import {
   type IncomingEmailClassifyExtract,
   incomingEmailClassifyExtractSchema,
 } from '@/lib/ai/schemas';
+import { classifyStopReason } from '@/lib/ai/suggest/_shared';
 import type { ClassifyEntity, ClassifyVendor } from '@/lib/incoming-email/classify';
 import type { LoadedPdf } from '@/lib/incoming-email/pdf-attachments';
 
@@ -124,7 +125,13 @@ export async function aiClassifyExtract(
   // caller falls back to the heuristic classifier — so a missing parse is a
   // throw rather than a guard-and-return like the suggest actions use.
   const result = apiResult.parsed_output;
-  if (!result) throw new Error('Anthropic returned no parsed output for email classification');
+  if (!result) {
+    // Naming the stop reason matters most here: a PDF-heavy invoice is the
+    // likeliest thing in the app to hit the token ceiling, and the caller's
+    // fallback to the heuristic classifier would otherwise hide why.
+    const reason = classifyStopReason(apiResult.stop_reason) ?? 'no parsed output';
+    throw new Error(`Anthropic email classification unusable: ${reason}`);
+  }
   return { result, usage: apiResult.usage };
 }
 

@@ -30,9 +30,8 @@ const hoisted = vi.hoisted(() => {
       askEnabled: true,
       parseResponse: null as unknown,
       lastParseArgs: null as Record<string, unknown> | null,
-      // Text the parts call returns, MINUS the leading `{` — the request
-      // prefills the assistant turn with a brace, so the model's own output
-      // starts after it.
+      // Text the parts call returns, as a complete document. There is no
+      // assistant prefill any more, so the model emits the whole object.
       partsResponse: '{"proposals":[]}' as unknown,
       lastCreateArgs: null as Record<string, unknown> | null,
     },
@@ -84,6 +83,7 @@ vi.mock('@/lib/ai/client', () => ({
   ANTHROPIC_MODEL: 'claude-haiku-4-5',
   ANTHROPIC_MAX_TOKENS: 2048,
   ANTHROPIC_CHAT_MAX_TOKENS: 4096,
+  ANTHROPIC_CHAT_TIMEOUT_MS: 90_000,
 }));
 
 // chatTurn itself does not call revalidatePath, but Task 13 adds

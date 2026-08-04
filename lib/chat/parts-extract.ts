@@ -1,7 +1,12 @@
 import type { Message, TextBlock, Usage } from '@anthropic-ai/sdk/resources/messages';
-import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
+import {
+  ANTHROPIC_CHAT_MAX_TOKENS,
+  ANTHROPIC_CHAT_TIMEOUT_MS,
+  ANTHROPIC_MODEL,
+  getAnthropic,
+} from '@/lib/ai/client';
 import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
-import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
+import { classifyAnthropicError, classifyStopReason } from '@/lib/ai/suggest/_shared';
 import { getLogger } from '@/lib/logger';
 import { buildPartSpecTable } from './prompt';
 import { type Snapshot, snapshotLogIds, validateProposal } from './resolve';
@@ -189,32 +194,59 @@ async function runExtraction(args: {
   let raw: string;
   let usage: Usage | undefined;
   try {
-    const res = await getAnthropic().messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
-      system: [
-        { type: 'text', text: PARTS_EXTRACT_PROMPT },
-        // This breakpoint does NOT share the main call's cache entry, and cannot:
-        // caching is a prefix match, and the block ahead of this one differs
-        // (PARTS_EXTRACT_PROMPT here, CHAT_SYSTEM_PROMPT there), so the two
-        // calls have different cache keys no matter that the snapshot text is
-        // byte-identical. Nor does it currently write an entry of its own —
-        // this prefix measures 2.7–3.0k tokens in production against Haiku
-        // 4.5's 4096-token minimum, so the marker is inert (verified: six
-        // `chat-parts` rows, cacheCreationTokens and cacheReadTokens both 0).
-        //
-        // Kept because it costs nothing and starts working the moment the
-        // prefix clears the minimum — a larger snapshot, or a model with a
-        // lower one. Do NOT try to fix it by moving the snapshot ahead of the
-        // system prompt to create a shared prefix: the snapshot alone is
-        // smaller still, so neither call would cache and the main call's
-        // currently-working ~5k entry would be lost.
-        { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: [...priorMessages, { role: 'user' as const, content: turnText }],
-    });
-    raw = extractJsonObject(responseText(res));
+    const res = await getAnthropic().messages.create(
+      {
+        model: ANTHROPIC_MODEL,
+        max_tokens: ANTHROPIC_CHAT_MAX_TOKENS,
+        system: [
+          { type: 'text', text: PARTS_EXTRACT_PROMPT },
+          // This breakpoint does NOT share the main call's cache entry, and cannot:
+          // caching is a prefix match, and the block ahead of this one differs
+          // (PARTS_EXTRACT_PROMPT here, CHAT_SYSTEM_PROMPT there), so the two
+          // calls have different cache keys no matter that the snapshot text is
+          // byte-identical. Nor does it currently write an entry of its own —
+          // this prefix measures 2.7–3.0k tokens in production against Haiku
+          // 4.5's 4096-token minimum, so the marker is inert (verified: six
+          // `chat-parts` rows, cacheCreationTokens and cacheReadTokens both 0).
+          //
+          // Kept because it costs nothing and starts working the moment the
+          // prefix clears the minimum — a larger snapshot, or a model with a
+          // lower one. Do NOT try to fix it by moving the snapshot ahead of the
+          // system prompt to create a shared prefix: the snapshot alone is
+          // smaller still, so neither call would cache and the main call's
+          // currently-working ~5k entry would be lost.
+          { type: 'text', text: snapshotBlock, cache_control: { type: 'ephemeral' } },
+        ],
+        messages: [...priorMessages, { role: 'user' as const, content: turnText }],
+      },
+      // Shares the chat turn's budget: it runs concurrently with the main call
+      // and the user is waiting on both.
+      { timeout: ANTHROPIC_CHAT_TIMEOUT_MS },
+    );
     usage = res.usage;
+    // A truncated document is not a model that "emitted garbage" — it is a
+    // token ceiling, and it should not be logged as `unparseable_json` and
+    // sent to someone to go re-read the prompt. Same for a refusal.
+    const stopIssue = classifyStopReason(res.stop_reason);
+    if (stopIssue) {
+      logger.warn(
+        { event: 'chat.parts.dropped', userId, reason: stopIssue, stopReason: res.stop_reason },
+        'parts extraction unusable',
+      );
+      await createSuggestionLog({
+        userId,
+        kind: 'chat-parts',
+        userPrompt: turnText,
+        inventorySnapshotIds: snapshotLogIds(snapshot),
+        response: null,
+        errorReason: stopIssue,
+        model: ANTHROPIC_MODEL,
+        ...usageLogFields(usage),
+        latencyMs: Date.now() - start,
+      });
+      return [];
+    }
+    raw = extractJsonObject(responseText(res));
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     logger.warn(

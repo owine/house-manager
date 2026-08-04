@@ -32,14 +32,42 @@ export function getAnthropic(): Anthropic {
     _client = new Anthropic({
       apiKey: getEnv().ANTHROPIC_API_KEY,
       // Default timeout 30s — the spec's error matrix expects this.
-      timeout: 30_000,
+      timeout: DEFAULT_TIMEOUT_MS,
       // One SDK-level retry (429/5xx/connection errors), and nothing above it —
-      // no call site adds an outer retry. Two attempts total, worst case ~60s.
+      // no call site adds an outer retry. Two attempts total.
+      //
+      // Note this interacts with `timeout`: a request that exceeds the timeout
+      // is *retried*, so a too-tight timeout does not fail fast — it silently
+      // doubles the cost of a slow call. See ANTHROPIC_CHAT_TIMEOUT_MS.
       maxRetries: 1,
     });
   }
   return _client;
 }
+
+/**
+ * Client-wide request timeout. Fits every call site measured in production
+ * except chat — suggest calls run 6–11s average and 15s worst, and the
+ * PDF-bearing email classify runs ~11s average, 12.4s worst.
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Per-request override for the chat turn, which is the one call that outgrows
+ * the default.
+ *
+ * Production has a successful chat turn at 52.6s wall clock against a 30s
+ * timeout. That is only possible via the SDK's retry: the first attempt was cut
+ * off at 30s, the second succeeded, and our `Date.now() - start` spans both. So
+ * the tight timeout did not fail that turn fast — it made the user wait longer
+ * AND paid for two model calls. Chat is the natural outlier: the largest
+ * `max_tokens` of any call site, plus a second model call racing alongside it.
+ *
+ * Sized to sit above the observed worst case rather than at it, so an ordinary
+ * slow turn completes on the first attempt and the retry goes back to covering
+ * what it is for — 429s, 5xx, and dropped connections.
+ */
+export const ANTHROPIC_CHAT_TIMEOUT_MS = 90_000;
 
 export const ANTHROPIC_MODEL = 'claude-haiku-4-5' as const;
 export const ANTHROPIC_MAX_TOKENS = 2048;

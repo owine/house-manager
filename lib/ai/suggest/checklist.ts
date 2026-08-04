@@ -17,7 +17,12 @@ import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
-import { ChecklistNotFoundError, classifyAnthropicError, userFacingMessage } from './_shared';
+import {
+  ChecklistNotFoundError,
+  classifyAnthropicError,
+  classifyStopReason,
+  userFacingMessage,
+} from './_shared';
 
 const logger = getLogger('ai.suggest.checklist');
 
@@ -138,13 +143,16 @@ export async function proposeChecklist(
   // raw TypeError outside the try, past every error path below.
   const parsedResp = result.parsed_output;
   if (!parsedResp) {
+    // A truncated or refused response is a distinct diagnosis from "the
+    // model returned a shape we could not parse" — record which it was.
+    const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
     await createSuggestionLog({
       userId,
       kind: 'checklist',
       userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
       inventorySnapshotIds: ctx.inventorySnapshotIds,
       response: null,
-      errorReason: 'schema_violation',
+      errorReason,
       model: ANTHROPIC_MODEL,
       latencyMs: Date.now() - start,
     });
@@ -154,11 +162,11 @@ export async function proposeChecklist(
         kind: 'checklist',
         userId,
         ok: false,
-        errorReason: 'schema_violation',
+        errorReason,
       },
       'no parsed output',
     );
-    return { ok: false, formError: userFacingMessage('schema_violation') };
+    return { ok: false, formError: userFacingMessage(errorReason) };
   }
   const usage = result.usage;
 

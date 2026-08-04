@@ -94,6 +94,5 @@ describe.skipIf(skip)('parts extraction live smoke (unconstrained, no prefill)',
     }
 
     expect(failures, failures.join('\n')).toEqual([]);
-  }, // only on a good day — give it its own headroom. // Three sequential live calls, comfortably inside the 60s config default
-  120_000);
+  }, 120_000); // only on a good day — give it its own headroom. // Three sequential live calls, comfortably inside the 60s config default
 });

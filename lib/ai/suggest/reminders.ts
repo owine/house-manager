@@ -22,7 +22,7 @@ import {
   proposedReminderSchema,
   proposeRemindersResponseSchema,
 } from '../schemas';
-import { classifyAnthropicError, userFacingMessage } from './_shared';
+import { classifyAnthropicError, classifyStopReason, userFacingMessage } from './_shared';
 
 const logger = getLogger('ai.suggest.reminders');
 
@@ -116,13 +116,16 @@ export async function proposeReminders(input: {
   // logging. Route it through the same path as any other bad response.
   const parsed = result.parsed_output;
   if (!parsed) {
+    // A truncated or refused response is a distinct diagnosis from "the
+    // model returned a shape we could not parse" — record which it was.
+    const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
     await createSuggestionLog({
       userId,
       kind: 'reminders',
       userPrompt: null,
       inventorySnapshotIds: ctx.inventorySnapshotIds,
       response: null,
-      errorReason: 'schema_violation',
+      errorReason,
       model: ANTHROPIC_MODEL,
       latencyMs: Date.now() - start,
     });
@@ -132,11 +135,11 @@ export async function proposeReminders(input: {
         kind: 'reminders',
         userId,
         ok: false,
-        errorReason: 'schema_violation',
+        errorReason,
       },
       'no parsed output',
     );
-    return { ok: false, formError: userFacingMessage('schema_violation') };
+    return { ok: false, formError: userFacingMessage(errorReason) };
   }
   const usage = result.usage;
 
