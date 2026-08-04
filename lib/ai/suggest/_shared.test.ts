@@ -103,6 +103,16 @@ describe('classifyAnthropicError — schema failures', () => {
     if (parsed.success) throw new Error('expected a parse failure');
     expect(classifyAnthropicError(parsed.error)).toBe('schema_violation');
   });
+
+  it('classifies a ZodError from a *different* zod copy', () => {
+    // Raised in review on #367 as a coupling question; the real hazard is
+    // `instanceof`. If the SDK ever resolves its own copy of zod, an
+    // `instanceof z.ZodError` check fails against an error that is a ZodError
+    // in every way that matters. Matching on `name` is copy-independent.
+    const foreign = Object.assign(new Error('bad shape'), { name: 'ZodError' });
+    expect(foreign instanceof z.ZodError).toBe(false);
+    expect(classifyAnthropicError(foreign)).toBe('schema_violation');
+  });
 });
 
 describe('classifyAnthropicError — duck-typed fallbacks', () => {

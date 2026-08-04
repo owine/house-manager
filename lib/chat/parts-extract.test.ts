@@ -162,6 +162,27 @@ describe('extractJsonObject', () => {
     expect(extractJsonObject(`prose ${doc} more prose`)).toBe(doc);
   });
 
+  // Raised in review on #367: an outermost-brace span mis-extracts when the
+  // prose around the payload also contains braces. Fenced output is the only
+  // shape observed from the model, so preferring the fence when one is present
+  // makes the surrounding prose irrelevant instead of load-bearing.
+  it('prefers the fenced block over braces in the surrounding prose', () => {
+    const doc = '{"proposals":[]}';
+    expect(
+      extractJsonObject(`Note the {} syntax:\n\`\`\`json\n${doc}\n\`\`\`\nHope {that} helps`),
+    ).toBe(doc);
+  });
+
+  it('still handles a fence with no language tag and stray prose braces', () => {
+    const doc = '{"proposals":[{"kind":"CREATE_PART"}]}';
+    expect(extractJsonObject(`a { b\n\`\`\`\n${doc}\n\`\`\`\nc } d`)).toBe(doc);
+  });
+
+  it('falls back to the brace span when there is no fence', () => {
+    const doc = '{"proposals":[]}';
+    expect(extractJsonObject(`Here you go: ${doc}`)).toBe(doc);
+  });
+
   it('returns empty string when there is no object at all', () => {
     // Degrades to unparseable_json -> zero proposals, the designed failure mode.
     expect(extractJsonObject('I could not find any parts.')).toBe('');

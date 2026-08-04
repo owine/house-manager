@@ -121,10 +121,11 @@ export const PARTS_EXTRACT_PROMPT = buildSystemPrompt();
 /**
  * Pull the JSON document out of an unconstrained completion.
  *
- * Takes the outermost `{`…`}` span, which unwraps a markdown fence and strips
- * prose on either side in one step. Returns `''` when there is no object at
- * all, so the caller's `JSON.parse` throws and the turn degrades to zero part
- * proposals — the same designed failure mode as any other unusable payload.
+ * Prefers the contents of a markdown fence when there is one, and otherwise
+ * takes the outermost `{`…`}` span of the whole reply. Returns `''` when there
+ * is no object at all, so the caller's `JSON.parse` throws and the turn
+ * degrades to zero part proposals — the same designed failure mode as any
+ * other unusable payload.
  *
  * **This is load-bearing, not defensive padding.** Haiku 4.5 wraps its answer
  * in a ```json fence on every observed call — 3/3 in the live smoke, across
@@ -136,11 +137,23 @@ export const PARTS_EXTRACT_PROMPT = buildSystemPrompt();
  * brace-prepending assembler would have yielded `{```json{…}```` on every turn
  * — unparseable, zero proposals, no error anywhere.
  *
- * Deliberately not a fence-specific regex: the model has more ways to wrap an
- * object than it has fence syntaxes, and brace-span extraction covers all of
- * them without enumerating any.
+ * The brace span alone would be enough for every output observed so far, and it
+ * remains the fallback because the model has more ways to wrap an object than
+ * it has fence syntaxes. Checking the fence first is belt-and-braces for the
+ * case raised in review on #367: prose that itself contains braces, on either
+ * side of the payload, would otherwise drag the span past the real object.
  */
 export function extractJsonObject(text: string): string {
+  // Prefer the fenced block when there is one. The fence is the shape actually
+  // observed from the model, and honouring it makes any prose outside the fence
+  // irrelevant — including prose that contains braces of its own, which would
+  // otherwise drag the brace span past the real payload.
+  const fenced = /```(?:[a-zA-Z0-9_-]+)?\s*\n([\s\S]*?)\n?```/.exec(text);
+  return braceSpan(fenced ? fenced[1] : text);
+}
+
+/** Outermost `{`…`}`. Returns '' when there is no object to find. */
+function braceSpan(text: string): string {
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
   if (first === -1 || last <= first) return '';
@@ -273,7 +286,7 @@ async function runExtraction(args: {
     inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { partsExtract: raw },
     model: ANTHROPIC_MODEL,
-    ...(usage ? usageLogFields(usage) : {}),
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
   });
 

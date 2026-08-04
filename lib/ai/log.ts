@@ -42,15 +42,24 @@ export type CreateLogInput = {
  * load-bearing rather than cosmetic, and doing it here keeps the distinction
  * from being re-derived (or quietly cast away) at each call site.
  */
-export function usageLogFields(usage: {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_input_tokens?: number | null;
-  cache_creation_input_tokens?: number | null;
-}): Pick<
+export function usageLogFields(
+  usage:
+    | {
+        input_tokens: number;
+        output_tokens: number;
+        cache_read_input_tokens?: number | null;
+        cache_creation_input_tokens?: number | null;
+      }
+    | undefined,
+): Pick<
   CreateLogInput,
   'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheCreationTokens'
 > {
+  // Accepts undefined so call sites never need a ternary. `Message.usage` is
+  // non-optional on the SDK type, so in practice this only fires where a local
+  // `usage` variable is declared before the try that assigns it and TypeScript
+  // cannot narrow it afterwards.
+  if (!usage) return {};
   return {
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,

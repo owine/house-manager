@@ -4,7 +4,6 @@ import {
   APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk';
-import { z } from 'zod';
 
 export class ChecklistNotFoundError extends Error {
   constructor() {
@@ -52,8 +51,14 @@ export function classifyAnthropicError(e: unknown): string {
   const byStatus = classifyStatus((e as { status?: unknown })?.status);
   if (byStatus) return byStatus;
 
-  // Layer 3 — message text, for non-SDK throwers.
-  if (e instanceof z.ZodError) return 'schema_violation';
+  // Layer 3 — shape and message text, for non-SDK throwers.
+  //
+  // `name`, not `instanceof z.ZodError`: the SDK re-validates `output_config`
+  // responses against our schema, and if it ever resolves its own copy of zod
+  // an `instanceof` check would fail against an error that is a ZodError in
+  // every way that matters. Matching the name is copy-independent, and drops a
+  // zod import from this module besides.
+  if ((e as { name?: unknown })?.name === 'ZodError') return 'schema_violation';
   const msg = typeof (e as Error)?.message === 'string' ? (e as Error).message.toLowerCase() : '';
   if (msg.includes('timeout') || msg.includes('timed out')) return 'timeout';
   if (msg.includes('aborted')) return 'aborted';
