@@ -33,7 +33,7 @@ const hoisted = vi.hoisted(() => {
       // Text the parts call returns, MINUS the leading `{` — the request
       // prefills the assistant turn with a brace, so the model's own output
       // starts after it.
-      partsResponse: '"proposals":[]}' as unknown,
+      partsResponse: '{"proposals":[]}' as unknown,
       lastCreateArgs: null as Record<string, unknown> | null,
     },
   };
@@ -145,7 +145,7 @@ describe('chatTurn', () => {
     state.askEnabled = true;
     state.parseResponse = null;
     state.lastParseArgs = null;
-    state.partsResponse = '"proposals":[]}';
+    state.partsResponse = '{"proposals":[]}';
     state.lastCreateArgs = null;
     embedTextsMock.mockClear();
     parseMock.mockClear();
@@ -188,7 +188,7 @@ describe('chatTurn', () => {
           itemId: 'item-1',
         },
       ],
-    }).slice(1); // the request prefills the assistant turn with `{`
+    });
 
     const result = await chatTurn(
       turnInput('the backyard string lights take 24 S14 bulbs, E26 base, 2700K, 11 watts each'),
@@ -207,7 +207,7 @@ describe('chatTurn', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('sends the parts call unconstrained, with a `{` prefill', async () => {
+  it('sends the parts call unconstrained, and with no assistant prefill', async () => {
     state.parseResponse = simpleReplyFixture;
     await chatTurn(turnInput('the porch takes BR30 bulbs'));
 
@@ -218,7 +218,13 @@ describe('chatTurn', () => {
     // No output_config is the entire point — that is what puts this call
     // outside the three grammar ceilings.
     expect(args.output_config).toBeUndefined();
-    expect(args.messages[args.messages.length - 1]).toEqual({ role: 'assistant', content: '{' });
+    // And no trailing assistant turn. A last-assistant-turn prefill 400s on
+    // every model after Haiku 4.5, and this call's failure mode is silent
+    // (zero part proposals), so a model bump would have switched parts capture
+    // off without an error anywhere. Output shape is steered by the prompt and
+    // recovered by `extractJsonObject` instead.
+    expect(args.messages[args.messages.length - 1].role).toBe('user');
+    expect(args.messages.some((m) => m.role === 'assistant' && m.content === '{')).toBe(false);
   });
 
   it('a failed parts call costs only the part proposals, not the turn', async () => {

@@ -151,6 +151,22 @@ export type SystemBlock = {
   cache_control?: { type: 'ephemeral' };
 };
 
+/**
+ * System blocks for the suggest calls, with the cache breakpoint on the last
+ * one so the whole prefix (prompt → profile → inventory) caches together.
+ *
+ * **Inert at today's inventory size.** The breakpoint only takes effect once
+ * the prefix clears the model's minimum cacheable length — 4096 tokens on
+ * Haiku 4.5. Production measures 1.8–2.4k tokens for `reminders` and 1.8–2.0k
+ * for `checklist`, and `AISuggestionLog` records zero cache writes and zero
+ * reads across every row of both kinds. An inventory line costs ~20 tokens, so
+ * this needs on the order of 200 items before it does anything.
+ *
+ * Left in place deliberately: it is free, it is correct, and it starts paying
+ * out on its own as the inventory grows or if the model moves to one with a
+ * lower minimum (512 on Opus 5, 1024 on Sonnet 5). Check `cacheReadTokens` in
+ * `AISuggestionLog` before assuming it has started working.
+ */
 export function buildSystemBlocks(input: {
   profile: HouseProfileForPrompt;
   today: Date;

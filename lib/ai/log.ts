@@ -33,6 +33,32 @@ export type CreateLogInput = {
   retrievedChunkIds?: string[];
 };
 
+/**
+ * The four token counts every call site logs, mapped off the SDK's `usage`.
+ *
+ * The cache counters are `number | null` on the SDK type — null when the
+ * request had no `cache_control` breakpoint at all, 0 when it had one that
+ * didn't hit. `CreateLogInput` takes `number | undefined`, so the coalesce is
+ * load-bearing rather than cosmetic, and doing it here keeps the distinction
+ * from being re-derived (or quietly cast away) at each call site.
+ */
+export function usageLogFields(usage: {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}): Pick<
+  CreateLogInput,
+  'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheCreationTokens'
+> {
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cacheReadTokens: usage.cache_read_input_tokens ?? undefined,
+    cacheCreationTokens: usage.cache_creation_input_tokens ?? undefined,
+  };
+}
+
 export async function createSuggestionLog(input: CreateLogInput) {
   return prisma.aISuggestionLog.create({
     data: {

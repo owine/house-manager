@@ -1,4 +1,5 @@
 'use server';
+import type { ParsedMessage } from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -13,7 +14,7 @@ import { enqueueSearchIndex } from '@/lib/search/client';
 import { startOfDayUtc } from '@/lib/time/tz';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext, type FocusedItem } from '../context-builder';
-import { createSuggestionLog, markAccepted } from '../log';
+import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
 import { buildSystemBlocks } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import {
@@ -77,7 +78,7 @@ export async function proposeReminders(input: {
   const ctx = await buildSuggestContext({ today: houseToday, focusedItemId: input.itemId });
 
   const start = Date.now();
-  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
+  let result: ParsedMessage<z.infer<typeof proposeRemindersResponseSchema>>;
   try {
     result = await getAnthropic().messages.parse({
       model: ANTHROPIC_MODEL,
@@ -89,7 +90,7 @@ export async function proposeReminders(input: {
       }),
       messages: [{ role: 'user', content: buildReminderUserMessage(ctx.focusedItem) }],
       output_config: { format: zodOutputFormat(proposeRemindersResponseSchema) },
-    } as never);
+    });
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     await createSuggestionLog({
@@ -109,8 +110,35 @@ export async function proposeReminders(input: {
     return { ok: false, formError: userFacingMessage(errorReason) };
   }
 
-  const parsed = (result as { parsed_output: { proposals: ProposedReminder[] } }).parsed_output;
-  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
+  // `parsed_output` is `T | null` on the SDK type — null when the response
+  // carried no parseable output block. Previously the cast hid that and the
+  // next line threw a raw TypeError outside the try, past all the error
+  // logging. Route it through the same path as any other bad response.
+  const parsed = result.parsed_output;
+  if (!parsed) {
+    await createSuggestionLog({
+      userId,
+      kind: 'reminders',
+      userPrompt: null,
+      inventorySnapshotIds: ctx.inventorySnapshotIds,
+      response: null,
+      errorReason: 'schema_violation',
+      model: ANTHROPIC_MODEL,
+      latencyMs: Date.now() - start,
+    });
+    logger.info(
+      {
+        event: 'ai.suggest',
+        kind: 'reminders',
+        userId,
+        ok: false,
+        errorReason: 'schema_violation',
+      },
+      'no parsed output',
+    );
+    return { ok: false, formError: userFacingMessage('schema_violation') };
+  }
+  const usage = result.usage;
 
   const log = await createSuggestionLog({
     userId,
@@ -119,10 +147,7 @@ export async function proposeReminders(input: {
     inventorySnapshotIds: ctx.inventorySnapshotIds,
     response: parsed,
     model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
   });
 

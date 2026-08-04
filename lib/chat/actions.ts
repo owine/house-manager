@@ -1,10 +1,11 @@
 'use server';
+import type { ParsedMessage } from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { ChatProposal, ChatProposalKind, PartKind, Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ANTHROPIC_CHAT_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
-import { createSuggestionLog } from '@/lib/ai/log';
+import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
 import { classifyAnthropicError, userFacingMessage } from '@/lib/ai/suggest/_shared';
 import { retrieveTopK } from '@/lib/ask/retrieve';
@@ -480,7 +481,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     snapshot,
   });
 
-  let result: Awaited<ReturnType<ReturnType<typeof getAnthropic>['messages']['parse']>>;
+  let result: ParsedMessage<z.infer<typeof chatTurnOutputSchema>>;
   try {
     result = await getAnthropic().messages.parse({
       model: ANTHROPIC_MODEL,
@@ -491,7 +492,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
       ],
       messages: anthropicMessages,
       output_config: { format: zodOutputFormat(chatTurnOutputSchema) },
-    } as never);
+    });
   } catch (e) {
     // Settle the in-flight parts request before returning, so its own logging
     // finishes inside the action rather than after the response.
@@ -522,9 +523,38 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     return { ok: false, formError: errorReply };
   }
 
-  const rawOutput = (result as { parsed_output: { reply: string; proposals: unknown[] } })
-    .parsed_output;
-  const usage = (result as unknown as { usage?: Record<string, number> }).usage ?? {};
+  // `parsed_output` is `T | null` on the SDK type. A null here reaches the same
+  // place a thrown call does: an ASSISTANT turn is still persisted carrying the
+  // error text, so the session never shows a user turn with nothing after it.
+  if (!result.parsed_output) {
+    const log = await createSuggestionLog({
+      userId,
+      kind: 'chat',
+      userPrompt: turnText,
+      inventorySnapshotIds: snapshotLogIds(snapshot),
+      response: null,
+      errorReason: 'schema_violation',
+      model: ANTHROPIC_MODEL,
+      latencyMs: Date.now() - start,
+      retrievedChunkIds,
+    });
+    logger.info(
+      { event: 'chat', userId, ok: false, errorReason: 'schema_violation' },
+      'no parsed output',
+    );
+    const errorReply = userFacingMessage('schema_violation');
+    await persistTurn({
+      userId,
+      sessionId,
+      turnText,
+      replyText: errorReply,
+      logId: log.id,
+      proposals: [],
+    });
+    return { ok: false, formError: errorReply };
+  }
+  const rawOutput = result.parsed_output;
+  const usage = result.usage;
 
   let reply = rawOutput.reply;
   let droppedForLength = false;
@@ -593,10 +623,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     inventorySnapshotIds: snapshotLogIds(snapshot),
     response: { reply: rawOutput.reply, proposals: rawOutput.proposals } as Prisma.InputJsonValue,
     model: ANTHROPIC_MODEL,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cache_read_input_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens,
+    ...usageLogFields(usage),
     latencyMs: Date.now() - start,
     retrievedChunkIds,
   });

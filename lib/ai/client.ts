@@ -1,21 +1,27 @@
-// SDK verification — @anthropic-ai/sdk ~0.92.0 (pinned in package.json)
+// SDK notes — @anthropic-ai/sdk, exact-pinned in package.json.
 //
 // output_config / zodOutputFormat / messages.parse():
-//   GA on all current models including claude-haiku-4-5. No beta header required.
-//   Supported models per SDK docs: Opus 4.7, Sonnet 4.6, Haiku 4.5 (and legacy 4.x).
-//   Usage: client.messages.parse({ model, output_config: { format: zodOutputFormat(schema) } })
+//   GA on all current models including claude-haiku-4-5. No beta header, and no
+//   `as never` on the params: the SDK types `output_config` on
+//   MessageCreateParamsNonStreaming and infers `parsed_output` from the schema
+//   you pass. Casting the params away takes that inference with it — which is
+//   how four call sites ended up hand-asserting their own response shapes.
+//   `parsed_output` is `T | null`; every call site guards it.
 //
-// cache_control system-block array syntax (confirmed current):
+// cache_control system-block array syntax:
 //   system accepts TextBlockParam[] where each block may carry
 //   cache_control: { type: 'ephemeral' } (default 5-min TTL) or
 //   cache_control: { type: 'ephemeral', ttl: '1h' } (1-hour TTL).
-//   Minimum cacheable prefix: 4096 tokens for Haiku 4.5.
 //   Placement: breakpoint on the *last* block caches everything before it
-//   (tools → system → messages render order). Volatile inventory block
-//   receives the marker so the stable system prompt + house profile are
-//   cached together on repeated calls.
+//   (tools → system → messages render order).
 //
-// betaZodTool fallback: not needed — output_config is GA on Haiku 4.5.
+//   Minimum cacheable prefix is 4096 tokens on Haiku 4.5 — high enough that
+//   whether a breakpoint does anything is an empirical question per call site,
+//   not a given. Measured in production: the chat call clears it (writes ~5k),
+//   chat-parts and both suggest calls do not. See the comments on
+//   `buildSystemBlocks` (lib/ai/prompts.ts) and the snapshot block in
+//   lib/chat/parts-extract.ts, and check `AISuggestionLog.cacheReadTokens`
+//   before assuming any of it has changed.
 import Anthropic from '@anthropic-ai/sdk';
 import { getEnv } from '@/lib/env';
 
@@ -27,7 +33,9 @@ export function getAnthropic(): Anthropic {
       apiKey: getEnv().ANTHROPIC_API_KEY,
       // Default timeout 30s — the spec's error matrix expects this.
       timeout: 30_000,
-      maxRetries: 1, // SDK retries once; we add one outer retry in actions.ts.
+      // One SDK-level retry (429/5xx/connection errors), and nothing above it —
+      // no call site adds an outer retry. Two attempts total, worst case ~60s.
+      maxRetries: 1,
     });
   }
   return _client;

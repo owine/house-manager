@@ -21,9 +21,11 @@ describe.skipIf(skip)('Anthropic SDK live smoke', () => {
         },
       ],
       output_config: { format: zodOutputFormat(proposeRemindersResponseSchema) },
-    } as never);
+    });
 
-    const parsed = (result as { parsed_output: { proposals: unknown[] } }).parsed_output;
+    const parsed = result.parsed_output;
+    expect(parsed).not.toBeNull();
+    if (!parsed) throw new Error('no parsed output');
     expect(parsed.proposals.length).toBeGreaterThanOrEqual(0);
     expect(parsed.proposals.length).toBeLessThanOrEqual(10); // schema cap
   });
@@ -45,9 +47,11 @@ describe.skipIf(skip)('Anthropic SDK live smoke', () => {
         },
       ],
       output_config: { format: zodOutputFormat(proposeChecklistResponseSchema) },
-    } as never);
+    });
 
-    const parsed = (result as { parsed_output: { name: string; items: unknown[] } }).parsed_output;
+    const parsed = result.parsed_output;
+    expect(parsed).not.toBeNull();
+    if (!parsed) throw new Error('no parsed output');
     expect(parsed.name).toBeTruthy();
     expect(parsed.items.length).toBeGreaterThanOrEqual(1);
     expect(parsed.items.length).toBeLessThanOrEqual(20); // schema cap

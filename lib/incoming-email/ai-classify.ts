@@ -1,4 +1,5 @@
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import type { ContentBlockParam, Usage } from '@anthropic-ai/sdk/resources/messages';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '@/lib/ai/client';
 import {
   type IncomingEmailClassifyExtract,
@@ -97,15 +98,12 @@ export type AiClassifyExtractInput = {
  */
 export async function aiClassifyExtract(
   input: AiClassifyExtractInput,
-): Promise<{ result: IncomingEmailClassifyExtract; usage: Record<string, number> }> {
+): Promise<{ result: IncomingEmailClassifyExtract; usage: Usage }> {
   const userText = buildUserText(input);
 
   // Documents first (Anthropic recommends documents BEFORE instruction text),
   // then the metadata + body + candidate lists.
-  const content: Array<
-    | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
-    | { type: 'text'; text: string }
-  > = [];
+  const content: ContentBlockParam[] = [];
   for (const pdf of input.pdfs) {
     content.push({
       type: 'document',
@@ -120,11 +118,14 @@ export async function aiClassifyExtract(
     system: [{ type: 'text', text: SYSTEM_PROMPT }],
     messages: [{ role: 'user', content }],
     output_config: { format: zodOutputFormat(incomingEmailClassifyExtractSchema) },
-  } as never);
+  });
 
-  const result = (apiResult as { parsed_output: IncomingEmailClassifyExtract }).parsed_output;
-  const usage = (apiResult as unknown as { usage?: Record<string, number> }).usage ?? {};
-  return { result, usage };
+  // `parsed_output` is `T | null`. Errors propagate here by contract — the
+  // caller falls back to the heuristic classifier — so a missing parse is a
+  // throw rather than a guard-and-return like the suggest actions use.
+  const result = apiResult.parsed_output;
+  if (!result) throw new Error('Anthropic returned no parsed output for email classification');
+  return { result, usage: apiResult.usage };
 }
 
 /**
