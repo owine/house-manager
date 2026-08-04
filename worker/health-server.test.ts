@@ -8,6 +8,7 @@ import {
   resolveStatus,
   resolveWorkerHealthPort,
 } from './health-server';
+import type { Heartbeat } from './heartbeat';
 
 describe('resolveWorkerHealthPort', () => {
   it('defaults to 3000 so containers and the Dockerfile need no env var', () => {
@@ -29,8 +30,6 @@ describe('resolveWorkerHealthPort', () => {
     }
   });
 });
-
-import type { Heartbeat } from './heartbeat';
 
 function stubHeartbeat(over: Partial<Heartbeat> = {}): Heartbeat {
   return {
