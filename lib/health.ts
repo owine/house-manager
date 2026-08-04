@@ -1,37 +1,107 @@
 import { Client } from 'pg';
 
+type HealthChecks = { database: string; meilisearch: string };
+
 export type ReadyResult = {
   ready: boolean;
-  checks: { database: string; meilisearch: string };
+  checks: HealthChecks;
 };
 
-export async function isReady(opts: {
-  databaseUrl: string;
-  meiliUrl: string;
-}): Promise<ReadyResult> {
-  const checks = { database: 'unchecked', meilisearch: 'unchecked' };
+export type HealthResult = {
+  status: 'ok' | 'down';
+  checks: HealthChecks;
+};
 
+const PROBE_TIMEOUT_MS = 2000;
+
+/**
+ * Some driver errors arrive with an empty `message` — a stopped Postgres
+ * container yields exactly that, which would render as a useless bare
+ * `'error: '` in the health body. Fall back to the error's name, then to its
+ * string form, so the endpoint always says *something* an operator can act on.
+ */
+function describeError(e: unknown): string {
+  const err = e as Error;
+  return `error: ${err?.message || err?.name || String(e)}`;
+}
+
+/** Returns `'ok'`, or `'error: <message>'`. Never throws. */
+export async function probeDatabase(databaseUrl: string): Promise<string> {
+  const client = new Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: PROBE_TIMEOUT_MS,
+    // connectionTimeoutMillis only bounds the handshake — a query that stalls
+    // after connecting (lock contention, replica failover) would otherwise
+    // hang forever. query_timeout cancels client-side; statement_timeout
+    // tells Postgres to cancel server-side. Both matter: client-side alone
+    // leaves the query running on the server, server-side alone doesn't help
+    // if the connection itself is wedged.
+    query_timeout: PROBE_TIMEOUT_MS,
+    statement_timeout: PROBE_TIMEOUT_MS,
+  });
   try {
-    const client = new Client({
-      connectionString: opts.databaseUrl,
-      connectionTimeoutMillis: 2000,
-    });
     await client.connect();
-    await client.query('SELECT 1');
-    await client.end();
-    checks.database = 'ok';
   } catch (e) {
-    checks.database = `error: ${(e as Error).message}`;
+    // A client whose connect() rejected is already torn down by node-postgres
+    // — there is no live connection for end() to close.
+    return describeError(e);
   }
-
   try {
-    const res = await fetch(`${opts.meiliUrl}/health`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    checks.meilisearch = res.ok ? 'ok' : `error: HTTP ${res.status}`;
+    await client.query('SELECT 1');
+    return 'ok';
   } catch (e) {
-    checks.meilisearch = `error: ${(e as Error).message}`;
+    return describeError(e);
+  } finally {
+    // Must run even when the query throws, or a failing probe leaks a
+    // connection every 30 seconds for as long as the fault lasts.
+    await client.end().catch(() => {});
   }
+}
 
+/** Returns `'ok'`, or `'error: <message>'`. Never throws. */
+async function probeMeilisearch(meiliUrl: string): Promise<string> {
+  try {
+    const res = await fetch(`${meiliUrl}/health`, {
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    return res.ok ? 'ok' : `error: HTTP ${res.status}`;
+  } catch (e) {
+    return describeError(e);
+  }
+}
+
+type ProbeOptions = { databaseUrl: string; meiliUrl: string };
+
+// Run both probes concurrently: the Docker healthcheck allows 5s total and
+// each probe is bounded to PROBE_TIMEOUT_MS (connect, query, and fetch all
+// carry their own timeout), so sequential probes would leave almost no
+// margin and an unbounded probe could blow the budget entirely.
+async function probeAll(opts: ProbeOptions): Promise<HealthChecks> {
+  const [database, meilisearch] = await Promise.all([
+    probeDatabase(opts.databaseUrl),
+    probeMeilisearch(opts.meiliUrl),
+  ]);
+  return { database, meilisearch };
+}
+
+/**
+ * Strict readiness: every dependency must answer. Backs `/api/health/ready`.
+ */
+export async function isReady(opts: ProbeOptions): Promise<ReadyResult> {
+  const checks = await probeAll(opts);
   return { ready: checks.database === 'ok' && checks.meilisearch === 'ok', checks };
+}
+
+/**
+ * Container health: Postgres is fatal, Meilisearch is reported but tolerated.
+ *
+ * Search is eventually consistent by design — `enqueueSearchIndex` swallows
+ * its errors and the nightly `search.reindex` rebuilds the index — so a
+ * Meilisearch outage degrades the app rather than breaking it, and must not
+ * mark a container unhealthy. Postgres is different: without it neither the
+ * web app nor the worker can do anything at all.
+ */
+export async function checkHealth(opts: ProbeOptions): Promise<HealthResult> {
+  const checks = await probeAll(opts);
+  return { status: checks.database === 'ok' ? 'ok' : 'down', checks };
 }

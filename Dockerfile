@@ -127,8 +127,22 @@ LABEL org.opencontainers.image.title="house-manager" \
 
 EXPOSE 3000
 
-# Healthcheck is defined per-service in docker-compose.yml (web only).
-# This image is used by both web and worker; the worker has no HTTP surface
-# so it doesn't get a healthcheck.
+# One healthcheck serves both roles: web answers /api/health from Next.js and
+# the worker answers the identical path from worker/health-server.ts. Both bind
+# 3000, which does not collide because each container has its own network
+# namespace, and compose publishes only web's. That is what lets a single line
+# here be correct for both services — no role detection, no env var, and no
+# change required in the deployment compose.
+#
+# start-period covers web's `db:deploy && db:seed` on boot; failures inside it
+# do not count toward retries.
+#
+# NOTE: this cannot detect a container that crashes during boot — Docker only
+# probes running containers, so a crash-looping container never leaves
+# `starting` and never reports `unhealthy`. Whatever consumes this must treat
+# *anything but healthy* as down, or it will miss exactly the failure that
+# prompted this healthcheck in the first place.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+  CMD curl -fsS http://localhost:3000/api/health || exit 1
 
 CMD ["pnpm", "start"]

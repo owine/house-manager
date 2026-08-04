@@ -11,6 +11,14 @@ x-app-env: &app-env
   FILES_DIR: /data/files
   NODE_ENV: production
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  # Required by lib/env.ts. Without these both web and worker fail Zod
+  # validation at boot and crash-loop, which is what `docker compose up` did
+  # before they were listed here.
+  WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY}
+  WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY}
+  WEB_PUSH_CONTACT_EMAIL: ${WEB_PUSH_CONTACT_EMAIL}
+  FORWARDEMAIL_API_KEY: ${FORWARDEMAIL_API_KEY}
+  FORWARDEMAIL_FROM_ADDRESS: ${FORWARDEMAIL_FROM_ADDRESS}
   # Plan 4c — Ask / RAG. Opt-in per deployment; flip ASK_ENABLED=true and
   # set VOYAGE_API_KEY when you want the feature live.
   ASK_ENABLED: ${ASK_ENABLED:-false}
@@ -69,12 +77,8 @@ services:
       - files:/data/files
     ports: ["3000:3000"]
     command: sh -c "pnpm db:deploy && pnpm db:seed && pnpm start"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 120s
+    # Healthcheck comes from the image (see Dockerfile) — one definition for
+    # both services rather than two that can drift.
 
   worker:
     build: .
@@ -88,8 +92,10 @@ services:
       - files:/data/files
       - ${BACKUP_DIR:-./db-backups}:/backups
     command: pnpm worker:start
-    # No healthcheck: the worker is a long-running process with no HTTP surface.
-    # docker auto-restarts on crash via restart: unless-stopped.
+    # Healthcheck comes from the image (see Dockerfile). The worker serves the
+    # same /api/health path as web from its own health server, so it reports
+    # unhealthy when it can no longer reach Postgres or has stopped servicing
+    # the queue — neither of which `restart: unless-stopped` can detect.
 
 volumes:
   pgdata:

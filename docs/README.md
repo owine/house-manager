@@ -33,7 +33,31 @@ docker compose up -d --build
 
 This brings up `db`, `meilisearch`, `web`, and `worker`. The `web` service runs `pnpm db:deploy` on startup (idempotent), then `pnpm start`. The `worker` runs `pnpm worker:start` (`tsx worker/index.ts`).
 
-Health endpoints (web): `/api/health` (liveness), `/api/health/ready` (db + meilisearch reachable).
+### Health endpoints
+
+| Endpoint | Served by | Contract |
+|---|---|---|
+| `/api/health` | **both** web and worker, on port 3000 | Container health. Postgres unreachable → 503. Meilisearch unreachable → still 200, reported in `checks.meilisearch`. The worker additionally reports 503 when its queue heartbeat goes stale. |
+| `/api/health/ready` | web only | Strict readiness — db *and* meilisearch must both answer. |
+
+The Dockerfile `HEALTHCHECK` probes `/api/health`. Both roles run from the same
+image and both bind 3000; there is no collision because each container has its
+own network namespace, which is what lets a single `HEALTHCHECK` line be correct
+for both without role detection or an extra env var.
+
+Meilisearch is deliberately non-fatal: search is eventually consistent by design
+(`enqueueSearchIndex` swallows its errors and the nightly `search.reindex`
+rebuilds the index), so a Meilisearch outage degrades search rather than marking
+a container unhealthy — and the worker keeps running through it.
+
+**Docker only probes running containers.** A container that crash-loops during
+boot never leaves `starting` and never reports `unhealthy`, so alerting must
+treat *anything other than `healthy`* as down. Waiting for `unhealthy` will miss
+exactly the failure this healthcheck was added for.
+
+For local development, `pnpm dev` and `pnpm worker:dev` both want port 3000 on
+one host. Set `WORKER_HEALTH_PORT` (see `.env.example`) to move the worker's
+health server aside. Containers leave it unset.
 
 ## Environment variables
 

@@ -149,6 +149,18 @@ not running. `pnpm lint:worker-graph` now walks the transitive graph from
 `worker/index.ts` and checks each hop against the Dockerfile's own COPY lines. Shared
 code belongs in `lib/` — that is the layer both sides already depend on.
 
+**Both roles serve `/api/health` on port 3000.** The worker runs a small
+`node:http` server (`worker/health-server.ts`) at the same path as web, started
+*before* pg-boss so a worker wedged connecting to Postgres reports unhealthy
+rather than being unprobeable. Same port is safe because containers have
+separate network namespaces — that is what lets one `HEALTHCHECK` line in the
+shared Dockerfile cover both services. Locally the two collide, so
+`WORKER_HEALTH_PORT` overrides it for dev only. Health = dependencies ok **and**
+the queue heartbeat fresh (`worker/heartbeat.ts`, 30s beat / 120s stale), so a
+hung-but-alive worker goes unhealthy too. Note Docker only probes *running*
+containers: a crash-loop never reports `unhealthy`, it stays `starting`, so
+alerting must treat anything but `healthy` as down.
+
 **Search and embeddings are eventually consistent by design.** `enqueueSearchIndex` and
 `enqueueEmbed` swallow their errors and log a warning — a failed enqueue must never fail
 the user's mutation. Recovery is the nightly `search.reindex` (rebuilds the single `house`
