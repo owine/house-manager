@@ -13,7 +13,7 @@ const log = getLogger('worker.health');
  * without role detection or an extra env var.
  */
 export const DEFAULT_WORKER_HEALTH_PORT = 3000;
-export const WORKER_HEALTH_PATH = '/api/health';
+const WORKER_HEALTH_PATH = '/api/health';
 
 /**
  * Dev-only escape hatch. In containers the default is always right, but the

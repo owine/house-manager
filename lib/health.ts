@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-export type HealthChecks = { database: string; meilisearch: string };
+type HealthChecks = { database: string; meilisearch: string };
 
 export type ReadyResult = {
   ready: boolean;
@@ -59,7 +59,7 @@ export async function probeDatabase(databaseUrl: string): Promise<string> {
 }
 
 /** Returns `'ok'`, or `'error: <message>'`. Never throws. */
-export async function probeMeilisearch(meiliUrl: string): Promise<string> {
+async function probeMeilisearch(meiliUrl: string): Promise<string> {
   try {
     const res = await fetch(`${meiliUrl}/health`, {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),

@@ -2,8 +2,8 @@ import { getLogger } from '@/lib/logger';
 
 const log = getLogger('worker.heartbeat');
 
-export const HEARTBEAT_INTERVAL_MS = 30_000;
-export const HEARTBEAT_STALE_MS = 120_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_STALE_MS = 120_000;
 
 export type Heartbeat = {
   /** Start the interval. Idempotent. */
