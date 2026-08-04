@@ -43,8 +43,16 @@ export function createHeartbeat(opts: HeartbeatOptions): Heartbeat {
 
   let lastOkAt: number | null = null;
   let timer: NodeJS.Timeout | null = null;
+  let inFlight = false;
 
   const beat = async (): Promise<void> => {
+    // A probe that never settles is exactly the failure mode this heartbeat
+    // exists to detect. Without this guard every tick would stack another
+    // concurrent probe on top of the wedged one. Skipping instead means
+    // `lastOkAt` simply stops advancing and freshness decays to stale —
+    // which is the correct report.
+    if (inFlight) return;
+    inFlight = true;
     try {
       await opts.probe();
       lastOkAt = now();
@@ -52,6 +60,8 @@ export function createHeartbeat(opts: HeartbeatOptions): Heartbeat {
       // Deliberately does not clear `lastOkAt`: freshness decays with time
       // rather than flipping on a single blip.
       log.warn({ err: e }, 'worker heartbeat probe failed');
+    } finally {
+      inFlight = false;
     }
   };
 

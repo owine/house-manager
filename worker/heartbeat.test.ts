@@ -55,10 +55,19 @@ describe('createHeartbeat', () => {
     const clock = fakeClock();
     const probe = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValue(new Error('down'));
     const hb = createHeartbeat({ probe, now: clock.now, staleMs: 1000 });
-    await hb.beat();
+
+    await hb.beat(); // succeeds at t0
     clock.advance(900);
-    await hb.beat();
-    clock.advance(200);
+    await hb.beat(); // fails at t0+900
+
+    // The failure must leave the last success intact: still fresh, and aged
+    // from the SUCCESS, not reset and not nulled. This is the assertion that
+    // distinguishes the correct design from one where a failed probe clears
+    // the timestamp — without it the test passes against both.
+    expect(hb.ageMs()).toBe(900);
+    expect(hb.isFresh()).toBe(true);
+
+    clock.advance(200); // t0+1100, past staleMs
     expect(hb.isFresh()).toBe(false);
   });
 
@@ -94,5 +103,22 @@ describe('createHeartbeat', () => {
     hb.stop();
     await vi.advanceTimersByTimeAsync(5000);
     expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a tick while a beat is still in flight', async () => {
+    vi.useFakeTimers();
+    let release: (() => void) | undefined;
+    const probe = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const hb = createHeartbeat({ probe, intervalMs: 1000 });
+    hb.start();
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(probe).toHaveBeenCalledTimes(1);
+    release?.();
+    hb.stop();
   });
 });
