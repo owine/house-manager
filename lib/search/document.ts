@@ -1,8 +1,7 @@
 import type { PartKind } from '@prisma/client';
-
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { prisma } from '@/lib/db';
 import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import type { SearchDocument, SearchKind } from './schema';
 
 // ─── Row types — minimal shapes that toDocument needs ───────────────────────

@@ -2,12 +2,12 @@
 
 import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import { expandSystemSelection } from '@/lib/targets/expand';
 import type { PartTargetInput } from '@/lib/targets/schema';
 

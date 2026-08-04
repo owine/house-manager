@@ -137,6 +137,18 @@ stage; removing that COPY breaks the worker at boot, not at build. Sentry init m
 the first import in `worker/index.ts` (`lib/queue.ts` registers `boss.on('error')` →
 `Sentry.captureException`). Worker uses `@sentry/node`, web uses `@sentry/nextjs`.
 
+**Nothing the worker imports may live outside the runtime image.** The same runtime alias
+resolution cuts the other way: the runtime stage copies `worker/`, `lib/`, `prisma/`,
+`auth.config.ts` and `tsconfig.json` — *not* `components/` or `app/`. So a single import
+of `@/components/…` from anywhere in `lib/` crashes the container at boot with
+`ERR_MODULE_NOT_FOUND` while `tsc --noEmit`, `next build` and every unit test stay green
+— they all resolve against the full source tree. This took the worker down for five days
+(#333 added `lib/embedding/canonicalize.ts` → `@/components/parts/kind-labels`); the web
+container stayed healthy the whole time, so the only symptom was scheduled jobs quietly
+not running. `pnpm lint:worker-graph` now walks the transitive graph from
+`worker/index.ts` and checks each hop against the Dockerfile's own COPY lines. Shared
+code belongs in `lib/` — that is the layer both sides already depend on.
+
 **Search and embeddings are eventually consistent by design.** `enqueueSearchIndex` and
 `enqueueEmbed` swallow their errors and log a warning — a failed enqueue must never fail
 the user's mutation. Recovery is the nightly `search.reindex` (rebuilds the single `house`

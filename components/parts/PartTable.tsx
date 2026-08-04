@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -9,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import type { listParts } from '@/lib/parts/queries';
 
 type PartRow = Awaited<ReturnType<typeof listParts>>['parts'][number];

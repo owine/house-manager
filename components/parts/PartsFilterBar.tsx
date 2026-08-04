@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import { PART_KINDS } from '@/lib/parts/schema';
 
 // Sentinels for the "no filter" choices. Base UI's Select treats '' as a

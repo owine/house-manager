@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -13,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import type { SystemPartSummary } from '@/lib/systems/actions';
 
 type Props = {

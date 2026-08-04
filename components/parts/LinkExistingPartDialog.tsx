@@ -3,7 +3,6 @@
 import type { PartKind } from '@prisma/client';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { linkPartToParent } from '@/lib/parts/actions';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 
 export type PickerPart = {
   id: string;
