@@ -3,7 +3,6 @@
 import type { ChatProposalKind, PartKind, Prisma } from '@prisma/client';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +12,7 @@ import type { ProposalPayload } from '@/lib/chat/schema';
 import { formatCurrency } from '@/lib/format/currency';
 import { formatCalendarDate } from '@/lib/format/date';
 import { visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import type { ActionResult } from '@/lib/result';
 import { asCalendarDate } from '@/lib/time/tz';
 import { DiffRow } from './DiffRow';

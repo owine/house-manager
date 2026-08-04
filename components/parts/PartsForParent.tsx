@@ -5,7 +5,6 @@ import { Link2, Plus, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { LinkExistingPartDialog, type PickerPart } from '@/components/parts/LinkExistingPartDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { unlinkPart } from '@/lib/parts/actions';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 
 type ParentPartLinkRow = {
   id: string;

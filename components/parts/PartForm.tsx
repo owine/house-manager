@@ -7,7 +7,6 @@ import { useEffect, useRef, useTransition } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { PartKindFields } from '@/components/parts/PartKindFields';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import { type CreatePartInput, createPartSchema, PART_KINDS } from '@/lib/parts/schema';
 import type { ActionResult } from '@/lib/result';
 

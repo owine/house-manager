@@ -1,6 +1,6 @@
 import type { PartKind, Prisma } from '@prisma/client';
-import { PART_KIND_LABELS } from '@/components/parts/kind-labels';
 import { isReservedMetadataKey, visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
+import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 
 // Canonical text builders for each entity type. The output is what gets
 // embedded by Voyage AND what the Ask LLM sees as context. Two design rules:
