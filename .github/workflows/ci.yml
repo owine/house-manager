@@ -22,6 +22,20 @@ env:
   # Kept in lockstep with package.json `packageManager`/`engines`, .nvmrc,
   # and Dockerfile via Renovate (see renovate.json customManagers + the
   # toolchain-versions packageRule).
+  # Consumed by the eight `pnpm/setup` steps below, which are deliberately
+  # byte-identical -- edit one, edit all. Two of their inputs are load-bearing
+  # and non-obvious:
+  #   - `install: false` -- the action's `install` input defaults to TRUE. Left
+  #     unset it runs a full cold-cache `pnpm install` before setup-node has
+  #     restored the store, and then every job's explicit
+  #     `pnpm install --frozen-lockfile` runs anyway. Two installs, eight jobs.
+  #   - `cache` is left at its default (false) -- `actions/setup-node`'s
+  #     `cache: pnpm` already caches the store. Enabling both double-caches it.
+  # `standalone: true` from action-setup@v6 has no successor input: fetching
+  # pnpm's native per-platform binary is the only thing setup@v2 does, which is
+  # also why it requires pnpm >= 11. setup-node stays for the runtime, because
+  # the action's `runtime:` input reads `devEngines.runtime` (absent here) or an
+  # inline version, and neither keeps the Renovate annotation on NODE_VERSION.
   # renovate: datasource=npm depName=pnpm
   PNPM_VERSION: 11.19.0
   # renovate: datasource=node-version depName=node
@@ -102,10 +116,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -117,10 +131,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -150,10 +164,10 @@ jobs:
       DATABASE_URL: postgresql://housemanager:test@localhost:5432/housemanager
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -186,10 +200,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -222,10 +236,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -300,10 +314,10 @@ jobs:
       OCR_BACKEND: 'none'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -369,10 +383,10 @@ jobs:
       OCR_BACKEND: 'none'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -400,10 +414,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
-          standalone: true
+          install: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
