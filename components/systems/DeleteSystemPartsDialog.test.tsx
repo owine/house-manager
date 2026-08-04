@@ -119,10 +119,45 @@ describe('DeleteSystemPartsDialog', () => {
     // because it too would be orphaned.
     await waitFor(() => expect(screen.getByText('Belt')).toBeInTheDocument());
 
+    // Belt being on screen does NOT mean the button is clickable again. The
+    // fresh rows and the re-enable are two separate signals from the same
+    // transition — `setRows` commits the list, `useTransition`'s isPending
+    // clears the `disabled` — and React does not guarantee they land in the
+    // same commit. A click that arrives while `disabled` is still true is
+    // dropped silently: userEvent does not throw, so the only evidence is a
+    // second call that never happens. Wait on the gate itself.
+    await waitFor(() => expect(screen.getByTestId('delete-system-confirm')).toBeEnabled());
+
     await userEvent.click(screen.getByTestId('delete-system-confirm'));
+    // And wait for the call before reading it, as the two tests above do.
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(2));
     expect(onConfirm.mock.calls[1][0]).toEqual({
       archivePartIds: ['orphan', 'late'],
       keepPartIds: ['shared'],
     });
+  });
+
+  // The invariant that made the test above flaky is itself worth asserting:
+  // the confirm button is the double-submit guard, and a click landing while a
+  // confirm is in flight must not produce a second server call.
+  it('does not fire a second confirm while the first is still in flight', async () => {
+    const onConfirm = vi.fn(() => new Promise<never>(() => {})); // never settles
+    render(
+      <DeleteSystemPartsDialog
+        open
+        onOpenChange={() => {}}
+        systemName="HVAC"
+        parts={PARTS}
+        onConfirm={onConfirm as never}
+      />,
+    );
+
+    const confirm = screen.getByTestId('delete-system-confirm');
+    await userEvent.click(confirm);
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(confirm).toBeDisabled();
+
+    await userEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
