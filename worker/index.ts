@@ -9,7 +9,7 @@ import { startMemoryWatchdog } from '@/lib/observability/memory-watchdog';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
 import { APP_GIT_SHA } from '@/lib/version';
-import { createHealthServer, WORKER_HEALTH_PORT } from './health-server';
+import { createHealthServer, resolveWorkerHealthPort } from './health-server';
 import { createHeartbeat } from './heartbeat';
 import { handleChoreAutoCompleteTick } from './jobs/chore-auto-complete-tick';
 import {
@@ -60,8 +60,9 @@ async function main() {
     heartbeat,
     checkDeps: () => checkHealth({ databaseUrl: env.DATABASE_URL, meiliUrl: env.MEILI_HOST }),
   });
-  healthServer.listen(WORKER_HEALTH_PORT, () => {
-    logger.info({ port: WORKER_HEALTH_PORT }, 'worker health server listening');
+  const healthPort = resolveWorkerHealthPort();
+  healthServer.listen(healthPort, () => {
+    logger.info({ port: healthPort }, 'worker health server listening');
   });
 
   const boss = await getBoss();
@@ -111,7 +112,19 @@ async function main() {
     // Do not exit; the next scheduled tick will retry.
   }
 
-  await ensureSearchIndex();
+  try {
+    await ensureSearchIndex();
+  } catch (e) {
+    Sentry.captureException(e);
+    logger.warn({ err: e }, 'search index init failed; nightly reindex will retry');
+    // Do not exit. Search is eventually consistent by design (enqueueSearchIndex
+    // swallows its errors; the nightly search.reindex rebuilds the index), so a
+    // Meilisearch outage must degrade search rather than crash-loop the worker
+    // and take every unrelated job — backups, reminders, digests — down with it.
+    // This also makes the health contract honest: /api/health reports Meilisearch
+    // failures without going unhealthy, which is only meaningful if the worker
+    // can actually stay up in that state.
+  }
 
   await boss.work<SearchIndexJob>(Queue.SearchIndex, { batchSize: 4 }, async (jobs) => {
     for (const job of jobs) {

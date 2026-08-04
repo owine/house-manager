@@ -2,7 +2,34 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { HealthResult } from '@/lib/health';
-import { createHealthServer, resolveStatus } from './health-server';
+import {
+  createHealthServer,
+  DEFAULT_WORKER_HEALTH_PORT,
+  resolveStatus,
+  resolveWorkerHealthPort,
+} from './health-server';
+
+describe('resolveWorkerHealthPort', () => {
+  it('defaults to 3000 so containers and the Dockerfile need no env var', () => {
+    expect(resolveWorkerHealthPort({})).toBe(DEFAULT_WORKER_HEALTH_PORT);
+    expect(DEFAULT_WORKER_HEALTH_PORT).toBe(3000);
+  });
+
+  // The documented local workflow runs `pnpm dev` (Next on 3000) alongside
+  // `pnpm worker:dev` on one host, where they would otherwise collide.
+  it('honours an override for local dev', () => {
+    expect(resolveWorkerHealthPort({ WORKER_HEALTH_PORT: '3001' })).toBe(3001);
+  });
+
+  it('falls back to the default rather than crashing on garbage', () => {
+    for (const value of ['', 'abc', '0', '-1', '70000', '3000.5']) {
+      expect(resolveWorkerHealthPort({ WORKER_HEALTH_PORT: value })).toBe(
+        DEFAULT_WORKER_HEALTH_PORT,
+      );
+    }
+  });
+});
+
 import type { Heartbeat } from './heartbeat';
 
 function stubHeartbeat(over: Partial<Heartbeat> = {}): Heartbeat {

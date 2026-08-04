@@ -12,8 +12,32 @@ const log = getLogger('worker.health');
  * it lets one HEALTHCHECK line in the Dockerfile be correct for both roles
  * without role detection or an extra env var.
  */
-export const WORKER_HEALTH_PORT = 3000;
+export const DEFAULT_WORKER_HEALTH_PORT = 3000;
 export const WORKER_HEALTH_PATH = '/api/health';
+
+/**
+ * Dev-only escape hatch. In containers the default is always right, but the
+ * documented local workflow runs `pnpm dev` (Next on 3000) and `pnpm worker:dev`
+ * side by side on one host, where sharing 3000 is an EADDRINUSE rather than two
+ * network namespaces. Setting `WORKER_HEALTH_PORT` moves the worker out of the
+ * way. Production leaves it unset, so the Dockerfile HEALTHCHECK and the
+ * deployment compose need no knowledge of it.
+ */
+export function resolveWorkerHealthPort(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.WORKER_HEALTH_PORT;
+  if (!raw) return DEFAULT_WORKER_HEALTH_PORT;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    log.warn(
+      { value: raw, fallback: DEFAULT_WORKER_HEALTH_PORT },
+      'WORKER_HEALTH_PORT is not a valid port; falling back to the default',
+    );
+    return DEFAULT_WORKER_HEALTH_PORT;
+  }
+  return port;
+}
 
 export type WorkerHealthStatus = 'ok' | 'starting' | 'stale' | 'down';
 

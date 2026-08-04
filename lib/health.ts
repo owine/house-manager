@@ -14,6 +14,17 @@ export type HealthResult = {
 
 const PROBE_TIMEOUT_MS = 2000;
 
+/**
+ * Some driver errors arrive with an empty `message` — a stopped Postgres
+ * container yields exactly that, which would render as a useless bare
+ * `'error: '` in the health body. Fall back to the error's name, then to its
+ * string form, so the endpoint always says *something* an operator can act on.
+ */
+function describeError(e: unknown): string {
+  const err = e as Error;
+  return `error: ${err?.message || err?.name || String(e)}`;
+}
+
 /** Returns `'ok'`, or `'error: <message>'`. Never throws. */
 export async function probeDatabase(databaseUrl: string): Promise<string> {
   const client = new Client({
@@ -33,13 +44,13 @@ export async function probeDatabase(databaseUrl: string): Promise<string> {
   } catch (e) {
     // A client whose connect() rejected is already torn down by node-postgres
     // — there is no live connection for end() to close.
-    return `error: ${(e as Error).message}`;
+    return describeError(e);
   }
   try {
     await client.query('SELECT 1');
     return 'ok';
   } catch (e) {
-    return `error: ${(e as Error).message}`;
+    return describeError(e);
   } finally {
     // Must run even when the query throws, or a failing probe leaks a
     // connection every 30 seconds for as long as the fault lasts.
@@ -55,7 +66,7 @@ export async function probeMeilisearch(meiliUrl: string): Promise<string> {
     });
     return res.ok ? 'ok' : `error: HTTP ${res.status}`;
   } catch (e) {
-    return `error: ${(e as Error).message}`;
+    return describeError(e);
   }
 }
 

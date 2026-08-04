@@ -63,6 +63,18 @@ describe('checkHealth', () => {
     expect(result.checks.meilisearch).toBe('error: HTTP 503');
   });
 
+  // A stopped Postgres container yields an Error with an empty message. Bare
+  // 'error: ' tells an operator nothing, which defeats the diagnostic body.
+  it('still says something useful when the driver error has no message', async () => {
+    const blank = new Error('');
+    blank.name = 'AggregateError';
+    connect.mockRejectedValue(blank);
+    const result = await checkHealth(OPTS);
+    expect(result.status).toBe('down');
+    expect(result.checks.database).toBe('error: AggregateError');
+    expect(result.checks.database).not.toBe('error: ');
+  });
+
   it('closes the connection even when the query throws', async () => {
     query.mockRejectedValue(new Error('boom'));
     await checkHealth(OPTS);
