@@ -33,9 +33,17 @@ import { loadEnv } from 'vite';
  * Integration tests still point `DATABASE_URL` and `MEILI_HOST` at their
  * Testcontainers instances in `setupIntegration()`, which runs later and
  * assigns `process.env` directly.
+ *
+ * `envDir` exists only so the unit test can point this at a fixture directory.
+ * CI has no `.env`, so a test that needs a real one can never run there — which
+ * left the whole mechanism unguarded on the only machine where a regression
+ * would be caught before merge. Production callers pass nothing.
  */
-export function dotenvFallbacks(mode: string): Record<string, string> {
-  const fromFiles = loadEnv(mode, process.cwd(), '');
+export function dotenvFallbacks(
+  mode: string,
+  envDir: string = process.cwd(),
+): Record<string, string> {
+  const fromFiles = loadEnv(mode, envDir, '');
   return Object.fromEntries(
     Object.entries(fromFiles).filter(([key]) => process.env[key] === undefined),
   );
