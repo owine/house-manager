@@ -42,6 +42,29 @@ export default async function globalSetup() {
   });
   globalThis.__WORKER_PROC__ = worker;
 
+  // Fail loudly if the worker dies at startup instead of letting the whole
+  // suite run with no job consumer. It did exactly that in CI for months:
+  // web and worker both default /api/health to port 3000, CI set no
+  // WORKER_HEALTH_PORT, so the worker exited with EADDRINUSE the moment it
+  // booted. Nothing checked this child's exit code, and the @critical subset
+  // happens not to exercise any worker-dependent behaviour, so e2e and a11y
+  // stayed green while silently covering less than they claimed.
+  //
+  // Same principle as resetAuth's truncate guard: a setup step that silently
+  // sets nothing up is worse than one that fails.
+  let workerExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+  worker.once('exit', (code, signal) => {
+    workerExit = { code, signal };
+  });
+
   // Give the worker a beat to register handlers before tests start enqueueing.
   await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+  if (workerExit) {
+    throw new Error(
+      `e2e worker exited during startup (code=${workerExit.code}, signal=${workerExit.signal}). ` +
+        'Jobs would never be consumed. Check the worker output above — if it is EADDRINUSE on ' +
+        'port 3000, set WORKER_HEALTH_PORT (see .env.example and the e2e/a11y jobs in ci.yml).',
+    );
+  }
 }

@@ -312,6 +312,13 @@ jobs:
       # Tesseract.js wasm load on every test run.
       ASK_ENABLED: 'false'
       OCR_BACKEND: 'none'
+      # The e2e/a11y jobs run `next dev` and the pg-boss worker on the SAME
+      # host, and both serve /api/health on 3000 by default (separate network
+      # namespaces make that safe in containers, not here). Without this the
+      # worker dies at startup with EADDRINUSE and the suite runs with no job
+      # consumer at all — silently, because nothing checks the child's exit
+      # code. `.env.example` sets this for local dev; CI has no .env to read.
+      WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@4700d737c3d7a2e7199f3d42a920f0bf7f34e411 # v2.0.1
@@ -381,6 +388,13 @@ jobs:
       LOG_LEVEL: info
       ASK_ENABLED: 'false'
       OCR_BACKEND: 'none'
+      # The e2e/a11y jobs run `next dev` and the pg-boss worker on the SAME
+      # host, and both serve /api/health on 3000 by default (separate network
+      # namespaces make that safe in containers, not here). Without this the
+      # worker dies at startup with EADDRINUSE and the suite runs with no job
+      # consumer at all — silently, because nothing checks the child's exit
+      # code. `.env.example` sets this for local dev; CI has no .env to read.
+      WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@4700d737c3d7a2e7199f3d42a920f0bf7f34e411 # v2.0.1
