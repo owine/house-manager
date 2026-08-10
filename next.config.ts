@@ -2,6 +2,11 @@ import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // See tsconfig.build.json — keeps `next build`'s CLI type-checker off test
+  // files, which aren't in the Docker build context.
+  typescript: {
+    tsconfigPath: 'tsconfig.build.json',
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',

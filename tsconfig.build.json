@@ -1,0 +1,20 @@
+{
+  // Build-only project for `next build`, wired via `typescript.tsconfigPath`
+  // in next.config.ts.
+  //
+  // Next 16.3 type-checks with the `tsc` CLI (experimental.useTypeScriptCli,
+  // on by default), and the CLI checks the COMPLETE project selected by the
+  // tsconfig — including test files. The API-based checker it replaced only
+  // walked Next's own build graph.
+  //
+  // That breaks the Docker build: `.dockerignore` excludes `tests`, but the
+  // colocated `*.test.tsx` files sit next to their components and DO get
+  // copied in, so their `@/tests/a11y/axe` and `tests/integration/helpers`
+  // imports resolve to nothing and `next build` fails with TS2307.
+  //
+  // Excluding tests here is also just correct: `next build` has no business
+  // type-checking them. `pnpm typecheck` still uses the base tsconfig and
+  // covers the whole tree, tests included — that is the job that guards them.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx", "tests/**"]
+}
