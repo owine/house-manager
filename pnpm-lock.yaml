@@ -5772,8 +5772,8 @@ packages:
     resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
     engines: {node: '>=18'}
 
-  unbash@4.0.9:
-    resolution: {integrity: sha512-J8HTKzXbwi6oQKiKEbTKMsc30jKaU5vEzDejemz4bK8OqfENSPWWV8lW+Dl7rvcTTwBmAx/It4PUd1H9RjESIw==}
+  unbash@4.0.10:
+    resolution: {integrity: sha512-b7zoBQvpWp0vuN5q2vK2RRBR2SvuruQAs50DApdDveBSn3eSYd84IaHodFqQIMlvY9K2VnyBUEXgwOBuGU9GBg==}
     engines: {node: '>=14'}
 
   undici-types@5.26.5:
@@ -9611,7 +9611,7 @@ snapshots:
       smol-toml: 1.7.1
       strip-json-comments: 5.0.3
       tinyglobby: 0.2.17
-      unbash: 4.0.9
+      unbash: 4.0.10
       yaml: 2.9.0
       zod: 4.4.3
 
@@ -11587,7 +11587,7 @@ snapshots:
 
   uint8array-extras@1.5.0: {}
 
-  unbash@4.0.9: {}
+  unbash@4.0.10: {}
 
   undici-types@5.26.5: {}
 
