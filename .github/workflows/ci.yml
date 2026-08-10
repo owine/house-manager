@@ -37,9 +37,9 @@ env:
   # the action's `runtime:` input reads `devEngines.runtime` (absent here) or an
   # inline version, and neither keeps the Renovate annotation on NODE_VERSION.
   # renovate: datasource=npm depName=pnpm
-  PNPM_VERSION: 11.19.0
+  PNPM_VERSION: 11.20.0
   # renovate: datasource=node-version depName=node
-  NODE_VERSION: 24.18.1
+  NODE_VERSION: 24.19.0
   # Silence the Prisma CLI's "Update available" banner. Not cosmetic:
   # `migrate-check` captures stderr (`2>&1`) into the variable it greps for
   # schema drift, and the banner isn't in that step's allow-list, so it lands

@@ -5,7 +5,7 @@ FROM node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c989
 # Must match package.json "packageManager" exactly — otherwise corepack will
 # auto-fetch the package.json-pinned version at container start (which fails
 # with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY in non-TTY runtimes).
-ARG PNPM_VERSION=11.19.0
+ARG PNPM_VERSION=11.20.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 WORKDIR /app
 # Set here, not just in the runtime stage: `next build` runs in the build stage
@@ -73,7 +73,7 @@ FROM node:24.18.1-alpine@sha256:f70403e87646dc51b45295f4b8b70cdad0b63d2297c4c989
 # renovate: datasource=npm depName=pnpm
 # Keep in sync with the base stage and package.json "packageManager" — see
 # comment on the base stage's PNPM_VERSION arg.
-ARG PNPM_VERSION=11.19.0
+ARG PNPM_VERSION=11.20.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 # apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
 # postgresql18-client provides pg_dump for the worker's nightly DB backup job
