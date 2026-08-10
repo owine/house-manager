@@ -160,8 +160,8 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
       '@testcontainers/postgresql':
-        specifier: 12.0.4
-        version: 12.0.4(supports-color@8.1.1)
+        specifier: 12.1.0
+        version: 12.1.0(supports-color@8.1.1)
       '@testing-library/dom':
         specifier: 10.4.1
         version: 10.4.1
@@ -217,8 +217,8 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
       testcontainers:
-        specifier: 12.0.4
-        version: 12.0.4(supports-color@8.1.1)
+        specifier: 12.1.0
+        version: 12.1.0(supports-color@8.1.1)
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
@@ -2376,8 +2376,8 @@ packages:
   '@tailwindcss/postcss@4.3.3':
     resolution: {integrity: sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg==}
 
-  '@testcontainers/postgresql@12.0.4':
-    resolution: {integrity: sha512-a/pLU6j5lpKKAlUTPwqweqMGhOSjgTSb6HBX69TOrXn32ifU37nnQDmNFTj8ddOAw+BQL9oTRkeOxVbZkqhgZA==}
+  '@testcontainers/postgresql@12.1.0':
+    resolution: {integrity: sha512-Pjf2VSVNirEPfz36nidyrVAnZvc2YhajOznY4VgyEsvfTd5qiMNOuPq96drREvxAUtXl5SFLX7vXj7sSq4aTcA==}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -5653,8 +5653,9 @@ packages:
   tesseract.js@7.0.0:
     resolution: {integrity: sha512-exPBkd+z+wM1BuMkx/Bjv43OeLBxhL5kKWsz/9JY+DXcXdiBjiAch0V49QR3oAJqCaL5qURE0vx9Eo+G5YE7mA==}
 
-  testcontainers@12.0.4:
-    resolution: {integrity: sha512-QIR/8xF1+F/26cIM+9B4yyxNTbKJxAv3hygZyhPRgZ8Q2AhlPZjDdpXRuk16V37X4bgJRI3hXFhoEICMBA7Adg==}
+  testcontainers@12.1.0:
+    resolution: {integrity: sha512-YjDLqIITuhGLMnM10yhg3oV6lIG5IMpz1R1DPBZoOOks83q7i7IVpeSWRTiyl7roozjiyLmwIoLK/KY8OnZmIA==}
+    engines: {node: '>= 22.22'}
 
   text-decoder@1.2.7:
     resolution: {integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==}
@@ -7815,9 +7816,9 @@ snapshots:
       postcss: 8.5.25
       tailwindcss: 4.3.3
 
-  '@testcontainers/postgresql@12.0.4(supports-color@8.1.1)':
+  '@testcontainers/postgresql@12.1.0(supports-color@8.1.1)':
     dependencies:
-      testcontainers: 12.0.4(supports-color@8.1.1)
+      testcontainers: 12.1.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -11442,7 +11443,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  testcontainers@12.0.4(supports-color@8.1.1):
+  testcontainers@12.1.0(supports-color@8.1.1):
     dependencies:
       '@balena/dockerignore': 1.0.2
       '@types/dockerode': 4.0.1
