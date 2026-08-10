@@ -6,6 +6,13 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
+    // Opt out of Next 16.3's default TypeScript CLI checker: it probes for
+    // `typescript/bin/tsc`, which our TS 6 API shim (`@typescript/typescript6`)
+    // does not ship. Matched pair with the TS 6/7 alias split in package.json —
+    // remove both together or neither, since `false` + TS 7 hard-fails.
+    // Rationale: CLAUDE.md § "Do not collapse the TypeScript 6/7 aliases".
+    // Removal is tracked in #388.
+    useTypeScriptCli: false,
   },
   // Allow the local visual-test harness (tests/e2e/run-visual.sh) to access the
   // dev server via the host's LAN IP. Without this, Next 16 blocks cross-origin

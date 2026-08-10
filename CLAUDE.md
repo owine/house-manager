@@ -214,6 +214,34 @@ supports TS 7 natively. Nothing else in this repo blocks that; it lints with Bio
 there is no typescript-eslint dependency to wait on. Full rationale:
 [`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain).
 
+**Next 16.3 met that condition, and broke the shim doing it.** Next added
+`experimental.useTypeScriptCli` (vercel/next.js#95639) specifically to support TS 7 while
+its JS API doesn't exist, then flipped it to default `true` (#96497). That switches the
+probe Next uses to decide TypeScript is installed:
+
+| `useTypeScriptCli` | Next probes | TS 7 | real TS 6 | **our TS 6 shim** |
+|---|---|---|---|---|
+| `false` (≤16.2 default) | `typescript/lib/typescript.js` | ✗ | ✓ | ✓ |
+| `true` (16.3+ default) | `typescript/bin/tsc` | ✓ | ✓ | **✗ ships `bin/tsc6`** |
+
+A *real* `typescript@6` would have sailed through — only the shim breaks, because it
+renames its binary to `tsc6` to avoid colliding with a co-installed TS 7. The symptom is
+identical to a collapsed alias (missing-package error → 120s `webServer` timeout → e2e
+and a11y red, everything else green), so check *which* of the two you're looking at
+before reaching for the fix.
+
+`next.config.ts` sets `experimental.useTypeScriptCli: false` to hold the old behaviour.
+That is Next's documented opt-out, not a hack. It must be removed in the same change that
+collapses the aliases — the two settings are a matched pair, and `false` + TS 7 is the one
+combination that hard-fails (`next build` exits: the JS API is unavailable).
+
+The collapse is tracked in **#388**, which carries the full pre-flight checklist.
+
+Collapsing is now genuinely unblocked on the Next side: 16.3 transpiles `next.config.ts`
+via Node native type-stripping with an SWC fallback (`build/next-config-ts/transpile-config.js`),
+not the TS API. Prisma and `@prisma/client` both declare `typescript` as an *optional*
+peer. `@auth/prisma-adapter` and shadcn are unverified — confirm those before collapsing.
+
 ### Calendar dates are not instants
 
 This is the repo's most expensive recurring bug class — fifteen bugs, eight fixes. The
@@ -359,3 +387,13 @@ broken test. It bit both the dockerized harness (#325) and the host in the same 
 - **Logging:** secrets are scrubbed centrally in `lib/logger.ts` + `lib/log-scrub.ts`
   (known keys redacted, values pattern-scrubbed). Don't re-roll per-site redaction.
 - **Commits:** SSH-signed via 1Password (`commit.gpgsign=true`).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
