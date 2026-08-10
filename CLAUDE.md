@@ -186,61 +186,59 @@ variant is redefined there to fire on `prefers-color-scheme` **or** `[data-theme
 
 ## Rules that bite
 
-### Do not collapse the TypeScript 6/7 aliases
+### TypeScript is a single TS 7 entry — it used to be two
 
-`package.json` intentionally installs two TypeScript versions under aliased names:
+`package.json` now carries one plain entry:
 
 ```jsonc
-"@typescript/native": "npm:typescript@7.0.2",       // Go port; provides bin `tsc`
-"typescript": "npm:@typescript/typescript6@6.0.2",  // shim providing the TS 6 JS API
+"typescript": "7.0.2"   // the Go port; owns bin `tsc`, ships no JS API
 ```
 
-This looks like a mistake. It is not. **Do not "fix" it to a single `"typescript": "7.x"`
-entry.**
+Until Next 16.3 it carried **two**, aliased, and the split was load-bearing:
 
-TypeScript 7 is the Go rewrite: it ships a compiler but no JavaScript API. Next.js 16
-loads `next.config.ts` *through* that API, as do Prisma, `@auth/prisma-adapter` and
-shadcn. Collapsing the aliases means `lint`, `typecheck` and even `next build` still
-pass, and then the **e2e/a11y jobs fail** with:
+```jsonc
+"@typescript/native": "npm:typescript@7.0.2",       // provided bin `tsc`
+"typescript": "npm:@typescript/typescript6@6.0.2",  // provided the TS 6 JS API
+```
 
-> It looks like you're trying to use TypeScript but do not have the required package(s) installed
+TypeScript 7 is the Go rewrite: it ships a compiler but **no JavaScript API**. Next 16.2
+and earlier loaded `next.config.ts` *through* that API, so a plain `typescript@7` entry
+let `lint`, `typecheck` and `next build` all pass and then failed the **e2e/a11y jobs**
+with a missing-package error and a 120s Playwright `webServer` timeout — damage nowhere
+near the change. See PR #281 (the breakage) and #290 (the split).
 
-followed by a 120s Playwright `webServer` timeout. The damage surfaces nowhere near the
-change. See PR #281 (the broken bump) and #290 (this arrangement). If a Renovate PR
-proposes changing either entry, check it preserves the split.
+**Next 16.3 removed the need for it.** Next added `experimental.useTypeScriptCli`
+(vercel/next.js#95639) precisely to support TS 7 while its JS API doesn't exist, then made
+it the default (#96497). `next build` now shells out to the project-local `tsc` binary
+instead of loading the API. 16.3 also stopped needing the API to read `next.config.ts` —
+it uses Node native type-stripping with an SWC fallback
+(`build/next-config-ts/transpile-config.js`).
 
-The aliases can be removed — in favour of a plain `"typescript": "7.x"` — once Next.js
-supports TS 7 natively. Nothing else in this repo blocks that; it lints with Biome, so
-there is no typescript-eslint dependency to wait on. Full rationale:
-[`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain).
+Verified before collapsing (#388), since CLAUDE.md had named all four as API consumers:
 
-**Next 16.3 met that condition, and broke the shim doing it.** Next added
-`experimental.useTypeScriptCli` (vercel/next.js#95639) specifically to support TS 7 while
-its JS API doesn't exist, then flipped it to default `true` (#96497). That switches the
-probe Next uses to decide TypeScript is installed:
+| Claimed consumer | Reality |
+|---|---|
+| Next.js | uses `tsc` CLI + SWC/native type-stripping as of 16.3 |
+| Prisma | `typescript` is an *optional* peer; `prisma generate` runs fine on TS 7 |
+| `@auth/prisma-adapter` | declares no `typescript` dependency or peer at all |
+| shadcn | goes through `ts-morph` → `@ts-morph/common`, which bundles its own TypeScript |
 
-| `useTypeScriptCli` | Next probes | TS 7 | real TS 6 | **our TS 6 shim** |
-|---|---|---|---|---|
-| `false` (≤16.2 default) | `typescript/lib/typescript.js` | ✗ | ✓ | ✓ |
-| `true` (16.3+ default) | `typescript/bin/tsc` | ✓ | ✓ | **✗ ships `bin/tsc6`** |
+No first-party code imports the `typescript` JS API. If something ever needs it again,
+add the TS 6 shim back under an alias rather than downgrading `typescript` itself.
 
-A *real* `typescript@6` would have sailed through — only the shim breaks, because it
-renames its binary to `tsc6` to avoid colliding with a co-installed TS 7. The symptom is
-identical to a collapsed alias (missing-package error → 120s `webServer` timeout → e2e
-and a11y red, everything else green), so check *which* of the two you're looking at
-before reaching for the fix.
+**The interim `experimental.useTypeScriptCli: false` in `next.config.ts` is gone with the
+aliases** — they were a matched pair. `false` + TS 7 is the one combination that
+hard-fails, because Next then wants a JS compiler API that TS 7 does not ship:
 
-`next.config.ts` sets `experimental.useTypeScriptCli: false` to hold the old behaviour.
-That is Next's documented opt-out, not a hack. It must be removed in the same change that
-collapses the aliases — the two settings are a matched pair, and `false` + TS 7 is the one
-combination that hard-fails (`next build` exits: the JS API is unavailable).
+> `TypeScript 7.x does not provide the compiler API required by Next.js. Set
+> experimental.useTypeScriptCli back to true … or install TypeScript 6 instead.`
 
-The collapse is tracked in **#388**, which carries the full pre-flight checklist.
+Historical note for anyone reading an old failure: between 16.3 landing and #387, CI showed
+the *same* missing-package symptom without any alias having been collapsed. The 16.3 default
+probes for `typescript/bin/tsc`, and the TS 6 shim ships `bin/tsc6` — it renamed its binary
+to avoid fighting a co-installed TS 7. A real `typescript@6` would have been unaffected.
 
-Collapsing is now genuinely unblocked on the Next side: 16.3 transpiles `next.config.ts`
-via Node native type-stripping with an SWC fallback (`build/next-config-ts/transpile-config.js`),
-not the TS API. Prisma and `@prisma/client` both declare `typescript` as an *optional*
-peer. `@auth/prisma-adapter` and shadcn are unverified — confirm those before collapsing.
+Full rationale: [`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain).
 
 ### Calendar dates are not instants
 
