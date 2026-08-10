@@ -2,6 +2,7 @@ import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { promisify } from 'node:util';
+import { DEFAULT_WORKER_HEALTH_PORT } from '@/worker/health-server';
 import { startMockOidc } from './mock-oidc';
 
 declare global {
@@ -37,34 +38,81 @@ export default async function globalSetup() {
     ? ['exec', 'tsx', '--env-file=.env', 'worker/index.ts']
     : ['worker:dev'];
   const worker = spawn('pnpm', workerArgs, {
-    stdio: ['ignore', 'inherit', 'inherit'],
+    // Piped rather than inherited so we can watch for the readiness line
+    // below; both streams are written straight through, so worker logs still
+    // show up in the Playwright output exactly as before.
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
   globalThis.__WORKER_PROC__ = worker;
 
-  // Fail loudly if the worker dies at startup instead of letting the whole
-  // suite run with no job consumer. It did exactly that in CI for months:
-  // web and worker both default /api/health to port 3000, CI set no
-  // WORKER_HEALTH_PORT, so the worker exited with EADDRINUSE the moment it
-  // booted. Nothing checked this child's exit code, and the @critical subset
-  // happens not to exercise any worker-dependent behaviour, so e2e and a11y
-  // stayed green while silently covering less than they claimed.
-  //
-  // Same principle as resetAuth's truncate guard: a setup step that silently
-  // sets nothing up is worse than one that fails.
-  let workerExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
-  worker.once('exit', (code, signal) => {
-    workerExit = { code, signal };
+  await waitForWorkerReady(worker);
+}
+
+const WORKER_READY_TIMEOUT_MS = 60_000;
+
+/**
+ * Resolve once the worker reports its handlers registered, reject if it dies
+ * or never gets there.
+ *
+ * This replaced a flat 2s sleep, which was both racy and — worse — silent. The
+ * worker had been dying at startup in CI for months: web and worker both
+ * default /api/health to DEFAULT_WORKER_HEALTH_PORT, CI set no
+ * WORKER_HEALTH_PORT, so it exited with EADDRINUSE the moment it booted.
+ * Nothing checked the child's exit code, and no @critical spec exercises
+ * worker-dependent behaviour, so e2e and a11y stayed green while covering less
+ * than they claimed.
+ *
+ * Same principle as resetAuth's truncate guard: a setup step that silently
+ * sets nothing up is worse than one that fails.
+ */
+function waitForWorkerReady(worker: ChildProcess): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // The registration line is long enough to arrive split across chunks, so
+    // match against the accumulated output rather than each chunk.
+    let seen = '';
+    let settled = false;
+
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+
+    const watch = (chunk: Buffer, sink: NodeJS.WritableStream) => {
+      sink.write(chunk);
+      seen += chunk.toString();
+      // Emitted by worker/index.ts once every boss.work() handler is attached.
+      if (/registered .*jobs/.test(seen)) finish(resolve);
+    };
+
+    worker.stdout?.on('data', (chunk: Buffer) => watch(chunk, process.stdout));
+    worker.stderr?.on('data', (chunk: Buffer) => watch(chunk, process.stderr));
+
+    worker.once('exit', (code, signal) => {
+      finish(() =>
+        reject(
+          new Error(
+            `e2e worker exited during startup (code=${code}, signal=${signal}). Jobs would ` +
+              'never be consumed. Check the worker output above — if it is EADDRINUSE on port ' +
+              `${DEFAULT_WORKER_HEALTH_PORT}, set WORKER_HEALTH_PORT (see .env.example and the ` +
+              'e2e/a11y jobs in ci.yml).',
+          ),
+        ),
+      );
+    });
+
+    const timer = setTimeout(() => {
+      finish(() =>
+        reject(
+          new Error(
+            `e2e worker did not report its handlers registered within ` +
+              `${WORKER_READY_TIMEOUT_MS}ms. Jobs would never be consumed. Check the worker ` +
+              'output above.',
+          ),
+        ),
+      );
+    }, WORKER_READY_TIMEOUT_MS);
   });
-
-  // Give the worker a beat to register handlers before tests start enqueueing.
-  await new Promise((resolve) => setTimeout(resolve, 2_000));
-
-  if (workerExit) {
-    throw new Error(
-      `e2e worker exited during startup (code=${workerExit.code}, signal=${workerExit.signal}). ` +
-        'Jobs would never be consumed. Check the worker output above — if it is EADDRINUSE on ' +
-        'port 3000, set WORKER_HEALTH_PORT (see .env.example and the e2e/a11y jobs in ci.yml).',
-    );
-  }
 }
