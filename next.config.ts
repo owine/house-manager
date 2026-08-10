@@ -6,16 +6,12 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
-    // Next 16.3 flipped `useTypeScriptCli` to default `true`, which switches the
-    // TypeScript dependency check from `typescript/lib/typescript.js` (the JS API)
-    // to the `typescript/bin/tsc` binary. Our `typescript` entry is aliased to the
-    // TS 6 API shim (`@typescript/typescript6`), which ships `bin/tsc6` — not
-    // `bin/tsc` — so the CLI path reports TypeScript as missing and `next dev`
-    // dies before the server is reachable (e2e/a11y then time out on webServer).
-    // The `tsc` binary in this repo comes from `@typescript/native` (TS 7) and is
-    // driven by `pnpm typecheck`, not by Next. See CLAUDE.md § "Do not collapse
-    // the TypeScript 6/7 aliases". Drop this once Next supports TS 7 natively and
-    // the aliases go away.
+    // Opt out of Next 16.3's default TypeScript CLI checker: it probes for
+    // `typescript/bin/tsc`, which our TS 6 API shim (`@typescript/typescript6`)
+    // does not ship. Matched pair with the TS 6/7 alias split in package.json —
+    // remove both together or neither, since `false` + TS 7 hard-fails.
+    // Rationale: CLAUDE.md § "Do not collapse the TypeScript 6/7 aliases".
+    // Removal is tracked in #388.
     useTypeScriptCli: false,
   },
   // Allow the local visual-test harness (tests/e2e/run-visual.sh) to access the

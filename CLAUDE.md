@@ -235,6 +235,8 @@ That is Next's documented opt-out, not a hack. It must be removed in the same ch
 collapses the aliases — the two settings are a matched pair, and `false` + TS 7 is the one
 combination that hard-fails (`next build` exits: the JS API is unavailable).
 
+The collapse is tracked in **#388**, which carries the full pre-flight checklist.
+
 Collapsing is now genuinely unblocked on the Next side: 16.3 transpiles `next.config.ts`
 via Node native type-stripping with an SWC fallback (`build/next-config-ts/transpile-config.js`),
 not the TS API. Prisma and `@prisma/client` both declare `typescript` as an *optional*
