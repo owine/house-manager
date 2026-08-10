@@ -186,61 +186,29 @@ variant is redefined there to fire on `prefers-color-scheme` **or** `[data-theme
 
 ## Rules that bite
 
-### Do not collapse the TypeScript 6/7 aliases
-
-`package.json` intentionally installs two TypeScript versions under aliased names:
+### TypeScript is one plain TS 7 entry
 
 ```jsonc
-"@typescript/native": "npm:typescript@7.0.2",       // Go port; provides bin `tsc`
-"typescript": "npm:@typescript/typescript6@6.0.2",  // shim providing the TS 6 JS API
+"typescript": "7.0.2"   // the Go port; owns bin `tsc`, ships no JS API
 ```
 
-This looks like a mistake. It is not. **Do not "fix" it to a single `"typescript": "7.x"`
-entry.**
+It used to be two aliased entries (a TS 7 compiler plus a TS 6 JS-API shim) because
+Next 16.2 and earlier loaded `next.config.ts` through the JS API that TS 7 doesn't ship.
+Next 16.3 removed that need and #388 collapsed it. The history, the four packages once
+believed to need the JS API, and the 16.3 failure mode are all written up in
+[`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain) — read that
+before changing anything here.
 
-TypeScript 7 is the Go rewrite: it ships a compiler but no JavaScript API. Next.js 16
-loads `next.config.ts` *through* that API, as do Prisma, `@auth/prisma-adapter` and
-shadcn. Collapsing the aliases means `lint`, `typecheck` and even `next build` still
-pass, and then the **e2e/a11y jobs fail** with:
+Two rules survive the collapse:
 
-> It looks like you're trying to use TypeScript but do not have the required package(s) installed
-
-followed by a 120s Playwright `webServer` timeout. The damage surfaces nowhere near the
-change. See PR #281 (the broken bump) and #290 (this arrangement). If a Renovate PR
-proposes changing either entry, check it preserves the split.
-
-The aliases can be removed — in favour of a plain `"typescript": "7.x"` — once Next.js
-supports TS 7 natively. Nothing else in this repo blocks that; it lints with Biome, so
-there is no typescript-eslint dependency to wait on. Full rationale:
-[`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain).
-
-**Next 16.3 met that condition, and broke the shim doing it.** Next added
-`experimental.useTypeScriptCli` (vercel/next.js#95639) specifically to support TS 7 while
-its JS API doesn't exist, then flipped it to default `true` (#96497). That switches the
-probe Next uses to decide TypeScript is installed:
-
-| `useTypeScriptCli` | Next probes | TS 7 | real TS 6 | **our TS 6 shim** |
-|---|---|---|---|---|
-| `false` (≤16.2 default) | `typescript/lib/typescript.js` | ✗ | ✓ | ✓ |
-| `true` (16.3+ default) | `typescript/bin/tsc` | ✓ | ✓ | **✗ ships `bin/tsc6`** |
-
-A *real* `typescript@6` would have sailed through — only the shim breaks, because it
-renames its binary to `tsc6` to avoid colliding with a co-installed TS 7. The symptom is
-identical to a collapsed alias (missing-package error → 120s `webServer` timeout → e2e
-and a11y red, everything else green), so check *which* of the two you're looking at
-before reaching for the fix.
-
-`next.config.ts` sets `experimental.useTypeScriptCli: false` to hold the old behaviour.
-That is Next's documented opt-out, not a hack. It must be removed in the same change that
-collapses the aliases — the two settings are a matched pair, and `false` + TS 7 is the one
-combination that hard-fails (`next build` exits: the JS API is unavailable).
-
-The collapse is tracked in **#388**, which carries the full pre-flight checklist.
-
-Collapsing is now genuinely unblocked on the Next side: 16.3 transpiles `next.config.ts`
-via Node native type-stripping with an SWC fallback (`build/next-config-ts/transpile-config.js`),
-not the TS API. Prisma and `@prisma/client` both declare `typescript` as an *optional*
-peer. `@auth/prisma-adapter` and shadcn are unverified — confirm those before collapsing.
+- **Don't set `experimental.useTypeScriptCli: false` while on TS 7.** It was the interim
+  fix in #387 and was removed alongside the aliases; the two are a matched pair. That
+  combination is the one that hard-fails, because Next then wants a compiler API TS 7
+  does not ship (`next build` exits: *"TypeScript 7.x does not provide the compiler API
+  required by Next.js"*).
+- **If something ever needs the TS 6 JS API again, re-add the shim under its own alias**
+  rather than downgrading the `typescript` entry. No first-party code imports that API
+  today.
 
 ### Calendar dates are not instants
 

@@ -4,7 +4,7 @@ Self-hosted home information manager. See `superpowers/specs/2026-04-26-house-ma
 
 ## Stack
 
-- Next.js 16 (App Router, RSC) + TypeScript 7 for typechecking, 6 for the JS API (strict) — see [TypeScript toolchain](#typescript-toolchain)
+- Next.js 16 (App Router, RSC) + TypeScript 7 (strict) — see [TypeScript toolchain](#typescript-toolchain)
 - Auth.js v5 with Authelia OIDC (database session strategy via Prisma adapter)
 - Prisma 7 + Postgres 16 + pgvector
 - Meilisearch 1.42 (unified `house` index across items, vendors, notes, services, reminders, attachments)
@@ -125,40 +125,77 @@ You don't pass these at runtime — they're baked into the image at build time.
 
 ## TypeScript toolchain
 
-`package.json` runs TypeScript 6 and 7 side by side. This is deliberate — **do not
-"simplify" it back to a single `typescript` entry** (package.json is strict JSON, so
-this note can't live next to the dependencies themselves):
+`package.json` carries a single, plain TypeScript entry:
 
 ```jsonc
-"@typescript/native": "npm:typescript@7.0.2",       // the Go port; owns bin `tsc`
+"typescript": "7.0.2"   // the Go port; owns bin `tsc`
+```
+
+`pnpm typecheck` (`tsc --noEmit`) is the only `tsc` invocation, and no first-party code
+imports the `typescript` JS API.
+
+### Why this used to be two aliased entries
+
+Until Next 16.3 the repo installed TypeScript 6 and 7 side by side:
+
+```jsonc
+"@typescript/native": "npm:typescript@7.0.2",       // the Go port; owned bin `tsc`
 "typescript": "npm:@typescript/typescript6@6.0.2",  // shim re-exporting the TS 6 JS API
 ```
 
-TypeScript 7 is the Go rewrite. It ships a compiler but **no JavaScript API**, and
-Next.js 16 loads `next.config.ts` through that API — so a plain bump to `typescript@7`
-builds fine locally but kills the dev server (`"It looks like you're trying to use
-TypeScript but do not have the required package(s) installed"`) and times out the
-Playwright `webServer`. See PR #281 for the failure and #290 for this fix.
+TypeScript 7 is the Go rewrite and ships **no JavaScript API**. Next.js 16.2 and earlier
+loaded `next.config.ts` through that API, so a plain bump to `typescript@7` built fine
+locally but killed the dev server (`"It looks like you're trying to use TypeScript but do
+not have the required package(s) installed"`) and timed out the Playwright `webServer`.
+See PR #281 for the failure and #290 for the split.
 
-Splitting the two names gives us both:
+The split bought back the speed (`pnpm typecheck` 7.78s → 1.29s) by letting `tsc` resolve
+to TS 7 while `import ... from 'typescript'` still resolved to a TS 6 API.
 
-- **`tsc`** resolves to TS 7, because `typescript@7` declares `bin = {"tsc": ...}`.
-  That's what `pnpm typecheck` runs — 7.78s → 1.29s on this repo.
-- **`import ... from 'typescript'`** resolves to the TS 6 API shim. Next.js, Prisma,
-  `@auth/prisma-adapter` and shadcn all depend on that API; the shim names its own
-  binary `tsc6` precisely so it doesn't fight TS 7 over `.bin/tsc`.
+### What changed in Next 16.3
 
-`tsc6` is available if you ever need the TS 6 compiler for comparison. Nothing in this
-repo currently needs it: `pnpm typecheck` is the only `tsc` invocation, and no
-first-party code imports the `typescript` JS API.
+Next added `experimental.useTypeScriptCli` (vercel/next.js#95639) specifically to support
+TypeScript 7 while its JS API is unavailable, and made it the default in #96497. Two
+consequences:
 
-Caveat: `next build` runs its **own** internal typecheck against the TS 6 API
-(~13s), so only the standalone `pnpm typecheck` gets the speedup.
+- `next build` runs the project-local `tsc` **binary** instead of loading the JS API. The
+  old caveat that `next build` re-typechecked against TS 6 (~13s) no longer applies — the
+  whole toolchain is now TS 7.
+- `next.config.ts` is transpiled via Node native type-stripping with an SWC fallback, not
+  the TS API.
 
-This alias can be deleted in favour of a plain `"typescript": "7.x"` once Next.js
-supports TS 7 natively — nothing else here blocks it. (Sibling repos that use
-typescript-eslint additionally have to wait for its TS 7.1 port; this one doesn't,
-because it lints with Biome.)
+That removed the last reason for the split, and #388 collapsed it. Before doing so, every
+package previously named as a JS-API consumer was re-checked:
+
+| Claimed consumer | Reality |
+|---|---|
+| Next.js | `tsc` CLI + SWC/native type-stripping as of 16.3 |
+| Prisma | `typescript` is an *optional* peer; `prisma generate` runs fine on TS 7 |
+| `@auth/prisma-adapter` | declares no `typescript` dependency or peer at all |
+| shadcn | uses `ts-morph` → `@ts-morph/common`, which bundles its own TypeScript |
+
+If a future dependency genuinely needs the TS 6 JS API, re-add the shim under an alias
+(`"@typescript/typescript6": "npm:@typescript/typescript6@6.x"`) rather than downgrading
+the `typescript` entry — and note that pinning `typescript` back to 6 while leaving
+Next's `useTypeScriptCli` at its default is fine, but setting that flag to `false` while
+on TS 7 hard-fails the build.
+
+### Reading an old CI failure
+
+Between Next 16.3 landing and PR #387, CI failed with the *same* missing-package error and
+120s `webServer` timeout as the #281 breakage — but no alias had been collapsed. Two
+different causes, one symptom:
+
+| Cause | Tell |
+|---|---|
+| aliases collapsed on Next ≤16.2 (#281) | `typescript` resolves to TS 7; Next wants the JS API |
+| Next 16.3 default vs. the shim (#387) | aliases intact; Next probes `typescript/bin/tsc`, the shim ships `bin/tsc6` |
+
+The shim renamed its binary to `tsc6` so it wouldn't fight a co-installed TS 7 over
+`.bin/tsc` — which is exactly what made it invisible to 16.3's CLI probe. A real
+`typescript@6` would have been unaffected. #387 held the line with
+`experimental.useTypeScriptCli: false`; #388 removed both that flag and the aliases
+together.
 
 ## Further docs
 
