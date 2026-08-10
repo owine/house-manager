@@ -1,6 +1,3 @@
-# `pnpm add` writes exact versions, never caret/tilde ranges. This is the only
-# knob for that behaviour — `saveExact` is deliberately NOT also set, since two
-# settings governing one outcome can only ever disagree.
 savePrefix: ""
 
 # Settings below were moved out of `.npmrc`, which pnpm 11 no longer reads them
@@ -70,4 +67,4 @@ overrides:
   # (8.5.10), GHSA-6g55-p6wh-862q (8.5.12), GHSA-r28c-9q8g-f849 (8.5.18).
   # Renovate bumps the target but never the key, so raise the floor by hand
   # when a new postcss advisory lands, or this stops matching what it should.
-  "postcss@<8.5.18": "8.5.25"
+  "postcss@<8.5.18": "8.5.26"
