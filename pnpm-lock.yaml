@@ -3076,8 +3076,8 @@ packages:
     resolution: {integrity: sha512-piICUB6ei4IlTv1+653yq5+KoqfBYmj9bw6LqXoOneTMDXk5nM1qt12mFW1caG3LlJXEKW1Bp0WggEmIfQB34g==}
     engines: {node: '>= 14'}
 
-  cron-parser@5.7.0:
-    resolution: {integrity: sha512-iSpDHpwwW/GhIg4JVODYlWUEpMNSimaHvqOhHpOz1W+Y97z1lL1nf+dpcF17cNwFRpTtKN9devgi1fxflp3Phw==}
+  cron-parser@5.8.0:
+    resolution: {integrity: sha512-ZSCxMmGTIHMgpHyDpndbqzzVJKgjamXPhi1n9ZNSSxDpclRhaP+8QdMQKYwJTi9Vok6AbzJlquZ8FZ/Ft/gqaA==}
     engines: {node: '>=18'}
 
   cross-spawn@7.0.6:
@@ -8426,7 +8426,7 @@ snapshots:
       crc-32: 1.2.2
       readable-stream: 4.7.0
 
-  cron-parser@5.7.0:
+  cron-parser@5.8.0:
     dependencies:
       luxon: 3.7.2
 
@@ -10258,7 +10258,7 @@ snapshots:
 
   pg-boss@12.27.0:
     dependencies:
-      cron-parser: 5.7.0
+      cron-parser: 5.8.0
       pg: 8.22.0
       serialize-error: 13.0.1
     transitivePeerDependencies:
