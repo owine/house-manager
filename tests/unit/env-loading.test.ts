@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dotenvFallbacks } from '../../vitest.env';
 
 /**
@@ -36,25 +36,26 @@ function dotenvKeys(): string[] {
     .filter((key): key is string => Boolean(key));
 }
 
-const tempDirs: string[] = [];
-
-/** A throwaway env dir. `files` maps a filename (`.env`, `.env.test`) to its body. */
-function envFixture(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'hm-env-'));
-  tempDirs.push(dir);
-  for (const [name, body] of Object.entries(files)) {
-    writeFileSync(join(dir, name), body);
-  }
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 describe('dotenvFallbacks', () => {
+  const tempDirs: string[] = [];
+
+  /** A throwaway env dir. `files` maps a filename (`.env`, `.env.test`) to its body. */
+  function envFixture(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), 'hm-env-'));
+    tempDirs.push(dir);
+    for (const [name, body] of Object.entries(files)) {
+      writeFileSync(join(dir, name), body);
+    }
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    vi.unstubAllEnvs();
+  });
+
   it('offers a .env value the shell has not set', () => {
     const dir = envFixture({ '.env': 'HM_FIXTURE_UNSET=from-file\n' });
 
@@ -67,19 +68,20 @@ describe('dotenvFallbacks', () => {
   // evaluated, so it must be filtered out here rather than overwritten.
   it('drops any key the shell already set, rather than overriding it', () => {
     const dir = envFixture({ '.env': 'HM_FIXTURE_SET=from-file\n' });
-    process.env.HM_FIXTURE_SET = 'from-shell';
+    vi.stubEnv('HM_FIXTURE_SET', 'from-shell');
 
-    try {
-      expect(dotenvFallbacks('test', dir)).not.toHaveProperty('HM_FIXTURE_SET');
-    } finally {
-      delete process.env.HM_FIXTURE_SET;
-    }
+    expect(dotenvFallbacks('test', dir)).not.toHaveProperty('HM_FIXTURE_SET');
   });
 
   // This is the CI path: no .env on a runner, so the whole mechanism has to
   // collapse to a no-op rather than clobbering the job's env block.
   it('collapses to a no-op when there is no .env at all', () => {
+    vi.stubEnv('HM_FIXTURE_NOOP', 'from-shell');
+
     expect(dotenvFallbacks('test', envFixture({}))).toEqual({});
+    // The CI contract is two-sided: nothing offered, and nothing touched. The
+    // job's env block has to survive this call untouched.
+    expect(process.env.HM_FIXTURE_NOOP).toBe('from-shell');
   });
 
   // Documented in vitest.env.ts: a `.env.test` lets one machine override the
