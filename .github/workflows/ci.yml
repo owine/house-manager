@@ -312,6 +312,10 @@ jobs:
       # Tesseract.js wasm load on every test run.
       ASK_ENABLED: 'false'
       OCR_BACKEND: 'none'
+      # Moves the worker's /api/health off 3000, which `next dev` owns here.
+      # Rationale in worker/health-server.ts; CI has no .env to inherit it from.
+      # (GitHub Actions does not support YAML anchors, hence the repetition.)
+      WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@4700d737c3d7a2e7199f3d42a920f0bf7f34e411 # v2.0.1
@@ -381,6 +385,10 @@ jobs:
       LOG_LEVEL: info
       ASK_ENABLED: 'false'
       OCR_BACKEND: 'none'
+      # Moves the worker's /api/health off 3000, which `next dev` owns here.
+      # Rationale in worker/health-server.ts; CI has no .env to inherit it from.
+      # (GitHub Actions does not support YAML anchors, hence the repetition.)
+      WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@4700d737c3d7a2e7199f3d42a920f0bf7f34e411 # v2.0.1
