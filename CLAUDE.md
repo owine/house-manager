@@ -186,59 +186,29 @@ variant is redefined there to fire on `prefers-color-scheme` **or** `[data-theme
 
 ## Rules that bite
 
-### TypeScript is a single TS 7 entry — it used to be two
-
-`package.json` now carries one plain entry:
+### TypeScript is one plain TS 7 entry
 
 ```jsonc
 "typescript": "7.0.2"   // the Go port; owns bin `tsc`, ships no JS API
 ```
 
-Until Next 16.3 it carried **two**, aliased, and the split was load-bearing:
+It used to be two aliased entries (a TS 7 compiler plus a TS 6 JS-API shim) because
+Next 16.2 and earlier loaded `next.config.ts` through the JS API that TS 7 doesn't ship.
+Next 16.3 removed that need and #388 collapsed it. The history, the four packages once
+believed to need the JS API, and the 16.3 failure mode are all written up in
+[`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain) — read that
+before changing anything here.
 
-```jsonc
-"@typescript/native": "npm:typescript@7.0.2",       // provided bin `tsc`
-"typescript": "npm:@typescript/typescript6@6.0.2",  // provided the TS 6 JS API
-```
+Two rules survive the collapse:
 
-TypeScript 7 is the Go rewrite: it ships a compiler but **no JavaScript API**. Next 16.2
-and earlier loaded `next.config.ts` *through* that API, so a plain `typescript@7` entry
-let `lint`, `typecheck` and `next build` all pass and then failed the **e2e/a11y jobs**
-with a missing-package error and a 120s Playwright `webServer` timeout — damage nowhere
-near the change. See PR #281 (the breakage) and #290 (the split).
-
-**Next 16.3 removed the need for it.** Next added `experimental.useTypeScriptCli`
-(vercel/next.js#95639) precisely to support TS 7 while its JS API doesn't exist, then made
-it the default (#96497). `next build` now shells out to the project-local `tsc` binary
-instead of loading the API. 16.3 also stopped needing the API to read `next.config.ts` —
-it uses Node native type-stripping with an SWC fallback
-(`build/next-config-ts/transpile-config.js`).
-
-Verified before collapsing (#388), since CLAUDE.md had named all four as API consumers:
-
-| Claimed consumer | Reality |
-|---|---|
-| Next.js | uses `tsc` CLI + SWC/native type-stripping as of 16.3 |
-| Prisma | `typescript` is an *optional* peer; `prisma generate` runs fine on TS 7 |
-| `@auth/prisma-adapter` | declares no `typescript` dependency or peer at all |
-| shadcn | goes through `ts-morph` → `@ts-morph/common`, which bundles its own TypeScript |
-
-No first-party code imports the `typescript` JS API. If something ever needs it again,
-add the TS 6 shim back under an alias rather than downgrading `typescript` itself.
-
-**The interim `experimental.useTypeScriptCli: false` in `next.config.ts` is gone with the
-aliases** — they were a matched pair. `false` + TS 7 is the one combination that
-hard-fails, because Next then wants a JS compiler API that TS 7 does not ship:
-
-> `TypeScript 7.x does not provide the compiler API required by Next.js. Set
-> experimental.useTypeScriptCli back to true … or install TypeScript 6 instead.`
-
-Historical note for anyone reading an old failure: between 16.3 landing and #387, CI showed
-the *same* missing-package symptom without any alias having been collapsed. The 16.3 default
-probes for `typescript/bin/tsc`, and the TS 6 shim ships `bin/tsc6` — it renamed its binary
-to avoid fighting a co-installed TS 7. A real `typescript@6` would have been unaffected.
-
-Full rationale: [`docs/README.md` § TypeScript toolchain](docs/README.md#typescript-toolchain).
+- **Don't set `experimental.useTypeScriptCli: false` while on TS 7.** It was the interim
+  fix in #387 and was removed alongside the aliases; the two are a matched pair. That
+  combination is the one that hard-fails, because Next then wants a compiler API TS 7
+  does not ship (`next build` exits: *"TypeScript 7.x does not provide the compiler API
+  required by Next.js"*).
+- **If something ever needs the TS 6 JS API again, re-add the shim under its own alias**
+  rather than downgrading the `typescript` entry. No first-party code imports that API
+  today.
 
 ### Calendar dates are not instants
 

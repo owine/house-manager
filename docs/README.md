@@ -180,6 +180,23 @@ the `typescript` entry — and note that pinning `typescript` back to 6 while le
 Next's `useTypeScriptCli` at its default is fine, but setting that flag to `false` while
 on TS 7 hard-fails the build.
 
+### Reading an old CI failure
+
+Between Next 16.3 landing and PR #387, CI failed with the *same* missing-package error and
+120s `webServer` timeout as the #281 breakage — but no alias had been collapsed. Two
+different causes, one symptom:
+
+| Cause | Tell |
+|---|---|
+| aliases collapsed on Next ≤16.2 (#281) | `typescript` resolves to TS 7; Next wants the JS API |
+| Next 16.3 default vs. the shim (#387) | aliases intact; Next probes `typescript/bin/tsc`, the shim ships `bin/tsc6` |
+
+The shim renamed its binary to `tsc6` so it wouldn't fight a co-installed TS 7 over
+`.bin/tsc` — which is exactly what made it invisible to 16.3's CLI probe. A real
+`typescript@6` would have been unaffected. #387 held the line with
+`experimental.useTypeScriptCli: false`; #388 removed both that flag and the aliases
+together.
+
 ## Further docs
 
 - [`docs/TESTING.md`](TESTING.md) — test tiers, decision matrix, per-feature checklist, `@critical` policy, coverage floor.
