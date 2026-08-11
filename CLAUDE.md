@@ -149,6 +149,24 @@ not running. `pnpm lint:worker-graph` now walks the transitive graph from
 `worker/index.ts` and checks each hop against the Dockerfile's own COPY lines. Shared
 code belongs in `lib/` — that is the layer both sides already depend on.
 
+**The runtime image carries two dependency trees.** `/app/web/node_modules` is
+Next's file-traced standalone bundle (web only; under pnpm it reproduces its own
+`.pnpm` symlink structure, with relative links that stay inside `web/`);
+`/app/node_modules` is pnpm's symlinked store (worker, plus `prisma`/`tsx` at
+boot). They are deliberately not merged — the layouts differ and merging them
+fails subtly.
+
+The hazard is that **Node resolves upward**: a package missing from
+`web/node_modules` silently resolves from `/app/node_modules` instead. So a gap
+in the standalone bundle is invisible until that sibling tree is pruned.
+`scripts/smoke-image.sh` probes `/` for a real *dynamic render*, not just
+`/api/health`, because health never exercises the React render path (and the
+not-found page is a prerender served from disk).
+
+The image ships no pnpm. Both roles invoke tooling by explicit path
+(`node_modules/.bin/tsx`, `node_modules/.bin/prisma`); web runs
+`node web/server.js`, not `next start`.
+
 **Both roles serve `/api/health` on port 3000.** The worker runs a small
 `node:http` server (`worker/health-server.ts`) at the same path as web, started
 *before* pg-boss so a worker wedged connecting to Postgres reports unhealthy

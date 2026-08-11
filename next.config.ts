@@ -2,6 +2,11 @@ import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Emits .next/standalone: a self-contained server.js plus a file-traced
+  // node_modules holding only what the app actually imports. The Dockerfile
+  // copies that to /app/web, which is what lets /app/node_modules be pruned
+  // to the worker's closure in a follow-up.
+  output: 'standalone',
   // See tsconfig.build.json — keeps `next build`'s CLI type-checker off test
   // files, which aren't in the Docker build context.
   typescript: {

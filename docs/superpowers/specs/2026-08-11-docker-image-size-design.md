@@ -1,0 +1,476 @@
+# Docker image size — design
+
+**Date:** 2026-08-11
+**Status:** approved, not yet implemented
+
+## Motivation
+
+The published image is **2.22 GB** uncompressed (~400 MB compressed). It is
+built for two platforms (`linux/amd64`, `linux/arm64`) on every push to `main`,
+cached with `cache-to: type=gha,mode=max`, and pulled to the production host on
+every deploy.
+
+That size is not one problem, it is four, and they were all confirmed as real:
+slow deploys/pulls, CI cache pressure (GitHub caps Actions cache at 10 GB per
+repo — `mode=max` on a 2.2 GB image across two platforms plausibly exceeds it
+and thrashes), disk on the production host, and plain indefensibility for an app
+of this size.
+
+### Where the weight actually is
+
+Measured on a real build, not estimated:
+
+| Layer | Size |
+|---|---|
+| `node_modules` (production, post-prune) | **1.14 GB** |
+| `node:24-alpine` base | 161 MB |
+| `.next` | 84 MB |
+| `apk add curl pg18-client vips vips-heif` | 68 MB |
+| corepack + pnpm in runtime | 40 MB |
+| app source (`lib/`, `worker/`, `prisma/`, `public/`) | ~2 MB |
+
+The first hypothesis — that `pnpm prune --prod` was stranding orphaned packages
+in `node_modules/.pnpm`, the classic pnpm-in-Docker trap — was **tested and
+disproved**. Walking the symlink graph inside the image gives 0 orphaned:
+every package present is reachable. The prune is clean; that 1.14 GB is
+genuinely-reachable production dependencies.
+
+(That check ran against a then-current image with 555 packages; the *Measurements*
+section below reports 553 from a later build on a newer lockfile. Different
+builds, both accurate — the package count is not stable across dependency
+updates, which is also why the sanity floor below is a ratio rather than a
+count.)
+
+Itemised:
+
+| Subtree | Size | Needed at runtime? |
+|---|---|---|
+| `next` + `@next/swc-*-musl` | 288 MB | swc is the **compiler** — build-only |
+| Prisma CLI chain (`@prisma/studio-core`, `effect`, `pglite`, `typescript`, `@prisma/engines`) | ~185 MB | only for `prisma migrate deploy` at boot |
+| `@prisma/client` | 86 MB | yes |
+| OCR/imaging (`tesseract.js-core`, `pdfjs-dist`, `@napi-rs/canvas`, sharp libvips ×2) | ~135 MB | yes — real worker deps |
+| `lucide-react` | 35 MB | **no** — bundled into `.next` at build |
+| `@sentry/cli` (via `@sentry/nextjs`) | 18 MB | **no** — source-map upload only |
+
+The root cause is structural: the Dockerfile does
+`COPY --from=build /app/node_modules ./node_modules`, shipping every production
+dependency whether or not any code path reaches it. Next.js already computes the
+real answer at build time (63 `*.nft.json` trace files) and we throw it away.
+
+## Constraints discovered
+
+1. **One image, two roles.** `web` runs `next start`, `worker` runs
+   `tsx worker/index.ts`. A single `HEALTHCHECK` covers both because each
+   container has its own network namespace, so both can bind 3000. Preserving
+   this was an explicit requirement — see *Alternatives rejected*.
+
+2. **The worker is invisible to Next's tracing.** Standalone traces the Next
+   app. The worker runs TypeScript through `tsx` with no compile step, against
+   `lib/`. Diffing the 45 production dependencies against the traced set: 9 are
+   traced, and of the 36 that are not, roughly half are bundled into `.next` at
+   build (`lucide-react`, `react-hook-form`, `@base-ui/react`, …) while the rest
+   are genuinely worker-only (`pg-boss`, `tsx`, `tesseract.js`, `web-push`,
+   `ical-generator`, `meilisearch`, `unpdf`, `rrule`, `@sentry/node`, …).
+
+3. **`lint:worker-graph` has a load-bearing blind spot.** Line 78 returns `null`
+   for bare package specifiers, commented *"lives in node_modules, which is
+   copied."* Pruning `node_modules` makes that comment false and blinds the
+   guard to exactly the failure mode this change introduces. This is the same
+   guard that exists because of #333 (five-day silent worker outage).
+
+4. **Not a monorepo.** `pnpm-workspace.yaml` carries settings only, no
+   `packages:` field, so `pnpm deploy --filter` is unavailable.
+
+5. **`preferFrozenLockfile: true`.** Any approach introducing a second manifest
+   must also introduce a second lockfile, or abandon exact pinning.
+
+6. **Production compose lives in a separate GitOps repo**, not here. The
+   in-repo `docker-compose.yml` targets `house-manager:dev` and is
+   dev-only. Changing how web starts requires a coordinated edit there.
+
+7. **Prisma needs no engine binary.** `@prisma/client` ships no `.node` files
+   and no engine binaries — pure JS `runtime/` — and `lib/db.ts` uses the
+   `PrismaPg` driver adapter. The historical standalone-plus-Prisma failure
+   (a Rust query engine resolved by path, invisible to tracing) does not apply.
+   The schema engine that remains is used by `prisma migrate` at boot, not by
+   the app.
+
+8. **`react`/`react-dom` are genuine worker dependencies.** `lib/email/render.ts`
+   calls `renderToStaticMarkup` from `react-dom/server`; the digest and reminder
+   templates are React. Not an artifact of the graph walk.
+
+## Measurements
+
+Everything below was measured inside a real build, on the current lockfile.
+
+**What Next actually traces** (parsed from the 63 `*.nft.json` files, summing
+individual traced *files* — not their parent packages):
+
+```
+unique traced files:        1,806
+TOTAL traced bytes:          47.8 MB
+  of which node_modules:     37.0 MB  (1,357 files)
+```
+
+`next` collapses from 198 MB to 11.6 MB; `@prisma/client` from 86 MB to 5.1 MB.
+Measuring at package granularity instead gives ~667 MB — an 18× overestimate,
+and the reason a package-level estimate must not be used here.
+
+**Worker dependency closure** (walking `.pnpm` symlinks from the 17 roots the
+import graph reaches):
+
+```
+full prod tree (today)        553 pkgs = 952 MB
+worker closure (17 roots)     269 pkgs = 527 MB
+  + tsx & prisma CLI (boot)   272 pkgs = 547 MB
+DROPPED                       281 pkgs = 405 MB
+```
+
+Note the Prisma CLI adds only **20 MB** on top of the worker closure, not the
+185 MB the subtree table suggests — most of it is shared with `@prisma/client`,
+which the worker needs anyway. A separate one-shot migrate container was
+considered and dropped for this reason.
+
+**Projected result: 2.22 GB → ~0.9 GB.**
+
+## Decisions
+
+| Question | Decision |
+|---|---|
+| Image count | **One image**, both roles — unchanged |
+| Web runtime | Next `output: 'standalone'`, run as `node web/server.js` |
+| Worker tree | `pnpm prune --prod`, then closure-prune to the worker's derived roots |
+| Layout | Standalone at `/app/web/` (own flat `node_modules`); worker tree stays at `/app/node_modules` |
+| Root derivation | **Derived** from the real import graph, never hand-listed |
+| Prod compatibility | Change the image `CMD`; edit the GitOps compose in the same window |
+| pnpm in runtime | **Removed, in PR1** — `prisma`/`tsx` invoked via `node_modules/.bin/` |
+| Migrations | Stay at web boot (moving them saves only 20 MB) |
+| Verification | Static guard **and** CI runtime smoke test |
+| Sequencing | Two PRs; smoke test lands in PR1 |
+
+### Why two directories rather than one merged tree
+
+Next's standalone output is a **flat, self-contained** `node_modules`; pnpm's is
+a symlinked `.pnpm` store. Both want `/app/node_modules`. Merging two different
+layouts is fiddly and fails subtly. Keeping them separate costs ~37 MB of
+overlap — the entire price of staying on one image.
+
+### Why closure-pruning rather than a second install
+
+Two alternatives were considered and rejected:
+
+- **Second manifest + separate `pnpm install`** — fights `preferFrozenLockfile`.
+  Either commit a second lockfile (two to keep in sync, exactly the drift
+  documented in `feedback_worker_action_duplicate_paths.md`) or install
+  unpinned, abandoning the exact-pinning convention.
+- **Trace the worker with `@vercel/nft`** — symmetric with standalone and
+  file-precise, but nft traces JS while the worker is TS run through `tsx`. It
+  would need a compile step purely to trace, contradicting the deliberate
+  no-compile-step decision, and its failure mode is silent under-inclusion.
+
+Closure-pruning is the only option that keeps a **single source of truth** for
+"what the worker needs" — which is what makes the extended guard trustworthy.
+
+## Architecture
+
+### Runtime image layout
+
+```
+/app
+├── web/                    ← .next/standalone, self-contained
+│   ├── server.js
+│   ├── node_modules/       ← Next-traced, ~37 MB
+│   ├── .next/  (+ static/) ← static copied in separately
+│   └── public/             ← copied in separately
+├── node_modules/           ← pruned pnpm tree (~547 MB)
+├── lib/  worker/  prisma/
+└── auth.config.ts  tsconfig.json  package.json  prisma.config.ts
+```
+
+`pnpm-workspace.yaml` is currently copied into the runtime stage. Once pnpm
+leaves the image nothing reads it, so PR1 drops that `COPY`. `tsconfig.json`
+stays — `tsx` resolves the `@/` alias from it at boot, which is why the
+Dockerfile copies it into the runtime stage at all.
+
+### Build flow
+
+```
+build:  COPY node_modules (from deps)     ← cached on lockfile
+        COPY . .
+        prisma generate
+        next build                        ← now also emits .next/standalone
+    NEW cp public → .next/standalone/
+        cp .next/static → .next/standalone/.next/
+        pnpm prune --prod
+    NEW node scripts/prune-worker-tree.mjs
+
+runtime: COPY /app/node_modules   → ./node_modules   (largest, most stable, first)
+         COPY /app/.next/standalone → ./web
+         COPY lib/ worker/ prisma/ + manifests
+```
+
+`node_modules` content becomes a function of *(lockfile + worker import graph)*
+rather than *(lockfile)* alone, so it re-materialises when the worker's
+dependency set changes. That is rare, the build stage already sits downstream of
+`COPY . .`, and the layer being 405 MB smaller reduces cache pressure far more
+than the added sensitivity costs.
+
+### New runtime environment
+
+`HOSTNAME=0.0.0.0` and `PORT=3000`. Standalone's `server.js` binds localhost by
+default, which would leave the `HEALTHCHECK` curl hitting a port nothing is
+listening on from outside the container.
+
+### Boot commands
+
+pnpm leaves the runtime in PR1, so nothing puts `node_modules/.bin` on `PATH`.
+Every invocation must be written out explicitly:
+
+- web:
+  `node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js`
+- worker: `node_modules/.bin/tsx worker/index.ts`
+
+Both the in-repo `docker-compose.yml` (lines 79 and 94) and the production
+compose currently invoke these through `pnpm`, so both must change — the
+worker's command breaks alongside web's the moment pnpm leaves the image.
+
+**Only the in-repo `docker-compose.yml` is in scope for PR1.** The production
+compose lives in a separate GitOps repo and is edited by the maintainer
+directly; PR1 must ship the required delta as documentation rather than
+attempting the change. See *Production compose handoff* below.
+
+### `outputFileTracingRoot`
+
+`COPY .next/standalone → ./web` assumes Next infers `/app` as the trace root. If
+it infers higher, standalone nests its output a level deeper and the `COPY`
+silently produces a wrong tree. Verify the inferred root during PR1 and pin
+`outputFileTracingRoot` explicitly if it is anything but `/app`.
+
+## Components
+
+### `scripts/worker-graph.mjs` — new, extracted
+
+The transitive walk currently inside `lint-worker-runtime-graph.mjs`, lifted so
+two consumers share one definition of what the worker reaches.
+
+```
+walkWorkerGraph({ entrypoints }) → { files:Set, bareSpecifiers:Set, unresolved:Array }
+```
+
+Depends only on `node:fs`/`node:path`. Single source of truth, in the spirit of
+`lib/queue.ts`'s `Queue` const.
+
+**Two entrypoints, not one.** The existing guard walks `worker/index.ts` alone,
+but `prisma/seed.ts` is a *second* runtime entrypoint — web boot runs
+`node_modules/.bin/tsx prisma/seed.ts` out of the pruned `/app/node_modules`.
+Today it happens to be safe: it imports only `@prisma/adapter-pg`,
+`@prisma/client`, and `../lib/reminders/system-user`, all inside the worker
+closure. Nothing enforces that, and the failure mode of a future seed edit is a
+crash-looping *web* container. `ENTRYPOINTS` becomes
+`['worker/index.ts', 'prisma/seed.ts']` for both the guard and the prune roots.
+
+### `scripts/lint-worker-runtime-graph.mjs` — modified
+
+Keeps Dockerfile `COPY` parsing and local-file checks; imports the walk rather
+than owning it.
+
+**New assertion: every bare specifier the worker reaches must be a declared
+`dependency`** — not a `devDependency`, not undeclared.
+
+The obvious assertion ("is it in the pruned tree?") is circular: at lint time
+`node_modules` is the full tree, and roots derived from specifiers trivially
+contain all specifiers. The declared-dependency check is not circular and
+catches a real class — something in `lib/` importing a devDependency (say
+`pino-pretty`) resolves on a dev machine and in every test, then vanishes from
+the production tree. Invisible today.
+
+### `scripts/prune-worker-tree.mjs` — new
+
+Runs in the `build` stage after `pnpm prune --prod`. Takes derived roots plus
+`['tsx', 'prisma']` for boot, walks the `.pnpm` symlink closure, deletes
+unreachable package directories and dangling top-level symlinks. Logs
+before/after counts and bytes.
+
+**Sanity floor.** If the graph walk ever regresses and returns few or no roots,
+a naive prune would delete nearly everything and produce a broken image that
+still *builds successfully*. Every other failure in this design is loud; this is
+the one that would be silent.
+
+The *shape* of the floor is a design decision, not an implementation detail —
+flooring root count, surviving package count, surviving bytes, or an after/before
+ratio produce materially different scripts. Two complementary checks:
+
+1. **Sentinel presence — the hard gate.** After pruning, assert these survive by
+   **stat-ing the resulting `node_modules` on disk**, not by checking membership
+   in the computed root set (`tsx` and `prisma` are hardcoded roots, so a
+   set-membership implementation would be vacuous for exactly the two entries a
+   reader checks first):
+
+   `tsx`, `prisma`, `typescript`, `@prisma/client`, `@prisma/adapter-pg`,
+   `pg-boss`, `sharp`, `react-dom`
+
+   The load-bearing ones are `@prisma/client`, `@prisma/adapter-pg`, `pg-boss`,
+   `sharp`, `react-dom` — those survive only via a correct closure walk.
+   `typescript` is the non-obvious entry: the Prisma CLI reads `prisma.config.ts`
+   at web boot, so it needs a TS loader. It is a devDependency that survives only
+   as a transitive of the `prisma` production package. Fails naming the missing
+   package.
+
+2. **Relative floor — catastrophe only.** Survivors ≥ 25% of the pre-prune
+   package count.
+
+The floor is deliberately slack. Its denominator is the *full* production tree,
+and this design's premise is that web-only dependencies are a growing share of
+it — so the ratio drifts downward over time by design. A tight floor (40% against
+today's 272/553 = 49%) leaves ~9 points of headroom and would redden an unrelated
+dependency PR, whose fix under time pressure is to loosen the number. That is the
+rot this section exists to avoid. The floor catches only the catastrophic case;
+the sentinels catch the precise ones.
+
+### `scripts/smoke-image.sh` — new
+
+Boots both roles from the actually-built image against a Postgres service and
+asserts:
+
+- web `/api/health` → 200
+- worker `/api/health` → 200
+- a known static asset resolves — `/api/health` returns 200 even with `public/`
+  or `.next/static` missing, so health alone would pass while the app serves no
+  CSS
+- **a rendered app page returns 200 with non-empty HTML** (signin, which is
+  reachable unauthenticated) — see below
+
+**Why a rendered page and not just health.** Node resolves modules *upward*, so
+`/app/web/server.js` failing to find a package in `/app/web/node_modules` will
+silently find it in the sibling `/app/node_modules`. In PR1 that masks anything
+standalone failed to trace — the smoke test goes green — and PR2's prune then
+deletes it. This interaction is created by the two-directory layout, and
+`/api/health` is too shallow to surface it: it exercises `lib/health` and the DB
+client, not the React render path. A real page render is what unmasks it.
+
+**CI wiring.** `build-image` currently builds with an explicit
+`outputs: type=image,…,push-by-digest=true`, so the image is never tagged
+locally and `load: true` is not a drop-in addition. The plan must pick a
+mechanism — a second `type=docker` output, or a tagged `--load` build reusing
+the same gha cache scope — and state it. This is the design's primary safety
+net; leaving its wiring undescribed is the gap most likely to derail PR1.
+
+**Services and env.** Postgres must be `pgvector/pgvector:pg18`, not plain
+`postgres:18` — the squashed migration does `CREATE EXTENSION` for pgvector and
+`migrate deploy` fails without it. This matches what `tests/integration/setup.ts`
+already uses. Meilisearch is not required (`/api/health` treats it as non-fatal;
+`/api/health/ready` is the stricter contract). The smoke step must supply the
+full env set `getEnv()` validates, or both roles crash-loop at boot on Zod
+validation — the same list the `build` stage already passes and that
+`docker-compose.yml`'s `x-app-env` anchor enumerates.
+
+## Failure modes
+
+| Failure | Defense |
+|---|---|
+| Prune removes a package the worker needs | Roots derived from the real graph, never hand-listed; guard's declared-dependency check; smoke test boots the worker |
+| Graph walk regresses → over-prune, green build, dead container | Sanity floor in the prune script |
+| `lib/` imports a devDependency | New guard assertion (invisible today) |
+| Standalone misses a traced file | Smoke test's **rendered-page** assertion — health alone is masked by upward module resolution into `/app/node_modules` |
+| `prisma/seed.ts` grows an import outside the closure | `prisma/seed.ts` is a declared entrypoint of the walk |
+| `HOSTNAME` unset → binds localhost | Smoke test fails immediately |
+| `public/` or `.next/static` not copied | Smoke test's static-asset fetch |
+| GitOps compose not updated | Compose change lands in PR1, before anything depends on it |
+
+**Known limitation.** A dependency doing a *dynamic* `require` of a package it
+does not declare is invisible to static analysis; only the smoke test would
+catch it. pnpm's strict non-hoisted layout makes this fail in development too,
+which is real mitigation but not a guarantee.
+
+## Testing
+
+- `pnpm verify` unchanged; `lint:worker-graph` gains the new assertion and keeps
+  running pre-push and in CI's lint job
+- **Unit test for the closure walk** against a synthetic `.pnpm`-shaped fixture.
+  This script can delete most of the image; its logic needs direct coverage, not
+  only end-to-end confidence
+- **CI smoke test** as described above
+- `pnpm test:local` before merge, per CLAUDE.md
+- Visual-regression suite unaffected — it runs against a dev server, not the image
+
+## Sequencing
+
+**PR1 — standalone.** `output: 'standalone'`, `/app/web` layout, `HOSTNAME`/
+`PORT`, `CMD` change, **removal of corepack/pnpm from the runtime stage**,
+in-repo compose edit, GitOps compose edit, docs, smoke test.
+
+**Net size change: unknown, likely near neutral — measure it, don't predict it.**
+PR1 *adds* `/app/web` (standalone's server chunks plus its ~37 MB traced
+`node_modules`, `.next/static`, `public`) while *removing* the top-level `.next`
+COPY (84 MB, superseded by standalone's own copy) and corepack/pnpm (40 MB).
+Those roughly cancel, but the standalone bundle's size has not been measured and
+an earlier estimate here was arithmetically wrong. The saving in this design
+comes from PR2; PR1 is a restructuring that makes it possible.
+
+Removing pnpm belongs here, not PR2: it breaks *both* compose commands
+(`pnpm start` and `pnpm worker:start`), so deferring it would require a second
+coordinated GitOps edit and falsify this design's claim that there is only one.
+
+**PR2 — prune.** Extract `worker-graph.mjs`, extend the guard, add the prune
+script + sanity floor + unit test. The 405 MB win, landing on a safety net
+already proven green by PR1.
+
+The prune **cannot** precede standalone: pruning removes `next`, and web runs
+`next start` until standalone replaces it.
+
+## Already landed separately
+
+Dropping the unused `vips` / `vips-heif` apk packages — **77 MB measured**
+(2.30 GB → 2.22 GB). sharp does not use system libvips: it ships a prebuilt
+`@img/sharp-libvips-linuxmusl-*` and its native binary resolves
+`libvips-cpp.so` to that bundled copy, never `/usr/lib/libvips.so.42`. The
+bundled build already carries HEIF, verified by `sharp.versions` reporting vips
+8.18.3 + heif 1.23.1 while the apk packages were 8.18.2. The packages are 2.7 MB
+themselves but drag in glib/cairo/pango/libheif transitively.
+
+## Production compose handoff
+
+PR1 makes a **breaking image change**: the new image has no `pnpm` and no
+`next start`. Old compose + new image fails, and new compose + old image fails,
+so the tag bump and the compose edit must land together. Both PRs are otherwise
+self-contained; this is the only step outside the repo.
+
+Two `command:` lines change, nothing else:
+
+```yaml
+# web
+command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
+
+# worker
+command: node_modules/.bin/tsx worker/index.ts
+```
+
+`HOSTNAME=0.0.0.0` and `PORT=3000` are baked into the image as `ENV`, so no
+compose change is needed for them. No environment variable, volume, port,
+healthcheck or `depends_on` changes.
+
+Rollback is the previous image tag together with the previous compose — they
+must move as a pair in both directions.
+
+One caveat worth knowing: `ENV HOSTNAME=0.0.0.0` overrides the conventional
+container-hostname variable. Pino is unaffected (it reads `os.hostname()`, not
+the env var), but anything else keying off `$HOSTNAME` would see `0.0.0.0`.
+
+## Out of scope
+
+- **Splitting into two images.** Explicitly rejected: it would trade away the
+  single `HEALTHCHECK` and one-image deployment. Worth noting this design makes
+  the split *nearly free* later — the trees become cleanly separated, so it
+  reduces to two `runtime` targets each copying one tree (est. web ~290 MB,
+  worker ~720 MB). Deferred, not foreclosed.
+- **A single mono-container running both roles.** Considered and rejected: it
+  saves zero bytes (Docker stores layers once per host regardless of container
+  count), *adds* weight via a supervisor, breaks the port-3000 arrangement that
+  relies on separate network namespaces, and loses crash isolation and per-role
+  health signal.
+- **A separate one-shot migrate container.** Saves only 20 MB measured.
+- **Deduplicating the two `@img/sharp-libvips` copies** (~33 MB) — separate,
+  driven by Next's transitive `^0.34.5` pin.
+- **HEIC input support.** `sharp.format.heif.input.fileSuffix` lists only
+  `.avif` despite HEIF being compiled in. A correctness question, not a size
+  one, and untouched here.

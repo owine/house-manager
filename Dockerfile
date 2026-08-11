@@ -66,34 +66,62 @@ RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
     FORWARDEMAIL_FROM_ADDRESS=build@example.com \
     ANTHROPIC_API_KEY=placeholder-build-time \
     pnpm build
+
+# Next deliberately excludes public/ and .next/static from standalone output —
+# server.js expects them to have been copied in. Without this the app boots and
+# serves 200s while every asset and stylesheet 404s.
+RUN cp -r public .next/standalone/ \
+ && cp -r .next/static .next/standalone/.next/
+
 RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
-# renovate: datasource=npm depName=pnpm
-# Keep in sync with the base stage and package.json "packageManager" — see
-# comment on the base stage's PNPM_VERSION arg.
-ARG PNPM_VERSION=11.20.0
-RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
-# apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
+# apk pins: Alpine 3.24, Renovate-tracked via Repology (see renovate.json —
+# its depNameTemplate carries the alpine major and must move with the base image)
 # postgresql18-client provides pg_dump for the worker's nightly DB backup job
 # (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
 # pgvector:pg18, matched.
+#
+# Deliberately NOT installing vips/vips-heif. sharp does not use system libvips:
+# it ships a prebuilt @img/sharp-libvips-linuxmusl-arm64 and its native binary
+# resolves libvips-cpp.so to that bundled copy, never /usr/lib/libvips.so.42.
+# The bundled build already carries HEIF, so `vips-heif` bought nothing either —
+# verified via `sharp.versions` reporting vips 8.18.3 + heif 1.23.1 while the apk
+# packages were 8.18.2. The two packages are ~2.7MB themselves but drag in
+# glib/cairo/pango/libheif transitively, costing ~60MB of image for code that is
+# never loaded. If HEIC input ever breaks, the fix is on the sharp side (check
+# `sharp.format.heif.input.fileSuffix`) — re-adding these will not help.
 RUN apk add --no-cache \
   curl=8.21.0-r0 \
-  postgresql18-client=18.4-r0 \
-  vips=8.18.2-r0 \
-  vips-heif=8.18.2-r0
+  postgresql18-client=18.4-r0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# standalone's server.js binds localhost unless told otherwise, which would
+# leave the HEALTHCHECK curl (and everything else outside the container)
+# hitting a port nothing is listening on.
+# NOTE: this shadows the conventional container-hostname variable. pino is
+# unaffected (it reads os.hostname()), but anything keying off $HOSTNAME sees
+# 0.0.0.0.
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 
 # Production node_modules from build stage (after prune)
 COPY --from=build /app/node_modules ./node_modules
 
-# Next.js build output
-COPY --from=build /app/.next ./.next
-COPY --from=build /app/public ./public
+# Web role: Next standalone bundle — server.js plus a file-traced node_modules
+# holding only what the app imports. Under pnpm this tree reproduces its own
+# .pnpm symlink structure; the links are relative and stay inside ./web, so it
+# copies cleanly. Deliberately NOT merged into /app/node_modules: they are two
+# independently-generated stores and merging them fails in subtle ways.
+#
+# Beware when debugging: Node resolves upward, so a package missing from
+# web/node_modules silently resolves from /app/node_modules instead. Anything
+# standalone failed to trace still works today and breaks only once
+# /app/node_modules is pruned. scripts/smoke-image.sh probes / for a real
+# dynamic render rather than just /api/health for exactly this reason.
+COPY --from=build /app/.next/standalone ./web
 
 # Prisma schema, migrations, and config (needed for prisma migrate deploy at startup)
 COPY --from=build /app/prisma ./prisma
@@ -107,7 +135,6 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 
 # Manifests
 COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Re-declare GIT_SHA in this stage; placed AFTER all COPYs so only this final
 # tiny layer rebuilds per commit (the COPY layers stay cached as long as the
@@ -145,4 +172,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -fsS http://localhost:3000/api/health || exit 1
 
-CMD ["pnpm", "start"]
+# `next start` no longer exists in this image — standalone ships its own
+# server. Production compose must change its command in the same window; see
+# docs/superpowers/specs/2026-08-11-docker-image-size-design.md
+# § Production compose handoff.
+CMD ["node", "web/server.js"]
