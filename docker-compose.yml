@@ -99,6 +99,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # Gate on web, not just the database, because web owns `prisma migrate
+      # deploy`. Without this both roles start the moment Postgres is healthy,
+      # so on any deploy carrying a new migration the worker connects pg-boss
+      # and registers all 13 handlers against the un-migrated schema — and
+      # embed.backfill fires at every worker boot, landing squarely in that
+      # window. Web reports healthy only once migrate + seed have finished and
+      # /api/health (which is DB-backed) answers 200, so this closes the race.
+      #
+      # Cost: the worker no longer starts if web can't become healthy. That is
+      # deliberate — a worker running against a database whose migrations
+      # failed is doing damage quietly, not useful work. `depends_on` applies
+      # only at `up`, so a later web crash does not stop the worker.
+      #
+      # This does NOT make a failed migration visible: web still exits, is
+      # restarted forever, and Docker reports `starting`, never `unhealthy`.
+      # Detection depends on the monitor treating anything-but-healthy as down
+      # (see docs/observability.md). Fixing that properly needs a one-shot
+      # migrate service. See issue #401.
+      web:
+        condition: service_healthy
     environment: *app-env
     volumes:
       - files:/data/files
