@@ -66,6 +66,13 @@ RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
     FORWARDEMAIL_FROM_ADDRESS=build@example.com \
     ANTHROPIC_API_KEY=placeholder-build-time \
     pnpm build
+
+# Next deliberately excludes public/ and .next/static from standalone output —
+# server.js expects them to have been copied in. Without this the app boots and
+# serves 200s while every asset and stylesheet 404s.
+RUN cp -r public .next/standalone/ \
+ && cp -r .next/static .next/standalone/.next/
+
 RUN pnpm prune --prod
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
