@@ -21,9 +21,10 @@ WORKER="smoke-worker-$$"
 # and `migrate deploy` fails without it. Matches tests/integration/setup.ts.
 PG_IMAGE="pgvector/pgvector:pg18"
 
-# Role commands. Updated when the image stops shipping pnpm (see PR1 Task 5).
-WEB_CMD="${WEB_CMD:-pnpm db:deploy && pnpm db:seed && pnpm start}"
-WORKER_CMD="${WORKER_CMD:-pnpm worker:start}"
+# Role commands. The image ships no pnpm, and nothing puts node_modules/.bin
+# on PATH, so both roles are invoked by explicit path.
+WEB_CMD="${WEB_CMD:-node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js}"
+WORKER_CMD="${WORKER_CMD:-node_modules/.bin/tsx worker/index.ts}"
 
 cleanup() {
   docker rm -f "$WEB" "$WORKER" "$PG" >/dev/null 2>&1 || true

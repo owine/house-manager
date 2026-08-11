@@ -14,7 +14,7 @@
 
 ## Background the implementer needs
 
-**This PR does not make the image smaller.** It restructures so PR2 can. Expect the size to move roughly sideways: `/app/web` is added while the top-level `.next` COPY (84 MB) and corepack/pnpm (40 MB) are removed. Do not "fix" a neutral result — the 405 MB saving is PR2's.
+**This PR was expected to leave the image roughly neutral in size** — `/app/web` added while the top-level `.next` COPY (84 MB) and corepack/pnpm (40 MB) are removed. Measured reality beat that: **2.22 GB → 1.74 GB, about −480 MB**, because `.next/standalone` is nested *inside* `.next`, so replacing the wholesale `COPY /app/.next` dropped both the old build output and an accidental duplicate of the bundle, on top of the ~40 MB pnpm shim. The further ~405 MB from pruning `/app/node_modules` is still PR2's.
 
 **Why the two-directory layout.** Standalone emits its own self-contained `node_modules` — under pnpm it reproduces a `.pnpm` symlink structure of its own, with relative links that stay inside the bundle, so it copies cleanly as a unit. It is nonetheless a *separately generated store* from `/app/node_modules`, and both want the same path. Merging two independently-built stores fails subtly, so standalone goes to `/app/web/` and the worker keeps `/app/node_modules`. The ~37 MB of overlap is the price of staying on one image.
 
@@ -258,9 +258,10 @@ echo "SMOKE PASS: $IMAGE"
 Insert directly after the `PG_IMAGE=` line. These are the **pre-change** commands and get updated in Task 5 — that update is what makes this a red/green loop rather than a rubber stamp.
 
 ```bash
-# Role commands. Updated when the image stops shipping pnpm (see PR1 Task 5).
-WEB_CMD="${WEB_CMD:-pnpm db:deploy && pnpm db:seed && pnpm start}"
-WORKER_CMD="${WORKER_CMD:-pnpm worker:start}"
+# Role commands. The image ships no pnpm, and nothing puts node_modules/.bin
+# on PATH, so both roles are invoked by explicit path.
+WEB_CMD="${WEB_CMD:-node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js}"
+WORKER_CMD="${WORKER_CMD:-node_modules/.bin/tsx worker/index.ts}"
 ```
 
 - [ ] **Step 3: Make it executable and build the current image**
@@ -529,6 +530,8 @@ This failure is the point. If it *passes*, pnpm is still in the runtime stage an
 - [ ] **Step 2: Update the role commands**
 
 ```bash
+# Role commands. The image ships no pnpm, and nothing puts node_modules/.bin
+# on PATH, so both roles are invoked by explicit path.
 WEB_CMD="${WEB_CMD:-node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js}"
 WORKER_CMD="${WORKER_CMD:-node_modules/.bin/tsx worker/index.ts}"
 ```
@@ -542,14 +545,14 @@ Paths are explicit because nothing puts `node_modules/.bin` on `PATH` once pnpm 
 ```
 Expected: `SMOKE PASS` with all six ✓ lines.
 
-The `✓ rendered 404 page` line is the one that matters — it proves the standalone bundle can execute a React render, not merely answer a health probe.
+The `✓ dynamic render (/ → signin, no-store)` line is the one that matters — it is the only check that exercises the React render path, not merely a health probe or a file read. The `✓ prerendered app output served` (not-found) line is retained only as evidence that `.next/server` app output shipped and is being served — it is a build-time prerender read from disk, not a render.
 
 - [ ] **Step 4: Record the size for comparison**
 
 ```bash
 docker images house-manager:smoke --format '{{.Size}}'
 ```
-Note it in the PR description. Roughly neutral versus `main` is the expected and correct outcome.
+Note it in the PR description. Measured: **2.22 GB → 1.74 GB, about −480 MB** — `.next/standalone` is nested *inside* `.next`, so replacing the wholesale `COPY /app/.next` dropped both the old build output and an accidental duplicate of the bundle, on top of the ~40 MB pnpm shim. The further ~405 MB from pruning `/app/node_modules` is still PR2's.
 
 - [ ] **Step 5: Commit**
 
