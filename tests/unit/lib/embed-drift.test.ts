@@ -53,9 +53,16 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
     reason: 'inbox-received attachments go through the same OCR-gated enqueue path',
   },
   {
-    file: 'lib/incoming-email/actions.ts',
+    file: 'lib/incoming-email/create-service-record.ts',
     kind: 'ATTACHMENT',
     reason: 'updateMany only sets serviceRecordId; embedded content (extractedText) is unchanged',
+  },
+  {
+    file: 'lib/incoming-email/create-service-record.ts',
+    kind: 'SERVICE_RECORD',
+    reason:
+      'shared transactional write; both callers (lib/incoming-email/actions.ts and ' +
+      'worker/jobs/classify-incoming-email.ts) enqueue the embed after the transaction commits',
   },
   {
     file: 'worker/jobs/thumbnail.ts',

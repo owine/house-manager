@@ -74,11 +74,19 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
     reason: 'only mutates Item.systemId, which is not in the Item search doc',
   },
   {
-    file: 'lib/incoming-email/actions.ts',
+    file: 'lib/incoming-email/create-service-record.ts',
     kind: 'attachment',
     reason:
       'updateMany only sets serviceRecordId to link inbox attachments to a service record; ' +
       'attachment search doc references the direct Item link, not serviceRecord',
+  },
+  {
+    file: 'lib/incoming-email/create-service-record.ts',
+    kind: 'service',
+    reason:
+      'shared transactional write; both callers (lib/incoming-email/actions.ts and ' +
+      'worker/jobs/classify-incoming-email.ts) enqueue the upsert after the transaction ' +
+      'commits — enqueueing in here would publish an id Meili cannot yet read',
   },
   {
     file: 'worker/jobs/thumbnail.ts',

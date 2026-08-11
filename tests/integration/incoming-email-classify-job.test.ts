@@ -155,7 +155,9 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     expect(after?.vendorId).toBe(v.id);
     expect(after?.targets).toHaveLength(1);
     expect(after?.targets[0].itemId).toBe(item.id);
-    expect(after?.state).toBe('AUTO_LINKED');
+    // Auto-stub fired, so the row is graduated to LINKED rather than left in
+    // the Untriaged tab. Rows that classify but DON'T auto-stub stay AUTO_LINKED.
+    expect(after?.state).toBe('LINKED');
     expect(after?.aiExtractedSummary).toBe('Heat pump spring tune-up');
     expect(after?.aiExtractedCost?.toString()).toBe('185');
     expect(after?.aiExtractedPerformedOn?.toISOString()).toBe('2026-04-15T00:00:00.000Z');
@@ -176,6 +178,90 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0].errorReason).toBeNull();
     expect(logs[0].inputTokens).toBe(100);
+  });
+
+  // The auto-stub path is a second implementation of what the "Create service
+  // record" button does (`createServiceRecordFromEmail`). Both must link the
+  // email's attachments onto the new record and graduate the row out of the
+  // inbox — a drafted record with no invoice PDF, sitting forever in the
+  // Untriaged tab, is what shipped for the first three months.
+  it('auto-stub links the email attachments to the draft and clears the inbox row', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 'Heat pump spring tune-up',
+        cost: 185.0,
+        performedOn: '2026-04-15',
+        scope: 'Replaced air filter; cleaned coils.',
+        rationale: 'Clear invoice from known vendor.',
+      },
+      usage: {},
+    };
+    const e = await makeEmail({
+      messageId: '<inv-att@a>',
+      subject: 'Invoice #5512 for Heat Pump service',
+      bodyText: 'Amount due $185.',
+    });
+    // One PDF (read off disk by the classifier) and one image, to prove every
+    // attachment follows, not just the ones the classifier happened to open.
+    const pdfDir = join(filesDir, 'pdfs', e.id);
+    mkdirSync(pdfDir, { recursive: true });
+    const pdfPath = join('pdfs', e.id, 'invoice.pdf');
+    writeFileSync(join(filesDir, pdfPath), Buffer.from('%PDF-1.4 fake'));
+    await ctx.prisma.attachment.createMany({
+      data: [
+        {
+          incomingEmailId: e.id,
+          filename: 'invoice.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 13,
+          storagePath: pdfPath,
+          uploadedById: 'u1',
+        },
+        {
+          incomingEmailId: e.id,
+          filename: 'site-photo.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 4,
+          storagePath: 'imgs/site-photo.jpg',
+          uploadedById: 'u1',
+        },
+      ],
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      select: { state: true, createdServiceRecordId: true },
+    });
+    const srId = after?.createdServiceRecordId;
+    expect(srId).toBeTruthy();
+
+    // Both attachments now hang off the service record as well as the email —
+    // multi-parent, no file copy.
+    const attachments = await ctx.prisma.attachment.findMany({
+      where: { incomingEmailId: e.id },
+      orderBy: { filename: 'asc' },
+      select: { filename: true, serviceRecordId: true },
+    });
+    expect(attachments.map((a) => a.serviceRecordId)).toEqual([srId, srId]);
+
+    // Drafting the record graduates the row: LINKED drops out of the Untriaged
+    // tab and the sidebar badge.
+    expect(after?.state).toBe('LINKED');
+    const untriaged = await ctx.prisma.incomingEmail.count({
+      where: { archivedAt: null, state: { in: ['UNTRIAGED', 'AUTO_LINKED'] } },
+    });
+    expect(untriaged).toBe(0);
   });
 
   it('medium confidence → classify + aiExtracted set, but NO auto-stub', async () => {
@@ -277,7 +363,8 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     expect(after?.kind).toBe('TICKET');
     expect(after?.vendorId).toBe(v.id);
     expect(after?.targets[0].itemId).toBe(item.id);
-    expect(after?.state).toBe('AUTO_LINKED');
+    // Heuristic auto-stub fired below, so this row graduates to LINKED too.
+    expect(after?.state).toBe('LINKED');
     // No AI extraction on the fallback path.
     expect(after?.aiExtractedAt).toBeNull();
     expect(after?.aiExtractedSummary).toBeNull();
