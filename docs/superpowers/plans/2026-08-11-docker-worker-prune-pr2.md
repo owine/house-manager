@@ -677,7 +677,11 @@ If it **ABORTED** on the floor, the import walk regressed — debug `pnpm lint:w
 ```
 Expected: `SMOKE PASS` with all six ✓ lines.
 
-The `✓ rendered 404 page` line matters most here. PR1 could pass it while leaning on the sibling tree via upward module resolution; this is the first build where that crutch is gone, so this is the moment a gap in the standalone bundle surfaces.
+The `✓ dynamic render (/ → signin, no-store)` line matters most here — not the
+prerendered-404 one, which is a file read and would pass regardless. PR1 could
+pass the dynamic check while leaning on the sibling tree via upward module
+resolution; this is the first build where that crutch is gone, so this is the
+moment a gap in the standalone bundle surfaces.
 
 - [ ] **Step 4: Measure**
 
