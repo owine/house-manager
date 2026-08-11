@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
+import { createServiceRecordForEmail } from '@/lib/incoming-email/create-service-record';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
@@ -261,43 +262,23 @@ export async function createServiceRecordFromEmail(
     email.aiExtractedPerformedOn ?? startOfDayUtc(email.receivedAt, await getHouseTimezone());
   const notes = email.aiExtractedScope ?? '[Created from inbound email — review and edit.]';
 
-  const created = await prisma.$transaction(async (tx) => {
-    const sr = await tx.serviceRecord.create({
-      data: {
-        vendorId: email.vendorId,
-        performedOn,
-        cost: email.aiExtractedCost,
-        summary,
-        notes,
-        targets: {
-          create: email.targets.map((t) => ({
-            itemId: t.itemId,
-            systemId: t.systemId,
-          })),
-        },
-      },
-      select: { id: true },
-    });
-    await tx.incomingEmail.update({
-      where: { id: email.id },
-      data: { createdServiceRecordId: sr.id, state: 'LINKED' },
-    });
-    // Link the email's attachments to the new ServiceRecord too. Multi-parent
-    // attachments mean the same PDF/photo shows up in both the inbox detail
-    // (still tied to the email) and the service record (tied via this update).
-    // Single source of truth on disk; no file copy.
-    const attachLink = await tx.attachment.updateMany({
-      where: { incomingEmailId: email.id, serviceRecordId: null },
-      data: { serviceRecordId: sr.id },
-    });
-    return { sr, attachmentsLinked: attachLink.count };
-  });
-  await enqueueSearchIndex('service', created.sr.id, 'upsert');
-  await enqueueEmbed('SERVICE_RECORD', created.sr.id);
+  const created = await prisma.$transaction((tx) =>
+    createServiceRecordForEmail(tx, {
+      incomingEmailId: email.id,
+      vendorId: email.vendorId,
+      performedOn,
+      cost: email.aiExtractedCost,
+      summary,
+      notes,
+      targets: email.targets,
+    }),
+  );
+  await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
+  await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
   log.info(
     {
       incomingEmailId: email.id,
-      serviceRecordId: created.sr.id,
+      serviceRecordId: created.serviceRecordId,
       targetCount: email.targets.length,
       attachmentsLinked: created.attachmentsLinked,
       by: u.id,
@@ -306,5 +287,5 @@ export async function createServiceRecordFromEmail(
   );
   revalidateInbox(email.id);
   revalidatePath('/service');
-  return { ok: true, data: { serviceRecordId: created.sr.id } };
+  return { ok: true, data: { serviceRecordId: created.serviceRecordId } };
 }

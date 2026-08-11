@@ -12,6 +12,7 @@ import {
   validateCandidateIds,
 } from '@/lib/incoming-email/ai-classify';
 import { classifyEmail } from '@/lib/incoming-email/classify';
+import { createServiceRecordForEmail } from '@/lib/incoming-email/create-service-record';
 import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
@@ -249,9 +250,14 @@ function fallbackSummary(subject: string): string {
 }
 
 /**
- * Create a draft ServiceRecord from the classified email and link it back via
- * `createdServiceRecordId`. Failure is non-fatal: classification metadata is
- * already persisted, so we log + report to Sentry and do not rethrow.
+ * Create a draft ServiceRecord from the classified email via the shared write
+ * in `lib/incoming-email/create-service-record.ts` — the same one the "Create
+ * service record" button uses, so the auto path also carries the attachments
+ * over and graduates the row to LINKED.
+ *
+ * Failure is non-fatal: classification metadata is already persisted, so we
+ * log + report to Sentry and do not rethrow. The row then stays AUTO_LINKED,
+ * which is the correct outcome — no draft exists, so it still needs triage.
  */
 async function autoStub(input: {
   rowId: string;
@@ -262,29 +268,24 @@ async function autoStub(input: {
   notes: string;
 }): Promise<void> {
   try {
-    const created = await prisma.$transaction(async (tx) => {
-      const sr = await tx.serviceRecord.create({
-        data: {
-          vendorId: input.vendorId,
-          performedOn: input.performedOn,
-          summary: input.summary.slice(0, 200),
-          notes: input.notes,
-          targets: {
-            create: input.targets.map((t) => ({ itemId: t.itemId, systemId: t.systemId })),
-          },
-        },
-        select: { id: true },
-      });
-      await tx.incomingEmail.update({
-        where: { id: input.rowId },
-        data: { createdServiceRecordId: sr.id },
-      });
-      return sr;
-    });
-    await enqueueSearchIndex('service', created.id, 'upsert');
-    await enqueueEmbed('SERVICE_RECORD', created.id);
+    const created = await prisma.$transaction((tx) =>
+      createServiceRecordForEmail(tx, {
+        incomingEmailId: input.rowId,
+        vendorId: input.vendorId,
+        performedOn: input.performedOn,
+        summary: input.summary,
+        notes: input.notes,
+        targets: input.targets,
+      }),
+    );
+    await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
+    await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
     log.info(
-      { id: input.rowId, serviceRecordId: created.id },
+      {
+        id: input.rowId,
+        serviceRecordId: created.serviceRecordId,
+        attachmentsLinked: created.attachmentsLinked,
+      },
       'classify-incoming-email: auto-stubbed service record',
     );
   } catch (err) {
