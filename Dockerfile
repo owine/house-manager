@@ -75,15 +75,24 @@ FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06
 # comment on the base stage's PNPM_VERSION arg.
 ARG PNPM_VERSION=11.20.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
-# apk pins: Alpine 3.23, Renovate-tracked via Repology (see renovate.json)
+# apk pins: Alpine 3.24, Renovate-tracked via Repology (see renovate.json —
+# its depNameTemplate carries the alpine major and must move with the base image)
 # postgresql18-client provides pg_dump for the worker's nightly DB backup job
 # (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
 # pgvector:pg18, matched.
+#
+# Deliberately NOT installing vips/vips-heif. sharp does not use system libvips:
+# it ships a prebuilt @img/sharp-libvips-linuxmusl-arm64 and its native binary
+# resolves libvips-cpp.so to that bundled copy, never /usr/lib/libvips.so.42.
+# The bundled build already carries HEIF, so `vips-heif` bought nothing either —
+# verified via `sharp.versions` reporting vips 8.18.3 + heif 1.23.1 while the apk
+# packages were 8.18.2. The two packages are ~2.7MB themselves but drag in
+# glib/cairo/pango/libheif transitively, costing ~60MB of image for code that is
+# never loaded. If HEIC input ever breaks, the fix is on the sharp side (check
+# `sharp.format.heif.input.fileSuffix`) — re-adding these will not help.
 RUN apk add --no-cache \
   curl=8.21.0-r0 \
-  postgresql18-client=18.4-r0 \
-  vips=8.18.2-r0 \
-  vips-heif=8.18.2-r0
+  postgresql18-client=18.4-r0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
