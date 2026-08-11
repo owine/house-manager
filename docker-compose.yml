@@ -79,7 +79,16 @@ services:
     # Duplicated in scripts/smoke-image.sh, docs/README.md § Production, and the
     # production GitOps compose. Change one, change all four — only the smoke
     # script's copy is under automated test, so this one drifts silently.
-    command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
+    #
+    # `exec` on the last command is deliberate but NOT load-bearing today —
+    # don't remove it as redundant. BusyBox ash already exec-optimizes the final
+    # command in an `&&` chain, so node is PID 1 and handles SIGTERM either way
+    # (measured: stop 0s, exit 143). `exec` makes that independent of a BusyBox
+    # implementation detail, and makes appending a trailing command obviously
+    # wrong rather than silently fatal — without it, `… && node web/server.js &&
+    # anything` leaves sh at PID 1, node as its child, and the container dies on
+    # SIGKILL. See issue #401.
+    command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js"
     # Healthcheck comes from the image (see Dockerfile) — one definition for
     # both services rather than two that can drift.
 

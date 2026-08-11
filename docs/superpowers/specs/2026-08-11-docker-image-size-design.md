@@ -227,7 +227,7 @@ pnpm leaves the runtime in PR1, so nothing puts `node_modules/.bin` on `PATH`.
 Every invocation must be written out explicitly:
 
 - web:
-  `node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js`
+  `node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js`
 - worker: `node_modules/.bin/tsx worker/index.ts`
 
 Both the in-repo `docker-compose.yml` (lines 79 and 94) and the production
@@ -439,7 +439,7 @@ Two `command:` lines change, nothing else:
 
 ```yaml
 # web
-command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
+command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js"
 
 # worker
 command: node_modules/.bin/tsx worker/index.ts
@@ -448,6 +448,16 @@ command: node_modules/.bin/tsx worker/index.ts
 `HOSTNAME=0.0.0.0` and `PORT=3000` are baked into the image as `ENV`, so no
 compose change is needed for them. No environment variable, volume, port,
 healthcheck or `depends_on` changes.
+
+**On `exec`** (issue #401): it is deliberate but not load-bearing. BusyBox `ash`
+— `/bin/sh` in `node:24-alpine` — already exec-optimizes the *final* command in
+an `&&` chain, so `node` is PID 1 and handles `SIGTERM` with or without it
+(measured: `docker stop` 0s, exit 143; Next installs handlers at
+`start-server.js:387`). `exec` buys two things: independence from that BusyBox
+detail if the base image ever changes, and a loud failure mode instead of a
+silent one — without it, appending anything after `node web/server.js` leaves
+`sh` at PID 1 with node as its child, and the container dies on `SIGKILL`
+(measured: exit 137). Do not remove it as redundant.
 
 Rollback is the previous image tag together with the previous compose — they
 must move as a pair in both directions.

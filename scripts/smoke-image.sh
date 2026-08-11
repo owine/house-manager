@@ -29,7 +29,7 @@ PG_IMAGE="pgvector/pgvector:pg18"
 # is the only one under automated test — CI runs this script against the real
 # image on every build — so if they drift, this is the one that stays right
 # and compose is the one that silently breaks.
-WEB_CMD="${WEB_CMD:-node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js}"
+WEB_CMD="${WEB_CMD:-node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js}"
 WORKER_CMD="${WORKER_CMD:-node_modules/.bin/tsx worker/index.ts}"
 
 cleanup() {
