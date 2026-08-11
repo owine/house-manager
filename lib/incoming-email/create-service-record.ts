@@ -1,13 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { prisma } from '@/lib/db';
-
-/**
- * The transaction-scoped client `prisma.$transaction(fn)` hands its callback.
- * Derived from our own extended client rather than using
- * `Prisma.TransactionClient`, which describes the UNextended client and so
- * rejects the one the result extensions in `lib/prisma-extensions.ts` produce.
- */
-type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+import type { TransactionClient } from '@/lib/db';
 
 /**
  * The single write that turns an inbound email into a draft `ServiceRecord`.
