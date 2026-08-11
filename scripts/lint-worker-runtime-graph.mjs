@@ -87,6 +87,33 @@ if (unresolved.length > 0) {
   process.exit(1);
 }
 
+const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+const prodDeps = new Set(Object.keys(pkg.dependencies ?? {}));
+const devDeps = new Set(Object.keys(pkg.devDependencies ?? {}));
+
+const misdeclared = [];
+for (const [name, importer] of bareSpecifiers) {
+  if (prodDeps.has(name)) continue;
+  misdeclared.push({ name, importer, kind: devDeps.has(name) ? 'devDependency' : 'undeclared' });
+}
+
+if (misdeclared.length > 0) {
+  console.error(
+    `lint:worker-graph — ${misdeclared.length} package(s) the worker imports are not production dependencies:\n`,
+  );
+  for (const { name, importer, kind } of misdeclared) {
+    console.error(`  ${importer}`);
+    console.error(`    imports ${name}  (${kind})`);
+  }
+  console.error('\nThe runtime image ships only production dependencies, pruned further to the');
+  console.error("worker's closure. A devDependency resolves on your machine and in every test,");
+  console.error('then is absent at runtime — the container dies at boot or a job fails silently.');
+  console.error('\nFix by either:');
+  console.error('  - moving the package to `dependencies` if the worker genuinely needs it, or');
+  console.error('  - removing the import from the worker-reachable graph.');
+  process.exit(1);
+}
+
 if (violations.length === 0) {
   console.log(
     `lint:worker-graph — OK (${files.size} modules reachable from the worker, all present in the runtime image)`,
