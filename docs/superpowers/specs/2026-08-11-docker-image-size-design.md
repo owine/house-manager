@@ -31,9 +31,15 @@ Measured on a real build, not estimated:
 
 The first hypothesis — that `pnpm prune --prod` was stranding orphaned packages
 in `node_modules/.pnpm`, the classic pnpm-in-Docker trap — was **tested and
-disproved**. Walking the symlink graph inside the image gives 555 reachable /
-555 total, 0 orphaned. The prune is clean; that 1.14 GB is genuinely-reachable
-production dependencies.
+disproved**. Walking the symlink graph inside the image gives 0 orphaned:
+every package present is reachable. The prune is clean; that 1.14 GB is
+genuinely-reachable production dependencies.
+
+(That check ran against a then-current image with 555 packages; the *Measurements*
+section below reports 553 from a later build on a newer lockfile. Different
+builds, both accurate — the package count is not stable across dependency
+updates, which is also why the sanity floor below is a ratio rather than a
+count.)
 
 Itemised:
 
@@ -290,15 +296,32 @@ The *shape* of the floor is a design decision, not an implementation detail —
 flooring root count, surviving package count, surviving bytes, or an after/before
 ratio produce materially different scripts. Two complementary checks:
 
-1. **Sentinel presence.** After pruning, assert these survive by name:
-   `tsx`, `prisma`, `@prisma/client`, `@prisma/adapter-pg`, `pg-boss`, `sharp`,
-   `react-dom`. Fails with a message naming the missing package.
-2. **Relative floor.** Survivors ≥ 40% of the pre-prune package count
-   (measured today: 272/553 = 49%).
+1. **Sentinel presence — the hard gate.** After pruning, assert these survive by
+   **stat-ing the resulting `node_modules` on disk**, not by checking membership
+   in the computed root set (`tsx` and `prisma` are hardcoded roots, so a
+   set-membership implementation would be vacuous for exactly the two entries a
+   reader checks first):
 
-Sentinels are the load-bearing half — an absolute package or byte floor drifts
-as dependencies churn and gets loosened until it means nothing, whereas a named
-sentinel cannot rot into meaninglessness.
+   `tsx`, `prisma`, `typescript`, `@prisma/client`, `@prisma/adapter-pg`,
+   `pg-boss`, `sharp`, `react-dom`
+
+   The load-bearing ones are `@prisma/client`, `@prisma/adapter-pg`, `pg-boss`,
+   `sharp`, `react-dom` — those survive only via a correct closure walk.
+   `typescript` is the non-obvious entry: the Prisma CLI reads `prisma.config.ts`
+   at web boot, so it needs a TS loader. It is a devDependency that survives only
+   as a transitive of the `prisma` production package. Fails naming the missing
+   package.
+
+2. **Relative floor — catastrophe only.** Survivors ≥ 25% of the pre-prune
+   package count.
+
+The floor is deliberately slack. Its denominator is the *full* production tree,
+and this design's premise is that web-only dependencies are a growing share of
+it — so the ratio drifts downward over time by design. A tight floor (40% against
+today's 272/553 = 49%) leaves ~9 points of headroom and would redden an unrelated
+dependency PR, whose fix under time pressure is to loosen the number. That is the
+rot this section exists to avoid. The floor catches only the catastrophic case;
+the sentinels catch the precise ones.
 
 ### `scripts/smoke-image.sh` — new
 
@@ -370,8 +393,15 @@ which is real mitigation but not a guarantee.
 
 **PR1 — standalone.** `output: 'standalone'`, `/app/web` layout, `HOSTNAME`/
 `PORT`, `CMD` change, **removal of corepack/pnpm from the runtime stage**,
-in-repo compose edit, GitOps compose edit, docs, smoke test. Image grows
-~50 MB net (standalone adds ~120 MB, pnpm removal returns 40 MB).
+in-repo compose edit, GitOps compose edit, docs, smoke test.
+
+**Net size change: unknown, likely near neutral — measure it, don't predict it.**
+PR1 *adds* `/app/web` (standalone's server chunks plus its ~37 MB traced
+`node_modules`, `.next/static`, `public`) while *removing* the top-level `.next`
+COPY (84 MB, superseded by standalone's own copy) and corepack/pnpm (40 MB).
+Those roughly cancel, but the standalone bundle's size has not been measured and
+an earlier estimate here was arithmetically wrong. The saving in this design
+comes from PR2; PR1 is a restructuring that makes it possible.
 
 Removing pnpm belongs here, not PR2: it breaks *both* compose commands
 (`pnpm start` and `pnpm worker:start`), so deferring it would require a second
