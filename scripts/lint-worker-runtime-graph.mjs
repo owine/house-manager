@@ -63,16 +63,26 @@ function shipsInRuntimeImage(relPath) {
   return false;
 }
 
-const { files, bareSpecifiers, unresolved } = walkWorkerGraph({
-  root: ROOT,
-  entrypoints: ENTRYPOINTS,
-  // Preserves the behaviour of the old walk(): record a file that won't ship,
-  // but don't descend into it. Without this the walk would harvest the bare
-  // specifiers of, say, the whole components/ subtree — and in this PR those
-  // become prune roots, silently widening the tree exactly when the guard is
-  // telling you something is wrong.
-  shouldFollow: shipsInRuntimeImage,
-});
+let files;
+let bareSpecifiers;
+let unresolved;
+try {
+  ({ files, bareSpecifiers, unresolved } = walkWorkerGraph({
+    root: ROOT,
+    entrypoints: ENTRYPOINTS,
+    // Preserves the behaviour of the old walk(): record a file that won't ship,
+    // but don't descend into it. Without this the walk would harvest the bare
+    // specifiers of, say, the whole components/ subtree — and in this PR those
+    // become prune roots, silently widening the tree exactly when the guard is
+    // telling you something is wrong.
+    shouldFollow: shipsInRuntimeImage,
+  }));
+} catch (err) {
+  // The walk throws rather than exiting so it stays testable; rendering it as a
+  // clean message is this script's job.
+  console.error(`lint:worker-graph — ${err.message}`);
+  process.exit(1);
+}
 
 const violations = [];
 for (const [target, { importer, specifier }] of files) {

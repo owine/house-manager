@@ -235,4 +235,42 @@ describe('walkWorkerGraph', () => {
       expect(files.has('lib/a.ts')).toBe(true);
     });
   });
+
+  describe('core modules', () => {
+    // Regression: only `node:`-prefixed specifiers used to be skipped, so a
+    // bare `import fs from 'fs'` was collected as a package. The guard then
+    // reported it as an undeclared dependency, and the prune promoted it to a
+    // ROOT — where computeClosure throws `root 'fs' is not installed` and
+    // aborts the Docker build.
+    it('excludes bare core modules, not just node:-prefixed ones', () => {
+      file(
+        'worker/index.ts',
+        [
+          "import fs from 'fs';",
+          "import { join } from 'path';",
+          "import { readFile } from 'fs/promises';",
+          "import crypto from 'node:crypto';",
+          "import real from 'pg-boss';",
+        ].join('\n'),
+      );
+
+      const { bareSpecifiers } = walk(['worker/index.ts']);
+
+      for (const core of ['fs', 'path', 'crypto']) {
+        expect(bareSpecifiers.has(core)).toBe(false);
+      }
+      // A genuine package alongside them is still collected.
+      expect(bareSpecifiers.has('pg-boss')).toBe(true);
+    });
+  });
+
+  describe('missing entrypoint', () => {
+    // Throws rather than calling process.exit — a library that kills the
+    // process cannot have this path tested at all, since vitest would die too.
+    it('throws with a clear message instead of exiting', () => {
+      expect(() => walk(['worker/does-not-exist.ts'])).toThrow(
+        /entrypoint worker\/does-not-exist\.ts not found/,
+      );
+    });
+  });
 });

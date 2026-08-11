@@ -20,7 +20,16 @@
 // when everything shipped, silently fatal once the tree is cut.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
+
+// Core modules are not packages. Skipping only `node:`-prefixed specifiers is
+// not enough: `import fs from 'fs'` is legal and would otherwise be collected
+// as a bare specifier, which the guard reports as an undeclared dependency and
+// the prune promotes to a ROOT — where computeClosure throws
+// `root 'fs' is not installed` and aborts the build. Derived from Node rather
+// than hand-listed so it cannot go stale.
+const CORE_MODULES = new Set(builtinModules);
 
 // Both entrypoints run under tsx against the SAME pruned node_modules.
 // prisma/seed.ts is not optional: web boot runs it, so a package only it
@@ -98,7 +107,7 @@ export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS, shouldFollow 
 
     for (const m of text.matchAll(SPECIFIER_RE)) {
       const spec = m[1];
-      if (spec.startsWith('node:')) continue;
+      if (spec.startsWith('node:') || CORE_MODULES.has(packageNameOf(spec))) continue;
 
       const resolved = resolveSpecifier(spec, file, root);
       const importer = relative(root, file);
@@ -125,13 +134,13 @@ export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS, shouldFollow 
 
   for (const entry of entrypoints) {
     const path = join(root, entry);
-    if (!existsSync(path)) {
-      // Matches the guard's existing output style: a clean message and a clean
-      // exit rather than a stack trace, since renaming an entrypoint is a
-      // plausible mistake and this is the message that explains it.
-      console.error(`worker-graph — entrypoint ${entry} not found.`);
-      process.exit(1);
-    }
+    // Throw rather than exit: this module is imported by two scripts AND by
+    // unit tests, and a library that kills the process cannot have this path
+    // tested at all — vitest would die with it. Both consumers catch and
+    // render the message in the guard's usual style.
+    // No prefix on the message: each consumer adds its own, and two would read
+    // as `lint:worker-graph — worker-graph — entrypoint …`.
+    if (!existsSync(path)) throw new Error(`entrypoint ${entry} not found.`);
     walk(path, '', '');
   }
 

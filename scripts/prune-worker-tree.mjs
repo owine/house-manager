@@ -131,7 +131,15 @@ function main() {
   const nodeModules = join(root, 'node_modules');
   const store = join(nodeModules, '.pnpm');
 
-  const { bareSpecifiers } = walkWorkerGraph({ root });
+  let bareSpecifiers;
+  try {
+    ({ bareSpecifiers } = walkWorkerGraph({ root }));
+  } catch (err) {
+    // The walk throws rather than exiting so it stays testable; rendering it as
+    // a clean message is this script's job.
+    console.error(`prune-worker-tree: ABORTED — ${err.message}`);
+    process.exit(1);
+  }
   const roots = [...new Set([...bareSpecifiers.keys(), ...BOOT_TOOLS])];
 
   const before = readdirSync(store).filter((d) => d !== 'node_modules' && !d.endsWith('.yaml'));
