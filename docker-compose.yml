@@ -79,7 +79,16 @@ services:
     # Duplicated in scripts/smoke-image.sh, docs/README.md § Production, and the
     # production GitOps compose. Change one, change all four — only the smoke
     # script's copy is under automated test, so this one drifts silently.
-    command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
+    #
+    # `exec` on the last command is deliberate but NOT load-bearing today —
+    # don't remove it as redundant. BusyBox ash already exec-optimizes the final
+    # command in an `&&` chain, so node is PID 1 and handles SIGTERM either way
+    # (measured: stop 0s, exit 143). `exec` makes that independent of a BusyBox
+    # implementation detail, and makes appending a trailing command obviously
+    # wrong rather than silently fatal — without it, `… && node web/server.js &&
+    # anything` leaves sh at PID 1, node as its child, and the container dies on
+    # SIGKILL. See issue #401.
+    command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js"
     # Healthcheck comes from the image (see Dockerfile) — one definition for
     # both services rather than two that can drift.
 
@@ -89,6 +98,26 @@ services:
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      # Gate on web, not just the database, because web owns `prisma migrate
+      # deploy`. Without this both roles start the moment Postgres is healthy,
+      # so on any deploy carrying a new migration the worker connects pg-boss
+      # and registers all 13 handlers against the un-migrated schema — and
+      # embed.backfill fires at every worker boot, landing squarely in that
+      # window. Web reports healthy only once migrate + seed have finished and
+      # /api/health (which is DB-backed) answers 200, so this closes the race.
+      #
+      # Cost: the worker no longer starts if web can't become healthy. That is
+      # deliberate — a worker running against a database whose migrations
+      # failed is doing damage quietly, not useful work. `depends_on` applies
+      # only at `up`, so a later web crash does not stop the worker.
+      #
+      # This does NOT make a failed migration visible: web still exits, is
+      # restarted forever, and Docker reports `starting`, never `unhealthy`.
+      # Detection depends on the monitor treating anything-but-healthy as down
+      # (see docs/observability.md). Fixing that properly needs a one-shot
+      # migrate service. See issue #401.
+      web:
         condition: service_healthy
     environment: *app-env
     volumes:

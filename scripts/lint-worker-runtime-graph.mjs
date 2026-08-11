@@ -29,19 +29,12 @@
 //  - Only checks presence of the *file*, not that every named export exists.
 //    tsc already covers that.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ENTRYPOINTS, walkWorkerGraph } from './worker-graph.mjs';
 
 const ROOT = process.cwd();
 const DOCKERFILE = join(ROOT, 'Dockerfile');
-const ENTRYPOINTS = ['worker/index.ts'];
-
-// Extensions tsx/tsc will try, in resolution order.
-const EXTS = ['.ts', '.tsx', '.mjs', '.js', '.json'];
-const INDEXES = EXTS.map((ext) => `index${ext}`);
-
-// `import x from 'y'`, `export * from 'y'`, `import('y')`, `require('y')`
-const SPECIFIER_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
 
 /** Parse the runtime stage's COPY targets out of the Dockerfile. */
 function runtimePaths() {
@@ -70,67 +63,30 @@ function shipsInRuntimeImage(relPath) {
   return false;
 }
 
-/** Resolve a specifier to an on-disk file, or null if it is a bare package. */
-function resolveSpecifier(spec, fromFile) {
-  let base;
-  if (spec.startsWith('@/')) base = join(ROOT, spec.slice(2));
-  else if (spec.startsWith('.')) base = resolve(dirname(fromFile), spec);
-  else return null; // bare package — lives in node_modules, which is copied
-
-  // Exact hit (an explicit extension was written).
-  if (existsSync(base) && statSync(base).isFile()) return base;
-  for (const ext of EXTS) {
-    if (existsSync(base + ext)) return base + ext;
-  }
-  for (const index of INDEXES) {
-    const candidate = join(base, index);
-    if (existsSync(candidate)) return candidate;
-  }
-  return { unresolved: base };
+let files;
+let bareSpecifiers;
+let unresolved;
+try {
+  ({ files, bareSpecifiers, unresolved } = walkWorkerGraph({
+    root: ROOT,
+    entrypoints: ENTRYPOINTS,
+    // Preserves the behaviour of the old walk(): record a file that won't ship,
+    // but don't descend into it. Without this the walk would harvest the bare
+    // specifiers of, say, the whole components/ subtree — and in this PR those
+    // become prune roots, silently widening the tree exactly when the guard is
+    // telling you something is wrong.
+    shouldFollow: shipsInRuntimeImage,
+  }));
+} catch (err) {
+  // The walk throws rather than exiting so it stays testable; rendering it as a
+  // clean message is this script's job.
+  console.error(`lint:worker-graph — ${err.message}`);
+  process.exit(1);
 }
 
-const visited = new Set();
-/** @type {Array<{importer: string, specifier: string, target: string}>} */
 const violations = [];
-/** @type {Array<{importer: string, specifier: string}>} */
-const unresolved = [];
-
-function walk(file) {
-  if (visited.has(file)) return;
-  visited.add(file);
-
-  const text = readFileSync(file, 'utf8')
-    // Strip comments so commented-out or documented imports don't count.
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
-
-  for (const m of text.matchAll(SPECIFIER_RE)) {
-    const spec = m[1];
-    const resolved = resolveSpecifier(spec, file);
-    if (resolved === null) continue;
-
-    const importer = relative(ROOT, file);
-    if (typeof resolved === 'object') {
-      unresolved.push({ importer, specifier: spec });
-      continue;
-    }
-
-    const target = relative(ROOT, resolved);
-    if (!shipsInRuntimeImage(target)) {
-      violations.push({ importer, specifier: spec, target });
-      continue; // don't recurse into a file that won't exist at runtime
-    }
-    walk(resolved);
-  }
-}
-
-for (const entry of ENTRYPOINTS) {
-  const path = join(ROOT, entry);
-  if (!existsSync(path)) {
-    console.error(`lint:worker-graph — entrypoint ${entry} not found.`);
-    process.exit(1);
-  }
-  walk(path);
+for (const [target, { importer, specifier }] of files) {
+  if (!shipsInRuntimeImage(target)) violations.push({ target, importer, specifier });
 }
 
 if (unresolved.length > 0) {
@@ -141,9 +97,36 @@ if (unresolved.length > 0) {
   process.exit(1);
 }
 
+const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+const prodDeps = new Set(Object.keys(pkg.dependencies ?? {}));
+const devDeps = new Set(Object.keys(pkg.devDependencies ?? {}));
+
+const misdeclared = [];
+for (const [name, importer] of bareSpecifiers) {
+  if (prodDeps.has(name)) continue;
+  misdeclared.push({ name, importer, kind: devDeps.has(name) ? 'devDependency' : 'undeclared' });
+}
+
+if (misdeclared.length > 0) {
+  console.error(
+    `lint:worker-graph — ${misdeclared.length} package(s) the worker imports are not production dependencies:\n`,
+  );
+  for (const { name, importer, kind } of misdeclared) {
+    console.error(`  ${importer}`);
+    console.error(`    imports ${name}  (${kind})`);
+  }
+  console.error('\nThe runtime image ships only production dependencies, pruned further to the');
+  console.error("worker's closure. A devDependency resolves on your machine and in every test,");
+  console.error('then is absent at runtime — the container dies at boot or a job fails silently.');
+  console.error('\nFix by either:');
+  console.error('  - moving the package to `dependencies` if the worker genuinely needs it, or');
+  console.error('  - removing the import from the worker-reachable graph.');
+  process.exit(1);
+}
+
 if (violations.length === 0) {
   console.log(
-    `lint:worker-graph — OK (${visited.size} modules reachable from the worker, all present in the runtime image)`,
+    `lint:worker-graph — OK (${files.size} modules reachable from the worker, all present in the runtime image)`,
   );
   process.exit(0);
 }

@@ -157,11 +157,35 @@ boot). They are deliberately not merged — the layouts differ and merging them
 fails subtly.
 
 The hazard is that **Node resolves upward**: a package missing from
-`web/node_modules` silently resolves from `/app/node_modules` instead. So a gap
-in the standalone bundle is invisible until that sibling tree is pruned.
-`scripts/smoke-image.sh` probes `/` for a real *dynamic render*, not just
-`/api/health`, because health never exercises the React render path (and the
-not-found page is a prerender served from disk).
+`web/node_modules` resolves from `/app/node_modules` instead, silently. That
+used to hide gaps in the standalone bundle entirely; now that the sibling tree
+is pruned it only hides those whose package the *worker* also happens to need,
+which is a much smaller set but not empty. `scripts/smoke-image.sh` probes `/`
+for a real *dynamic render*, not just `/api/health`, because health never
+exercises the React render path (and the not-found page is a prerender served
+from disk, so it proves nothing about rendering either).
+
+`/app/node_modules` is **pruned at build time** to the closure reachable from
+`worker/index.ts` and `prisma/seed.ts` (`scripts/prune-worker-tree.mjs`), so it
+holds ~272 of the ~553 production packages. Roots are derived from the same
+import walk `lint:worker-graph` uses (`scripts/worker-graph.mjs`) — a hand-kept
+list would drift from the graph, and the guard would then be checking something
+other than what gets cut.
+
+**Adding a worker dependency means it must be a production dependency.** The
+guard rejects a devDependency reached from the worker graph, because such an
+import resolves on your machine and in every test and is simply absent at
+runtime. `prisma/seed.ts` counts as worker-reachable: web boot runs it against
+this same tree.
+
+The prune carries its own sanity checks, and they are the point rather than
+decoration — this is the one step in the build that can produce a green image
+and a dead container. Named sentinels are stat-ed against the *post-prune* tree,
+plus a deliberately slack 25% survivor floor for the catastrophic case. Note
+`typescript` is checked in `.pnpm` rather than at top level: it is a
+devDependency whose top-level symlink `pnpm prune --prod` already removed, and
+it survives only as a transitive of `prisma`, which needs it to read
+`prisma.config.ts` at web boot.
 
 The image ships no pnpm. Both roles invoke tooling by explicit path
 (`node_modules/.bin/tsx`, `node_modules/.bin/prisma`); web runs

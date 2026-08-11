@@ -75,6 +75,13 @@ RUN cp -r public .next/standalone/ \
 
 RUN pnpm prune --prod
 
+# Reduce the production tree to what the worker's entrypoints actually reach.
+# Web does not use this tree — it runs from /app/web, its own standalone
+# bundle — so `next`, the UI libraries and the build toolchain can all go.
+# Roots are DERIVED from the import graph (scripts/worker-graph.mjs), the same
+# source the lint:worker-graph guard checks against, so the two cannot disagree.
+RUN node scripts/prune-worker-tree.mjs
+
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
 # apk pins: Alpine 3.24, Renovate-tracked via Repology (see renovate.json —

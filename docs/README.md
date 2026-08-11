@@ -36,7 +36,7 @@ Both roles run `next build`'s standalone output rather than the dev scripts —
 the image ships no pnpm, so compose invokes tooling by explicit path instead
 of `pnpm start` / `pnpm worker:start`:
 
-- web: `sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"`
+- web: `sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && exec node web/server.js"`
 - worker: `node_modules/.bin/tsx worker/index.ts`
 
 These two lines appear in four places: here, `docker-compose.yml`,
