@@ -39,6 +39,11 @@ of `pnpm start` / `pnpm worker:start`:
 - web: `sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"`
 - worker: `node_modules/.bin/tsx worker/index.ts`
 
+These two lines appear in four places: here, `docker-compose.yml`,
+`scripts/smoke-image.sh`, and the production GitOps compose. Only the smoke
+script's copy is under automated test (CI runs it against the real image on
+every build), so treat that one as the reference and change all four together.
+
 `node web/server.js` (not `next start`) is standalone's own server —
 `next start` no longer exists in this image. `pnpm start` in the scripts
 table below still runs `next start` and remains the right command for local

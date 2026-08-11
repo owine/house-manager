@@ -76,6 +76,9 @@ services:
     volumes:
       - files:/data/files
     ports: ["3000:3000"]
+    # Duplicated in scripts/smoke-image.sh, docs/README.md § Production, and the
+    # production GitOps compose. Change one, change all four — only the smoke
+    # script's copy is under automated test, so this one drifts silently.
     command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
     # Healthcheck comes from the image (see Dockerfile) — one definition for
     # both services rather than two that can drift.
