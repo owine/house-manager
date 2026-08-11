@@ -31,7 +31,43 @@ The first run prompts for `pnpm exec lefthook install` to wire git hooks; subseq
 docker compose up -d --build
 ```
 
-This brings up `db`, `meilisearch`, `web`, and `worker`. The `web` service runs `pnpm db:deploy` on startup (idempotent), then `pnpm start`. The `worker` runs `pnpm worker:start` (`tsx worker/index.ts`).
+This brings up `db`, `meilisearch`, `web`, and `worker` from one built image.
+Both roles run `next build`'s standalone output rather than the dev scripts —
+the image ships no pnpm, so compose invokes tooling by explicit path instead
+of `pnpm start` / `pnpm worker:start`:
+
+- web: `sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"`
+- worker: `node_modules/.bin/tsx worker/index.ts`
+
+`node web/server.js` (not `next start`) is standalone's own server —
+`next start` no longer exists in this image. `pnpm start` in the scripts
+table below still runs `next start` and remains the right command for local
+dev; it just isn't what production runs.
+
+### Image layout
+
+The runtime stage carries two separate `node_modules` trees, not one:
+
+- `/app/web/node_modules` — Next's file-traced standalone bundle, copied from
+  `.next/standalone`. Holds only what the web app actually imports, plus
+  `public/` and `.next/static` (Next excludes both from standalone output by
+  design, so the Dockerfile copies them in after `next build`).
+- `/app/node_modules` — the full pruned-production pnpm tree, used by the
+  worker (and by `prisma`/`tsx` at boot for both roles).
+
+They're deliberately not merged: the layouts differ (traced vs. pnpm's
+symlinked store) and merging them fails subtly. The hazard is that Node
+resolves upward — a package missing from `web/node_modules` silently
+resolves from `/app/node_modules` instead, so a gap in the standalone bundle
+stays invisible until the sibling tree is later pruned. `scripts/smoke-image.sh`
+probes `/` for a real dynamic render rather than just `/api/health`, because
+health never exercises the React render path and the not-found page is a
+build-time prerender served from disk.
+
+`ENV HOSTNAME=0.0.0.0` and `ENV PORT=3000` are set in the runtime stage
+because standalone's `server.js` binds localhost by default, which would
+leave the `HEALTHCHECK` curl (and everything outside the container) hitting
+nothing.
 
 ### Health endpoints
 
@@ -113,7 +149,7 @@ You don't pass these at runtime — they're baked into the image at build time.
 |---|---|
 | `pnpm dev` | Next.js dev server (turbo-prepended) |
 | `pnpm build` | Production Next.js build |
-| `pnpm start` | Run the production build |
+| `pnpm start` | Run the production build locally (`next start`); the shipped image runs `node web/server.js` instead — see [Production](#production-full-stack-via-docker-compose) |
 | `pnpm worker:dev` / `pnpm worker:start` | Run the worker via tsx |
 | `pnpm lint` / `pnpm lint:fix` / `pnpm format` | Biome |
 | `pnpm typecheck` | `tsc --noEmit` |
