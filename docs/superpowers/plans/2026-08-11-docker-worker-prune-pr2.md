@@ -30,7 +30,7 @@
 - `pnpm`, never `npx`/`npm`.
 - Never `--no-verify`. `git commit` can fail *silently* behind the Biome pre-commit hook — **verify `HEAD` actually moved**.
 - Do **not** use a git worktree here (knip hangs and blocks pre-push; missing `.env` breaks `prisma generate`).
-- Colocated tests are in both the Vitest unit include and the coverage include. Never lower a coverage threshold to fix a red run.
+- Colocated tests (`lib/**`, `worker/**`) are in both the Vitest unit include and the coverage include. This PR's tests deliberately are **not** colocated — they go in `tests/unit/`, for the reasons in Task 1 Step 5. Never lower a coverage threshold to fix a red run.
 
 ## File structure
 
@@ -63,6 +63,12 @@ Expected: `lint:worker-graph — OK (72 modules reachable from the worker, all p
 
 Write the number down. It must not change in this task.
 
+(The widened `SPECIFIER_RE` in Step 2 also matches side-effect imports, which the
+original did not. There are none in the worker graph today — verify with
+`grep -rE "^\s*import\s+['\"]" worker/ lib/ prisma/seed.ts`, which should return
+nothing — so the count is unaffected. If it *does* rise, you have found a
+specifier the old guard was blind to, which is a fix, not a regression.)
+
 - [ ] **Step 2: Create the module**
 
 ```javascript
@@ -75,10 +81,17 @@ Write the number down. It must not change in this task.
 // their roots differently, the guard would be validating a different graph than
 // the one being cut — worse than no guard, because it reads as protection.
 //
-// Limitations (inherited, unchanged):
+// Limitations:
 //  - Regex specifier extraction, not a real parser. A fully dynamic
 //    `import(someVar)` is invisible; there are none today.
 //  - Presence of the file only, not that every named export exists. tsc covers that.
+//
+// The stakes changed when this started feeding the prune. A specifier this
+// regex misses is not merely unchecked — it is absent from bareSpecifiers,
+// therefore absent from the prune roots, therefore DELETED from the runtime
+// image. That is why SPECIFIER_RE below covers side-effect imports
+// (`import 'pkg'`), which the original guard's pattern did not match: harmless
+// when everything shipped, silently fatal once the tree is cut.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -91,8 +104,11 @@ export const ENTRYPOINTS = ['worker/index.ts', 'prisma/seed.ts'];
 const EXTS = ['.ts', '.tsx', '.mjs', '.js', '.json'];
 const INDEXES = EXTS.map((ext) => `index${ext}`);
 
-// `import x from 'y'`, `export * from 'y'`, `import('y')`, `require('y')`
-const SPECIFIER_RE = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
+// `import x from 'y'`, `export * from 'y'`, `import('y')`, `require('y')`,
+// and `import 'y'` (side-effect) — the last is new; see the note above on why
+// a missed specifier is now fatal rather than merely unchecked.
+const SPECIFIER_RE =
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
 
 /** Bare specifier → package name. `@scope/pkg/sub` → `@scope/pkg`, `pkg/sub` → `pkg`. */
 export function packageNameOf(specifier) {
@@ -183,7 +199,13 @@ export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS, shouldFollow 
 
   for (const entry of entrypoints) {
     const path = join(root, entry);
-    if (!existsSync(path)) throw new Error(`worker-graph: entrypoint ${entry} not found`);
+    if (!existsSync(path)) {
+      // Matches the guard's existing output style: a clean message and a clean
+      // exit rather than a stack trace, since renaming an entrypoint is a
+      // plausible mistake and this is the message that explains it.
+      console.error(`worker-graph — entrypoint ${entry} not found.`);
+      process.exit(1);
+    }
     walk(path, '', '');
   }
 
@@ -262,6 +284,7 @@ If it reports violations, they are real: something reachable from `prisma/seed.t
 Import the ESM script directly. The `@ts-expect-error` is **required, not conditional** — `tsconfig.json` sets `allowJs: false` and its `include` covers `**/*.ts`, so this test file is typechecked and importing a `.mjs` raises TS2307. (There is always an error to suppress, so it won't trip the unused-directive check either.)
 
 ```typescript
+// @ts-expect-error — untyped .mjs; allowJs is false so TS2307 always fires here
 const { walkWorkerGraph, packageNameOf } = await import('../../scripts/worker-graph.mjs');
 ```
 
@@ -349,8 +372,14 @@ Expected: OK. All 17 roots are declared `dependencies` today, with no exception 
 Temporarily add to `worker/index.ts`:
 
 ```typescript
-import 'pino-pretty';
+import pretty from 'pino-pretty';
 ```
+
+**Use the `from` form.** A bare `import 'pino-pretty';` matched nothing under the
+*original* `SPECIFIER_RE`; Step 2's widened pattern does match it, but proving the
+new assertion with the form the old regex already handled keeps this step testing
+one thing. If you want to exercise the widened pattern too, run it a second time
+with the side-effect form — it should fail identically.
 
 ```bash
 pnpm lint:worker-graph
