@@ -500,6 +500,29 @@ jobs:
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+      # The build above uses an explicit `outputs:` with push-by-digest, so the
+      # image is never tagged locally and `load: true` is not a drop-in. This
+      # second invocation runs against the same buildx builder in the same job,
+      # so every layer is already in buildkit's local cache and nothing is
+      # recompiled (cache-from is belt-and-braces). The cost is the `load`
+      # export of the image into the docker daemon, which is minutes, not
+      # seconds — hence the timeout below.
+      - name: Load image locally for smoke test
+        timeout-minutes: 15
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          load: true
+          tags: house-manager:smoke
+          cache-from: type=gha,scope=${{ matrix.platform }}
+      # Boots both roles from the image that was actually built. Guards the
+      # standalone bundle and (in the follow-up PR) the pruned worker tree.
+      - name: Smoke test the image
+        timeout-minutes: 10
+        run: ./scripts/smoke-image.sh house-manager:smoke
       - name: Export digest
         if: github.ref == 'refs/heads/main'
         run: |
