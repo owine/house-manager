@@ -18,7 +18,7 @@
 
 **Why the two-directory layout.** Standalone emits its own self-contained `node_modules` — under pnpm it reproduces a `.pnpm` symlink structure of its own, with relative links that stay inside the bundle, so it copies cleanly as a unit. It is nonetheless a *separately generated store* from `/app/node_modules`, and both want the same path. Merging two independently-built stores fails subtly, so standalone goes to `/app/web/` and the worker keeps `/app/node_modules`. The ~37 MB of overlap is the price of staying on one image.
 
-**Node resolves modules upward, and that will hide bugs from you.** `/app/web/server.js` failing to find a package in `/app/web/node_modules` will silently find it in `/app/node_modules`. In this PR the sibling tree is still complete, so *anything standalone failed to trace still works*. PR2's prune is what deletes it. This is exactly why the smoke test must assert a **rendered page**, not just `/api/health` — health never exercises the React render path.
+**Node resolves modules upward, and that will hide bugs from you.** `/app/web/server.js` failing to find a package in `/app/web/node_modules` will silently find it in `/app/node_modules`. In this PR the sibling tree is still complete, so *anything standalone failed to trace still works*. PR2's prune is what deletes it. This is exactly why the smoke test must assert a **dynamically rendered page**, not just `/api/health` — health never exercises the React render path. Note the not-found page does not count: it is a build-time prerender served from disk, so the smoke script probes `/` (which runs `auth()` and the RSC path) as its render check.
 
 **`prisma`, `tsx` and `typescript` must stay reachable.** Web boot runs `prisma migrate deploy` and `tsx prisma/seed.ts`. `prisma.config.ts` is TypeScript, so the Prisma CLI needs a TS loader at runtime.
 
@@ -35,7 +35,7 @@
 
 | File | Responsibility |
 |---|---|
-| `scripts/smoke-image.sh` *(create)* | Boots both roles from a built image against pgvector and asserts health, a static asset, and a rendered page. The safety net for this PR and PR2. |
+| `scripts/smoke-image.sh` *(create)* | Boots both roles from a built image against pgvector and asserts health, a `public/` asset, the prerendered app output, and a genuinely dynamic render. The safety net for this PR and PR2. |
 | `next.config.ts` *(modify)* | Adds `output: 'standalone'`. |
 | `Dockerfile` *(modify)* | Build stage assembles the standalone bundle; runtime stage copies `/app/web`, drops the top-level `.next`, corepack/pnpm and `pnpm-workspace.yaml`, adds `HOSTNAME`/`PORT`, changes `CMD`. |
 | `docker-compose.yml` *(modify)* | Both `command:` lines move off pnpm. |
@@ -59,8 +59,11 @@ The smoke script is this PR's test. Write it first and get it green against the 
 # Boots both roles from a built image and asserts they actually serve.
 #
 # This is the safety net for the standalone/prune work. `/api/health` alone is
-# NOT sufficient: it returns 200 even when public/ or .next/static are missing,
-# and it never exercises the React render path. Hence the asset and page checks.
+# NOT sufficient: it returns 200 even when public/ and .next/static are missing.
+# Nor is the not-found page enough — that is a build-time prerender served from
+# disk. The `/` probe below is the ONLY check here that exercises the React
+# render path; the others assert that specific build outputs shipped and are
+# actually served.
 #
 # Usage: scripts/smoke-image.sh <image-tag>
 set -euo pipefail
@@ -79,9 +82,44 @@ cleanup() {
   docker rm -f "$WEB" "$WORKER" "$PG" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
+# INT/TERM as well as EXIT: with EXIT alone, Ctrl-C leaves three containers and
+# a network behind.
+trap cleanup EXIT INT TERM
 
 fail() { echo "SMOKE FAIL: $*" >&2; exit 1; }
+
+# Assert the image is in the local daemon, and run with --pull=never below.
+# Without both, `docker run` silently pulls: in CI the classic
+# docker/build-push-action footgun is building without `load: true`, leaving the
+# image only in the buildx cache, so the script would pull the *published* GHCR
+# tag and smoke a stale image to a green PASS — a false green on exactly the
+# change this gates.
+docker image inspect "$IMAGE" >/dev/null 2>&1 \
+  || fail "image not present locally: $IMAGE"
+
+# Polls health, but bails out early if the container has exited. Without the
+# liveness check a container that dies at t=1s burns the full ~180s and then
+# reports "never returned 200", which misdescribes a crash as a timeout.
+#
+# Bounded by wall clock, not iteration count. With `-m 5` per probe plus a 2s
+# sleep, 90 iterations would be ~10.5 min per role / ~21 min across both against
+# a server that accepts connections and never answers — past the CI step's
+# timeout-minutes, so GitHub would kill the job and no `docker logs` would ever
+# be dumped. Failing cleanly ourselves at 180s gives strictly better diagnostics.
+wait_for_health() {
+  local name="$1" port="$2"
+  local deadline=$((SECONDS + 180))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    curl -fsS -m 5 "http://localhost:$port/api/health" >/dev/null 2>&1 && return 0
+    if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" != "true" ]; then
+      docker logs "$name" >&2
+      fail "$name exited during boot before serving /api/health"
+    fi
+    sleep 2
+  done
+  docker logs "$name" >&2
+  fail "$name /api/health never returned 200 within 180s"
+}
 
 # The full set lib/env.ts validates. Missing any of these makes both roles
 # crash-loop at boot on Zod validation rather than failing usefully.
@@ -117,39 +155,75 @@ for _ in $(seq 60); do
   docker exec "$PG" psql -U smoke -d smoke -c 'select 1' >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$PG" psql -U smoke -d smoke -c 'select 1' >/dev/null 2>&1 \
-  || fail "postgres never became ready"
+docker exec "$PG" psql -U smoke -d smoke -c 'select 1' >/dev/null 2>&1 || {
+  docker logs "$PG" >&2; fail "postgres never became ready"
+}
 
 echo "→ starting web"
-docker run -d --name "$WEB" --network "$NET" -p 13000:3000 "${env_args[@]}" \
+docker run -d --name "$WEB" --network "$NET" --pull=never -p 13000:3000 "${env_args[@]}" \
   "$IMAGE" sh -c "$WEB_CMD" >/dev/null
 
-for _ in $(seq 90); do
-  curl -fsS http://localhost:13000/api/health >/dev/null 2>&1 && break
-  sleep 2
-done
-curl -fsS http://localhost:13000/api/health >/dev/null 2>&1 || {
-  docker logs "$WEB" >&2; fail "web /api/health never returned 200"
-}
+wait_for_health "$WEB" 13000
 echo "  ✓ web /api/health"
 
-# public/ asset — proves public/ was copied. Health passes without it.
-curl -fsS -o /dev/null http://localhost:13000/icon.png || {
-  docker logs "$WEB" >&2; fail "public/icon.png did not resolve"
+# public/ asset. Deliberately /sw.js and NOT /icon.png: app/icon.png exists
+# alongside public/icon.png, so Next generates a metadata route
+# ("/icon.png/route" in .next/server/app-paths-manifest.json) that serves
+# identical bytes from .next. /icon.png therefore returns 200 with public/
+# entirely absent — a vacuous check. Of public/'s four entries (authelia.svg,
+# brand/, icon.png, sw.js) only icon.png has an app/ twin; /sw.js correctly
+# 404s when public/ is missing.
+curl -fsS -m 15 -o /dev/null http://localhost:13000/sw.js || {
+  docker logs "$WEB" >&2; fail "public/sw.js did not resolve"
 }
-echo "  ✓ public/icon.png"
+echo "  ✓ public/sw.js"
 
-# Rendered page through the React tree + root layout. This is the check that
-# catches a module missing from the standalone bundle; /api/health does not
-# exercise the render path at all.
+# Not-found page. NOTE: this is a build-time prerender — .next/server/
+# _not-found.html served with `x-nextjs-cache: HIT` / `x-nextjs-prerender: 1`,
+# i.e. a file read, not a render. It is worth keeping because it proves the
+# .next/server app output shipped and is being served (a real standalone
+# footgun), but it must NOT be trusted as the render-path check. The dynamic
+# check below is what actually exercises React.
 #
 # NOTE: no `-f` here. Next returns 404 for this route, and `curl -f` exits
 # non-zero and prints NOTHING on 4xx — with -f the body is always empty and
 # this check can never pass.
-body="$(curl -sS "http://localhost:13000/smoke-nonexistent-$$" || true)"
+body="$(curl -sS -m 15 "http://localhost:13000/smoke-nonexistent-$$" || true)"
 case "$body" in
-  *"Page Not Found"*) echo "  ✓ rendered 404 page" ;;
+  *"Page Not Found"*) echo "  ✓ prerendered app output served" ;;
   *) docker logs "$WEB" >&2; fail "not-found page did not render (got ${#body} bytes)" ;;
+esac
+
+# Genuinely dynamic render. `/` is not prerendered: it loads the per-route
+# server chunk, runs auth() and goes through the RSC path, then redirects to
+# signin. This is the check that catches a pruned react-dom/scheduler or a
+# server chunk missing from the standalone bundle — a 500 here is unmissable,
+# whereas every check above can pass on file reads alone.
+#
+# It does NOT prove the render path can reach the database: with no session
+# cookie auth() short-circuits before any adapter call, loading the Prisma
+# client module but issuing no query. /api/health covers DB reachability.
+#
+# The no-store assertion guards the coupling that makes this check meaningful:
+# `/` is dynamic only because it is absent from prerender-manifest.json. Were it
+# to become prerenderable (`export const dynamic = 'force-static'`, say), this
+# would silently degrade into one more file read, exactly like the not-found
+# check above. Asserting the header makes that self-checking rather than a
+# comment nobody re-reads.
+#
+# -D - puts the headers on stdout ahead of the -w line, so one request yields
+# both without a temp file. `|| true` keeps a transport failure on the fail
+# path (empty fields) instead of tripping set -e.
+probe="$(curl -sS -m 15 -o /dev/null -D - -w '\nSMOKE-W %{http_code} %{redirect_url}\n' "http://localhost:13000/" || true)"
+read -r _ code redirect <<<"$(printf '%s\n' "$probe" | grep '^SMOKE-W ' || true)"
+cache="$(printf '%s\n' "$probe" | tr -d '\r' | grep -i '^cache-control:' || true)"
+case "$code:$redirect" in
+  307:*"/api/auth/signin") ;;
+  *) docker logs "$WEB" >&2; fail "dynamic route / returned '$code' '$redirect'" ;;
+esac
+case "$cache" in
+  *no-store*) echo "  ✓ dynamic render (/ → signin, no-store)" ;;
+  *) docker logs "$WEB" >&2; fail "/ is no longer dynamic — expected no-store, got '$cache'" ;;
 esac
 
 # .next/static — the rendered HTML references hashed chunk URLs, so pull one out
@@ -157,22 +231,23 @@ esac
 # the HTML still returns 200, only its <script>/<link> targets 404.
 chunk="$(printf '%s' "$body" | grep -o '/_next/static/[^"\\]*' | head -1 || true)"
 [ -n "$chunk" ] || { docker logs "$WEB" >&2; fail "no /_next/static URL in rendered HTML"; }
-curl -fsS -o /dev/null "http://localhost:13000$chunk" || {
+curl -fsS -m 15 -o /dev/null "http://localhost:13000$chunk" || {
   docker logs "$WEB" >&2; fail ".next/static asset did not resolve: $chunk"
 }
 echo "  ✓ .next/static asset ($chunk)"
 
 echo "→ starting worker"
-docker run -d --name "$WORKER" --network "$NET" -p 13001:3000 "${env_args[@]}" \
+docker run -d --name "$WORKER" --network "$NET" --pull=never -p 13001:3000 "${env_args[@]}" \
   "$IMAGE" sh -c "$WORKER_CMD" >/dev/null
 
-for _ in $(seq 90); do
-  curl -fsS http://localhost:13001/api/health >/dev/null 2>&1 && break
-  sleep 2
-done
-curl -fsS http://localhost:13001/api/health >/dev/null 2>&1 || {
-  docker logs "$WORKER" >&2; fail "worker /api/health never returned 200"
-}
+# The strongest check in this file, but only by coupling: worker/index.ts calls
+# `await heartbeat.beat()` AFTER all 13 boss.work/boss.schedule registrations,
+# and resolveStatus() (worker/health-server.ts) returns 'starting' → 503 while
+# ageMs === null. So a 200 here means every job actually registered, not merely
+# that the process booted. A future "go healthy sooner" refactor that moves
+# beat() above the registrations would silently downgrade this check to "the
+# process started" without failing — keep the two in this order.
+wait_for_health "$WORKER" 13001
 echo "  ✓ worker /api/health"
 
 echo "SMOKE PASS: $IMAGE"
@@ -201,8 +276,8 @@ Expected: build succeeds.
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS`, with all five ✓ lines (web health, `icon.png`, rendered
-404, `.next/static` chunk, worker health).
+Expected: `SMOKE PASS`, with all six ✓ lines (web health, `sw.js`, prerendered
+app output, dynamic render, `.next/static` chunk, worker health).
 
 **If this fails, stop.** The script is wrong, not the image. A green baseline here is the whole point of doing this task first.
 
@@ -213,9 +288,13 @@ git add scripts/smoke-image.sh
 git commit -m "test(docker): smoke-test the built image's two roles
 
 Boots web and worker from a built image against pgvector and asserts
-health, a public/ asset, and a rendered page. The rendered-page check is
-the load-bearing one: /api/health returns 200 even with public/ and
-.next/static missing, and never exercises the React render path.
+health, a public/ asset, and both prerendered and dynamically rendered
+output. The dynamic check (/ -> signin) is the load-bearing one: it is the
+only one that exercises the React render path, since /api/health returns
+200 with public/ and .next/static missing and the not-found page is a
+build-time prerender served from disk. The public/ probe uses sw.js, not
+icon.png -- app/icon.png generates a metadata route that serves 200 with
+public/ absent entirely.
 
 Green against the current image; the role commands change in the
 standalone switch."
@@ -359,8 +438,8 @@ with:
 # Beware when debugging: Node resolves upward, so a package missing from
 # web/node_modules silently resolves from /app/node_modules instead. Anything
 # standalone failed to trace still works today and breaks only once
-# /app/node_modules is pruned. scripts/smoke-image.sh asserts a rendered page
-# rather than just /api/health for exactly this reason.
+# /app/node_modules is pruned. scripts/smoke-image.sh probes / for a real
+# dynamic render rather than just /api/health for exactly this reason.
 COPY --from=build /app/.next/standalone ./web
 ```
 
@@ -461,7 +540,7 @@ Paths are explicit because nothing puts `node_modules/.bin` on `PATH` once pnpm 
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS` with all five ✓ lines.
+Expected: `SMOKE PASS` with all six ✓ lines.
 
 The `✓ rendered 404 page` line is the one that matters — it proves the standalone bundle can execute a React render, not merely answer a health probe.
 
@@ -614,8 +693,9 @@ deliberately not merged — the layouts differ and merging them fails subtly.
 The hazard is that **Node resolves upward**: a package missing from
 `web/node_modules` silently resolves from `/app/node_modules` instead. So a
 gap in the standalone bundle is invisible until that sibling tree is pruned.
-`scripts/smoke-image.sh` asserts a *rendered page*, not just `/api/health`,
-because health never exercises the React render path.
+`scripts/smoke-image.sh` probes `/` for a real *dynamic render*, not just
+`/api/health`, because health never exercises the React render path (and the
+not-found page is a prerender served from disk).
 
 The image ships no pnpm. Both roles invoke tooling by explicit path
 (`node_modules/.bin/tsx`, `node_modules/.bin/prisma`); web runs

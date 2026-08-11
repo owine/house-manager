@@ -675,7 +675,7 @@ If it **ABORTED** on the floor, the import walk regressed — debug `pnpm lint:w
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS` with all five ✓ lines.
+Expected: `SMOKE PASS` with all six ✓ lines.
 
 The `✓ rendered 404 page` line matters most here. PR1 could pass it while leaning on the sibling tree via upward module resolution; this is the first build where that crutch is gone, so this is the moment a gap in the standalone bundle surfaces.
 
