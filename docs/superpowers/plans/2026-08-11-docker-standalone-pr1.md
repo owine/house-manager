@@ -586,15 +586,33 @@ git rev-parse --short HEAD
 
 - [ ] **Step 3: Verify the real stack comes up**
 
-```bash
-docker compose up -d --build db meilisearch web worker
-sleep 45
-docker compose ps
-```
-Expected: `web` and `worker` both `Up` and eventually `(healthy)`.
+If `db` and `meilisearch` are already running (e.g. a live dev stack), only
+start the two services under test — `docker compose up -d --build db
+meilisearch web worker` is fine on a cold checkout, but don't reach for
+`docker compose down` afterward: it stops every service in the file, not just
+the ones you started, and would take out a developer's already-running `db`
+and `meilisearch` along with it.
 
 ```bash
-docker compose down
+docker compose up -d --build web worker
+```
+Poll rather than assuming — the image's HEALTHCHECK has a 120s start-period,
+so allow up to ~2–3 minutes before concluding anything:
+
+```bash
+until docker compose ps web worker --format '{{.Status}}' | grep -c '(healthy)' | grep -q 2; do
+  sleep 5
+done
+docker compose ps
+```
+Expected: `web` and `worker` both `Up` and `(healthy)`. Also confirm web
+actually serves: `curl -fsS http://localhost:3000/api/health`.
+
+Tear down only what you started, and confirm `db`/`meilisearch` are still up:
+
+```bash
+docker compose rm -sf web worker
+docker compose ps
 ```
 
 - [ ] **Step 4: Commit**

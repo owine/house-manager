@@ -76,7 +76,7 @@ services:
     volumes:
       - files:/data/files
     ports: ["3000:3000"]
-    command: sh -c "pnpm db:deploy && pnpm db:seed && pnpm start"
+    command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
     # Healthcheck comes from the image (see Dockerfile) — one definition for
     # both services rather than two that can drift.
 
@@ -91,7 +91,7 @@ services:
     volumes:
       - files:/data/files
       - ${BACKUP_DIR:-./db-backups}:/backups
-    command: pnpm worker:start
+    command: node_modules/.bin/tsx worker/index.ts
     # Healthcheck comes from the image (see Dockerfile). The worker serves the
     # same /api/health path as web from its own health server, so it reports
     # unhealthy when it can no longer reach Postgres or has stopped servicing
