@@ -137,7 +137,7 @@ considered and dropped for this reason.
 | Layout | Standalone at `/app/web/` (own flat `node_modules`); worker tree stays at `/app/node_modules` |
 | Root derivation | **Derived** from the real import graph, never hand-listed |
 | Prod compatibility | Change the image `CMD`; edit the GitOps compose in the same window |
-| pnpm in runtime | **Removed** — `prisma`/`tsx` invoked via `node_modules/.bin/` |
+| pnpm in runtime | **Removed, in PR1** — `prisma`/`tsx` invoked via `node_modules/.bin/` |
 | Migrations | Stay at web boot (moving them saves only 20 MB) |
 | Verification | Static guard **and** CI runtime smoke test |
 | Sequencing | Two PRs; smoke test lands in PR1 |
@@ -181,6 +181,11 @@ Closure-pruning is the only option that keeps a **single source of truth** for
 └── auth.config.ts  tsconfig.json  package.json  prisma.config.ts
 ```
 
+`pnpm-workspace.yaml` is currently copied into the runtime stage. Once pnpm
+leaves the image nothing reads it, so PR1 drops that `COPY`. `tsconfig.json`
+stays — `tsx` resolves the `@/` alias from it at boot, which is why the
+Dockerfile copies it into the runtime stage at all.
+
 ### Build flow
 
 ```
@@ -212,8 +217,24 @@ listening on from outside the container.
 
 ### Boot commands
 
-- web: `prisma migrate deploy && tsx prisma/seed.ts && node web/server.js`
-- worker: `node_modules/.bin/tsx worker/index.ts` (unchanged in substance)
+pnpm leaves the runtime in PR1, so nothing puts `node_modules/.bin` on `PATH`.
+Every invocation must be written out explicitly:
+
+- web:
+  `node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js`
+- worker: `node_modules/.bin/tsx worker/index.ts`
+
+Both the in-repo `docker-compose.yml` (lines 79 and 94) and the GitOps compose
+currently invoke these through `pnpm`, so **both files change in PR1** — the
+worker's command breaks alongside web's the moment pnpm leaves the image. There
+is exactly one coordinated GitOps edit, and it belongs to PR1.
+
+### `outputFileTracingRoot`
+
+`COPY .next/standalone → ./web` assumes Next infers `/app` as the trace root. If
+it infers higher, standalone nests its output a level deeper and the `COPY`
+silently produces a wrong tree. Verify the inferred root during PR1 and pin
+`outputFileTracingRoot` explicitly if it is anything but `/app`.
 
 ## Components
 
@@ -223,11 +244,20 @@ The transitive walk currently inside `lint-worker-runtime-graph.mjs`, lifted so
 two consumers share one definition of what the worker reaches.
 
 ```
-walkWorkerGraph({ root }) → { files:Set, bareSpecifiers:Set, unresolved:Array }
+walkWorkerGraph({ entrypoints }) → { files:Set, bareSpecifiers:Set, unresolved:Array }
 ```
 
 Depends only on `node:fs`/`node:path`. Single source of truth, in the spirit of
 `lib/queue.ts`'s `Queue` const.
+
+**Two entrypoints, not one.** The existing guard walks `worker/index.ts` alone,
+but `prisma/seed.ts` is a *second* runtime entrypoint — web boot runs
+`node_modules/.bin/tsx prisma/seed.ts` out of the pruned `/app/node_modules`.
+Today it happens to be safe: it imports only `@prisma/adapter-pg`,
+`@prisma/client`, and `../lib/reminders/system-user`, all inside the worker
+closure. Nothing enforces that, and the failure mode of a future seed edit is a
+crash-looping *web* container. `ENTRYPOINTS` becomes
+`['worker/index.ts', 'prisma/seed.ts']` for both the guard and the prune roots.
 
 ### `scripts/lint-worker-runtime-graph.mjs` — modified
 
@@ -253,9 +283,22 @@ before/after counts and bytes.
 
 **Sanity floor.** If the graph walk ever regresses and returns few or no roots,
 a naive prune would delete nearly everything and produce a broken image that
-still *builds successfully*. The script refuses to run when the closure falls
-below a plausible threshold, failing the build loudly. Every other failure in
-this design is loud; this is the one that would be silent.
+still *builds successfully*. Every other failure in this design is loud; this is
+the one that would be silent.
+
+The *shape* of the floor is a design decision, not an implementation detail —
+flooring root count, surviving package count, surviving bytes, or an after/before
+ratio produce materially different scripts. Two complementary checks:
+
+1. **Sentinel presence.** After pruning, assert these survive by name:
+   `tsx`, `prisma`, `@prisma/client`, `@prisma/adapter-pg`, `pg-boss`, `sharp`,
+   `react-dom`. Fails with a message naming the missing package.
+2. **Relative floor.** Survivors ≥ 40% of the pre-prune package count
+   (measured today: 272/553 = 49%).
+
+Sentinels are the load-bearing half — an absolute package or byte floor drifts
+as dependencies churn and gets loosened until it means nothing, whereas a named
+sentinel cannot rot into meaninglessness.
 
 ### `scripts/smoke-image.sh` — new
 
@@ -264,14 +307,35 @@ asserts:
 
 - web `/api/health` → 200
 - worker `/api/health` → 200
-- **a known static asset resolves** — `/api/health` returns 200 even with
-  `public/` or `.next/static` missing, so health alone would pass while the app
-  serves no CSS
+- a known static asset resolves — `/api/health` returns 200 even with `public/`
+  or `.next/static` missing, so health alone would pass while the app serves no
+  CSS
+- **a rendered app page returns 200 with non-empty HTML** (signin, which is
+  reachable unauthenticated) — see below
 
-Runs inside the existing `build-image` job, which needs `load: true`. Safe
-because the matrix is one platform per native runner, so there is no multi-arch
-load conflict. `/api/health` needs Postgres (fatal) but not Meilisearch
-(non-fatal; `/api/health/ready` is the stricter contract).
+**Why a rendered page and not just health.** Node resolves modules *upward*, so
+`/app/web/server.js` failing to find a package in `/app/web/node_modules` will
+silently find it in the sibling `/app/node_modules`. In PR1 that masks anything
+standalone failed to trace — the smoke test goes green — and PR2's prune then
+deletes it. This interaction is created by the two-directory layout, and
+`/api/health` is too shallow to surface it: it exercises `lib/health` and the DB
+client, not the React render path. A real page render is what unmasks it.
+
+**CI wiring.** `build-image` currently builds with an explicit
+`outputs: type=image,…,push-by-digest=true`, so the image is never tagged
+locally and `load: true` is not a drop-in addition. The plan must pick a
+mechanism — a second `type=docker` output, or a tagged `--load` build reusing
+the same gha cache scope — and state it. This is the design's primary safety
+net; leaving its wiring undescribed is the gap most likely to derail PR1.
+
+**Services and env.** Postgres must be `pgvector/pgvector:pg18`, not plain
+`postgres:18` — the squashed migration does `CREATE EXTENSION` for pgvector and
+`migrate deploy` fails without it. This matches what `tests/integration/setup.ts`
+already uses. Meilisearch is not required (`/api/health` treats it as non-fatal;
+`/api/health/ready` is the stricter contract). The smoke step must supply the
+full env set `getEnv()` validates, or both roles crash-loop at boot on Zod
+validation — the same list the `build` stage already passes and that
+`docker-compose.yml`'s `x-app-env` anchor enumerates.
 
 ## Failure modes
 
@@ -280,7 +344,8 @@ load conflict. `/api/health` needs Postgres (fatal) but not Meilisearch
 | Prune removes a package the worker needs | Roots derived from the real graph, never hand-listed; guard's declared-dependency check; smoke test boots the worker |
 | Graph walk regresses → over-prune, green build, dead container | Sanity floor in the prune script |
 | `lib/` imports a devDependency | New guard assertion (invisible today) |
-| Standalone misses a traced file | Smoke test + existing e2e |
+| Standalone misses a traced file | Smoke test's **rendered-page** assertion — health alone is masked by upward module resolution into `/app/node_modules` |
+| `prisma/seed.ts` grows an import outside the closure | `prisma/seed.ts` is a declared entrypoint of the walk |
 | `HOSTNAME` unset → binds localhost | Smoke test fails immediately |
 | `public/` or `.next/static` not copied | Smoke test's static-asset fetch |
 | GitOps compose not updated | Compose change lands in PR1, before anything depends on it |
@@ -304,8 +369,13 @@ which is real mitigation but not a guarantee.
 ## Sequencing
 
 **PR1 — standalone.** `output: 'standalone'`, `/app/web` layout, `HOSTNAME`/
-`PORT`, `CMD` change, in-repo compose edit, GitOps compose edit, docs, smoke
-test. Image grows ~50 MB. Low risk, fully verifiable.
+`PORT`, `CMD` change, **removal of corepack/pnpm from the runtime stage**,
+in-repo compose edit, GitOps compose edit, docs, smoke test. Image grows
+~50 MB net (standalone adds ~120 MB, pnpm removal returns 40 MB).
+
+Removing pnpm belongs here, not PR2: it breaks *both* compose commands
+(`pnpm start` and `pnpm worker:start`), so deferring it would require a second
+coordinated GitOps edit and falsify this design's claim that there is only one.
 
 **PR2 — prune.** Extract `worker-graph.mjs`, extend the guard, add the prune
 script + sanity floor + unit test. The 405 MB win, landing on a safety net
