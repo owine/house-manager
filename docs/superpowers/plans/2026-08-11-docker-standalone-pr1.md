@@ -16,7 +16,7 @@
 
 **This PR does not make the image smaller.** It restructures so PR2 can. Expect the size to move roughly sideways: `/app/web` is added while the top-level `.next` COPY (84 MB) and corepack/pnpm (40 MB) are removed. Do not "fix" a neutral result — the 405 MB saving is PR2's.
 
-**Why the two-directory layout.** Next's standalone output is a *flat, self-contained* `node_modules`. pnpm's is a symlinked `.pnpm` store. Both want `/app/node_modules`. Merging two different layouts fails subtly, so standalone goes to `/app/web/` and the worker keeps `/app/node_modules`. The ~37 MB of overlap is the price of staying on one image.
+**Why the two-directory layout.** Standalone emits its own self-contained `node_modules` — under pnpm it reproduces a `.pnpm` symlink structure of its own, with relative links that stay inside the bundle, so it copies cleanly as a unit. It is nonetheless a *separately generated store* from `/app/node_modules`, and both want the same path. Merging two independently-built stores fails subtly, so standalone goes to `/app/web/` and the worker keeps `/app/node_modules`. The ~37 MB of overlap is the price of staying on one image.
 
 **Node resolves modules upward, and that will hide bugs from you.** `/app/web/server.js` failing to find a package in `/app/web/node_modules` will silently find it in `/app/node_modules`. In this PR the sibling tree is still complete, so *anything standalone failed to trace still works*. PR2's prune is what deletes it. This is exactly why the smoke test must assert a **rendered page**, not just `/api/health` — health never exercises the React render path.
 
@@ -155,7 +155,7 @@ esac
 # .next/static — the rendered HTML references hashed chunk URLs, so pull one out
 # and fetch it. Without this the suite would pass with static assets missing:
 # the HTML still returns 200, only its <script>/<link> targets 404.
-chunk="$(printf '%s' "$body" | grep -o '/_next/static/[^"]*' | head -1 || true)"
+chunk="$(printf '%s' "$body" | grep -o '/_next/static/[^"\\]*' | head -1 || true)"
 [ -n "$chunk" ] || { docker logs "$WEB" >&2; fail "no /_next/static URL in rendered HTML"; }
 curl -fsS -o /dev/null "http://localhost:13000$chunk" || {
   docker logs "$WEB" >&2; fail ".next/static asset did not resolve: $chunk"
@@ -531,7 +531,7 @@ git rev-parse --short HEAD
 
 ## Task 7: Wire the smoke test into CI
 
-`build-image` uses an explicit `outputs:` with `push-by-digest`, so `load: true` is **not** a drop-in. Add a second, cache-replayed build that produces a local tag. The first build populates the gha cache, so this is a near-instant replay rather than a real second build.
+`build-image` uses an explicit `outputs:` with `push-by-digest`, so `load: true` is **not** a drop-in. Add a second build that produces a local tag. It runs against the same buildx builder in the same job, so no layer is recompiled — but the `load` export of a multi-hundred-MB image into the docker daemon takes minutes, not seconds. Both new steps therefore carry `timeout-minutes`.
 
 **Files:**
 - Modify: `.github/workflows/ci.yml` (`build-image` job)
@@ -587,7 +587,8 @@ git commit -m "ci: smoke-test the built image in build-image
 
 Boots both roles from the image CI just produced. The existing build uses
 push-by-digest with an explicit outputs:, so load: true is not a drop-in
-— a second build replays the gha cache instead, costing seconds.
+— a second build reuses the builder's local cache instead. Nothing
+recompiles; the cost is the load export into the docker daemon.
 
 This is the safety net the node_modules prune depends on."
 git rev-parse --short HEAD
@@ -604,7 +605,9 @@ git rev-parse --short HEAD
 
 ```markdown
 **The runtime image carries two dependency trees.** `/app/web/node_modules` is
-Next's flat, file-traced standalone bundle (web only); `/app/node_modules` is
+Next's file-traced standalone bundle (web only; under pnpm it reproduces its
+own `.pnpm` symlink structure, with relative links that stay inside `web/`);
+`/app/node_modules` is
 pnpm's symlinked store (worker, plus `prisma`/`tsx` at boot). They are
 deliberately not merged — the layouts differ and merging them fails subtly.
 

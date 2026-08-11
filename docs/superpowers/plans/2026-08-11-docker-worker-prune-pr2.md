@@ -118,21 +118,37 @@ function resolveSpecifier(spec, fromFile, root) {
 /**
  * Walk the transitive graph from the given entrypoints.
  *
- * @returns {{files:Set<string>, bareSpecifiers:Map<string,string>, unresolved:Array}}
- *   files          — repo-relative paths reachable at runtime
+ * @param {object}   opts
+ * @param {string}   opts.root         repo root
+ * @param {string[]} [opts.entrypoints]
+ * @param {(relPath: string) => boolean} [opts.shouldFollow]
+ *   Optional gate. When it returns false for a resolved file, that file is
+ *   still RECORDED but not descended into. The guard passes
+ *   `shipsInRuntimeImage` so a file that won't exist at runtime doesn't drag
+ *   its own subtree into the graph — which in the prune would silently become
+ *   extra roots at exactly the moment the guard is reporting a problem. The
+ *   prune passes nothing: it runs against a tree where everything still exists.
+ *
+ * @returns {{
+ *   files: Map<string, {importer: string, specifier: string}>,
+ *   bareSpecifiers: Map<string, string>,
+ *   unresolved: Array<{importer: string, specifier: string}>
+ * }}
+ *   files          — repo-relative path → who imported it and via what specifier
+ *                    (entrypoints get empty strings for both)
  *   bareSpecifiers — package name → the repo-relative file that first imported it
  *   unresolved     — specifiers that resolved to nothing on disk
  */
-export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS }) {
-  const files = new Set();
+export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS, shouldFollow }) {
+  const files = new Map();
   const bareSpecifiers = new Map();
   const unresolved = [];
   const visited = new Set();
 
-  function walk(file) {
+  function walk(file, importedBy, viaSpecifier) {
     if (visited.has(file)) return;
     visited.add(file);
-    files.add(relative(root, file));
+    files.set(relative(root, file), { importer: importedBy, specifier: viaSpecifier });
 
     const text = readFileSync(file, 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -154,19 +170,28 @@ export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS }) {
         unresolved.push({ importer, specifier: spec });
         continue;
       }
-      walk(resolved);
+
+      const targetRel = relative(root, resolved);
+      if (shouldFollow && !shouldFollow(targetRel)) {
+        // Record it so the caller can report it, but do not descend.
+        if (!files.has(targetRel)) files.set(targetRel, { importer, specifier: spec });
+        continue;
+      }
+      walk(resolved, importer, spec);
     }
   }
 
   for (const entry of entrypoints) {
     const path = join(root, entry);
     if (!existsSync(path)) throw new Error(`worker-graph: entrypoint ${entry} not found`);
-    walk(path);
+    walk(path, '', '');
   }
 
   return { files, bareSpecifiers, unresolved };
 }
 ```
+
+This is the **final** shape of the module — `files` is a `Map` carrying importer and specifier, and `shouldFollow` is a real parameter. Both exist because the guard's existing report blocks print all three fields and deliberately stop recursing at a non-shipping file; Task 1 Step 3 consumes exactly this and changes nothing here.
 
 - [ ] **Step 3: Rewrite the guard to consume it**
 
@@ -193,41 +218,26 @@ const DOCKERFILE = join(ROOT, 'Dockerfile');
 const { files, bareSpecifiers, unresolved } = walkWorkerGraph({
   root: ROOT,
   entrypoints: ENTRYPOINTS,
+  // Preserves the behaviour of the old walk(): record a file that won't ship,
+  // but don't descend into it. Without this the walk would harvest the bare
+  // specifiers of, say, the whole components/ subtree — and in this PR those
+  // become prune roots, silently widening the tree exactly when the guard is
+  // telling you something is wrong.
+  shouldFollow: shipsInRuntimeImage,
 });
 
 const violations = [];
-for (const [target, importer] of files) {
-  if (!shipsInRuntimeImage(target)) violations.push({ target, importer });
+for (const [target, { importer, specifier }] of files) {
+  if (!shipsInRuntimeImage(target)) violations.push({ target, importer, specifier });
 }
 ```
 
-5. **Keep the report blocks (lines 136–165) verbatim**, including wording and remediation advice. They already print `importer`, `specifier` and `target`.
+5. **Keep the report blocks (lines 136–165) verbatim**, with two single-token exceptions — the deleted range took `visited` with it:
 
-**Two consequences to handle, not skip:**
+   - **Line 146**: `${visited.size}` → `${files.size}`. `visited` was declared at line 92, inside the range deleted in step 3. Left as-is the guard throws `ReferenceError: visited is not defined` on the **success** path, so `pnpm lint` crashes rather than printing the count Step 4 asks you to check.
+   - **Line 154**: no change needed — it destructures `{ importer, specifier, target }`, and the `violations` entries above now carry all three. This is why `files` is a `Map` of objects rather than a `Map` of importer strings; a bare string would make the failure report print `imports undefined → …` on precisely the #333 path, where the specifier *is* the diagnostic.
 
-**(a) `files` must carry its importer.** The reports print which file caused each violation, so a bare `Set` of paths loses information the existing wording depends on. Change `walkWorkerGraph`'s `files` from `Set<string>` to `Map<string, string>` (repo-relative path → repo-relative importer, empty string for entrypoints), and update `scripts/worker-graph.mjs` accordingly:
-
-```javascript
-const files = new Map();
-// …in walk(), replace `files.add(relative(root, file))` with:
-files.set(relative(root, file), importerRel);
-```
-threading an `importerRel` argument through `walk(file, importerRel = '')`.
-
-**(b) Preserve the recursion stop.** The current `walk()` deliberately does **not** recurse into a file failing `shipsInRuntimeImage` (line 121-122: *"don't recurse into a file that won't exist at runtime"*). `walkWorkerGraph` has no such concept, so it would descend through e.g. the whole `components/` subtree on a violation and harvest its bare specifiers — which in this PR become **prune roots**. That silently widens the tree exactly when the guard is telling you something is wrong.
-
-Give the walk an optional predicate and pass the guard's:
-
-```javascript
-// scripts/worker-graph.mjs — in walkWorkerGraph({ root, entrypoints, shouldFollow })
-if (shouldFollow && !shouldFollow(relative(root, resolved))) {
-  files.set(relative(root, resolved), importer);
-  continue; // record the violation, do not descend
-}
-walk(resolved, importer);
-```
-
-The guard passes `shouldFollow: shipsInRuntimeImage`. The prune script passes nothing, so it walks the full graph — correct, because it runs against a tree where everything still exists.
+Everything else in the report blocks — wording, remediation advice, exit codes — stays exactly as it is.
 
 - [ ] **Step 4: Verify the count changed only because of the new entrypoint**
 
@@ -249,7 +259,7 @@ If it reports violations, they are real: something reachable from `prisma/seed.t
 
 `tests/unit/**/*.test.ts` is already in both, so this needs **no config change**. Do **not** add `scripts/**` to `coverage.include` — it would add a large, thinly-covered denominator and redden the floor for no benefit.
 
-Import the ESM script directly; add `// @ts-expect-error — untyped .mjs` if TS objects:
+Import the ESM script directly. The `@ts-expect-error` is **required, not conditional** — `tsconfig.json` sets `allowJs: false` and its `include` covers `**/*.ts`, so this test file is typechecked and importing a `.mjs` raises TS2307. (There is always an error to suppress, so it won't trip the unused-directive check either.)
 
 ```typescript
 const { walkWorkerGraph, packageNameOf } = await import('../../scripts/worker-graph.mjs');
@@ -392,8 +402,10 @@ node_modules/
 store entries live. This matches real pnpm — verify against this repo:
 
 ```bash
-readlink node_modules/.pnpm/pg-boss@*/node_modules/pg
+readlink node_modules/.pnpm/pg-boss@*/node_modules/pg | head -1
 ```
+
+(`head -1` because the glob can match more than one installed version.)
 Expected: `../../pg@8.22.0/node_modules/pg`.
 
 Three `..` would land at `node_modules/`, producing a dangling link that
@@ -652,10 +664,16 @@ docker run --rm --entrypoint sh house-manager:smoke -c '
   echo "worker tree:"; ls /app/node_modules | wc -l
   echo "next present in worker tree (expect absent):"; ls /app/node_modules/next 2>&1 | head -1
   echo "web tree:"; ls /app/web/node_modules | wc -l
-  echo "sentinels:"; for p in tsx prisma typescript @prisma/client pg-boss sharp react-dom; do
-    [ -e "/app/node_modules/$p" ] && echo "  ok $p" || echo "  MISSING $p"; done'
+  echo "top-level sentinels:"; for p in tsx prisma @prisma/client pg-boss sharp react-dom; do
+    [ -e "/app/node_modules/$p" ] && echo "  ok $p" || echo "  MISSING $p"; done
+  # typescript has NO top-level symlink — it is a devDependency, so
+  # `pnpm prune --prod` removed that link before the prune script ran. It
+  # survives only as a nested transitive of prisma, which needs it to read
+  # prisma.config.ts at web boot. Check the store, not the top level.
+  echo "store sentinel:"; ls -d /app/node_modules/.pnpm/typescript@* >/dev/null 2>&1 \
+    && echo "  ok typescript (in .pnpm)" || echo "  MISSING typescript"'
 ```
-Expected: `next` absent from the worker tree; every sentinel `ok`.
+Expected: `next` absent from the worker tree; all six top-level sentinels `ok`; `ok typescript (in .pnpm)`.
 
 - [ ] **Step 6: Commit**
 
@@ -739,6 +757,6 @@ Include measured before/after image size and the `prune-worker-tree` output line
 - [ ] `pnpm lint:worker-graph` covers both entrypoints and rejects devDependency imports
 - [ ] `scripts/prune-worker-tree.mjs` has unit tests covering transitive reach, scoped packages, cycles, and a missing root
 - [ ] A `--no-cache` build passes `scripts/smoke-image.sh`
-- [ ] `next` is absent from `/app/node_modules`; every sentinel present
+- [ ] `next` is absent from `/app/node_modules`; the six top-level sentinels resolve and `typescript@*` survives in `.pnpm`
 - [ ] Image is ~0.9 GB
 - [ ] `pnpm test:local` passes
