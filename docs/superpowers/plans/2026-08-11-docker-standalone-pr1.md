@@ -110,11 +110,15 @@ docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=smoke \
   "$PG_IMAGE" >/dev/null
 
+# Query rather than pg_isready: pg_isready succeeds against the temporary init
+# server that the entrypoint then shuts down and restarts, so it can go ready,
+# unready, ready again.
 for _ in $(seq 60); do
-  docker exec "$PG" pg_isready -U smoke >/dev/null 2>&1 && break
+  docker exec "$PG" psql -U smoke -d smoke -c 'select 1' >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$PG" pg_isready -U smoke >/dev/null 2>&1 || fail "postgres never became ready"
+docker exec "$PG" psql -U smoke -d smoke -c 'select 1' >/dev/null 2>&1 \
+  || fail "postgres never became ready"
 
 echo "→ starting web"
 docker run -d --name "$WEB" --network "$NET" -p 13000:3000 "${env_args[@]}" \
@@ -138,11 +142,25 @@ echo "  ✓ public/icon.png"
 # Rendered page through the React tree + root layout. This is the check that
 # catches a module missing from the standalone bundle; /api/health does not
 # exercise the render path at all.
-body="$(curl -fsS "http://localhost:13000/smoke-nonexistent-$$" || true)"
+#
+# NOTE: no `-f` here. Next returns 404 for this route, and `curl -f` exits
+# non-zero and prints NOTHING on 4xx — with -f the body is always empty and
+# this check can never pass.
+body="$(curl -sS "http://localhost:13000/smoke-nonexistent-$$" || true)"
 case "$body" in
-  *"404"*"Page Not Found"*) echo "  ✓ rendered 404 page" ;;
+  *"Page Not Found"*) echo "  ✓ rendered 404 page" ;;
   *) docker logs "$WEB" >&2; fail "not-found page did not render (got ${#body} bytes)" ;;
 esac
+
+# .next/static — the rendered HTML references hashed chunk URLs, so pull one out
+# and fetch it. Without this the suite would pass with static assets missing:
+# the HTML still returns 200, only its <script>/<link> targets 404.
+chunk="$(printf '%s' "$body" | grep -o '/_next/static/[^"]*' | head -1 || true)"
+[ -n "$chunk" ] || { docker logs "$WEB" >&2; fail "no /_next/static URL in rendered HTML"; }
+curl -fsS -o /dev/null "http://localhost:13000$chunk" || {
+  docker logs "$WEB" >&2; fail ".next/static asset did not resolve: $chunk"
+}
+echo "  ✓ .next/static asset ($chunk)"
 
 echo "→ starting worker"
 docker run -d --name "$WORKER" --network "$NET" -p 13001:3000 "${env_args[@]}" \
@@ -183,7 +201,8 @@ Expected: build succeeds.
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS`, with all four ✓ lines.
+Expected: `SMOKE PASS`, with all five ✓ lines (web health, `icon.png`, rendered
+404, `.next/static` chunk, worker health).
 
 **If this fails, stop.** The script is wrong, not the image. A green baseline here is the whole point of doing this task first.
 
@@ -306,14 +325,17 @@ git rev-parse --short HEAD
 
 - [ ] **Step 1: Remove corepack/pnpm from the runtime stage**
 
-Delete these three lines from the **runtime** stage only (leave the `base` stage's copy alone — `next build` needs pnpm):
+From the **runtime** stage only (leave the `base` stage's copy alone — `next build` needs pnpm), delete all four of:
 
 ```dockerfile
+# renovate: datasource=npm depName=pnpm
+# Keep in sync with the base stage and package.json "packageManager" — see
+# comment on the base stage's PNPM_VERSION arg.
 ARG PNPM_VERSION=11.20.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 ```
 
-…along with the `# renovate: datasource=npm depName=pnpm` and `# Keep in sync…` comment block directly above them.
+**Delete the `# renovate:` annotation too.** Left orphaned above a non-pnpm line it would point Renovate at the wrong thing. The `base` stage keeps its own annotated copy, so pnpm stays tracked.
 
 - [ ] **Step 2: Replace the two application COPY blocks**
 
@@ -329,9 +351,10 @@ with:
 
 ```dockerfile
 # Web role: Next standalone bundle — server.js plus a file-traced node_modules
-# holding only what the app imports. Deliberately NOT merged into
-# /app/node_modules: this tree is flat, that one is pnpm's symlinked .pnpm
-# store, and merging the two layouts fails in subtle ways.
+# holding only what the app imports. Under pnpm this tree reproduces its own
+# .pnpm symlink structure; the links are relative and stay inside ./web, so it
+# copies cleanly. Deliberately NOT merged into /app/node_modules: they are two
+# independently-generated stores and merging them fails in subtle ways.
 #
 # Beware when debugging: Node resolves upward, so a package missing from
 # web/node_modules silently resolves from /app/node_modules instead. Anything
@@ -438,7 +461,7 @@ Paths are explicit because nothing puts `node_modules/.bin` on `PATH` once pnpm 
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS` with all four ✓ lines.
+Expected: `SMOKE PASS` with all five ✓ lines.
 
 The `✓ rendered 404 page` line is the one that matters — it proves the standalone bundle can execute a React render, not merely answer a health probe.
 
@@ -520,9 +543,13 @@ Directly after the `Build and push by digest` step and **before** `Export digest
 ```yaml
       # The build above uses an explicit `outputs:` with push-by-digest, so the
       # image is never tagged locally and `load: true` is not a drop-in. This
-      # second build replays the gha cache the step above just populated, so it
-      # costs seconds rather than a full rebuild.
+      # second invocation runs against the same buildx builder in the same job,
+      # so every layer is already in buildkit's local cache and nothing is
+      # recompiled (cache-from is belt-and-braces). The cost is the `load`
+      # export of the image into the docker daemon, which is minutes, not
+      # seconds — hence the timeout below.
       - name: Load image locally for smoke test
+        timeout-minutes: 15
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -535,8 +562,12 @@ Directly after the `Build and push by digest` step and **before** `Export digest
       # Boots both roles from the image that was actually built. Guards the
       # standalone bundle and (in the follow-up PR) the pruned worker tree.
       - name: Smoke test the image
+        timeout-minutes: 10
         run: ./scripts/smoke-image.sh house-manager:smoke
 ```
+
+Both steps carry a `timeout-minutes` so a wedged container fails in minutes
+rather than burning toward the 6-hour job limit.
 
 Safe on both matrix legs: each builds a single platform on a native runner, so there is no multi-arch `load` conflict.
 

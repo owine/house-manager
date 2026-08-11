@@ -37,10 +37,10 @@
 | File | Responsibility |
 |---|---|
 | `scripts/worker-graph.mjs` *(create)* | The transitive import walk. Pure, dependency-free, no I/O beyond reading source files. Single source of truth for "what the worker reaches". |
-| `scripts/worker-graph.test.mjs` *(create)* | Unit tests for the walk against fixture files. |
+| `tests/unit/worker-graph.test.ts` *(create)* | Unit tests for the walk against fixture files. Lives here, not beside the script, because `test:unit` takes explicit directory args and vitest's `include` only matches `*.test.ts`. |
 | `scripts/lint-worker-runtime-graph.mjs` *(modify)* | Keeps Dockerfile COPY parsing and local-file checks; imports the walk; adds the declared-dependency assertion. |
 | `scripts/prune-worker-tree.mjs` *(create)* | Closure walk over `.pnpm` + deletion + sanity checks. |
-| `scripts/prune-worker-tree.test.mjs` *(create)* | Unit tests for the closure walk against a synthetic `.pnpm`-shaped fixture. |
+| `tests/unit/prune-worker-tree.test.ts` *(create)* | Unit tests for the closure walk against a synthetic `.pnpm`-shaped fixture. |
 | `Dockerfile` *(modify)* | One `RUN` after `pnpm prune --prod`. |
 | `CLAUDE.md` *(modify)* | Documents that the worker tree is pruned and what that implies. |
 
@@ -170,7 +170,9 @@ export function walkWorkerGraph({ root, entrypoints = ENTRYPOINTS }) {
 
 - [ ] **Step 3: Rewrite the guard to consume it**
 
-Replace everything from the `import` block down to the end of `walk()` in `scripts/lint-worker-runtime-graph.mjs` with:
+Precise edits, by current line number:
+
+1. **Replace lines 32–44** (the `node:fs`/`node:path` imports, `ROOT`, `DOCKERFILE`, `ENTRYPOINTS`, `EXTS`, `INDEXES`, `SPECIFIER_RE`) with:
 
 ```javascript
 import { readFileSync } from 'node:fs';
@@ -181,46 +183,93 @@ const ROOT = process.cwd();
 const DOCKERFILE = join(ROOT, 'Dockerfile');
 ```
 
-Keep `runtimePaths()` and `shipsInRuntimeImage()` exactly as they are. Then replace the walk invocation and violation collection with:
+2. **Keep lines 46–71 unchanged** — `runtimePaths()`, `const RUNTIME_PATHS`, `shipsInRuntimeImage()`.
+
+3. **Delete lines 73–134** — `resolveSpecifier()`, the `visited`/`violations`/`unresolved` declarations, `walk()`, and the entrypoint loop.
+
+4. **Insert in their place:**
 
 ```javascript
-const RUNTIME_PATHS = runtimePaths();
-const { files, bareSpecifiers, unresolved } = walkWorkerGraph({ root: ROOT, entrypoints: ENTRYPOINTS });
+const { files, bareSpecifiers, unresolved } = walkWorkerGraph({
+  root: ROOT,
+  entrypoints: ENTRYPOINTS,
+});
 
 const violations = [];
-for (const target of files) {
-  if (!shipsInRuntimeImage(target)) violations.push({ target });
+for (const [target, importer] of files) {
+  if (!shipsInRuntimeImage(target)) violations.push({ target, importer });
 }
 ```
 
-Adjust the two report blocks to the new shapes, keeping the existing wording and remediation advice.
+5. **Keep the report blocks (lines 136–165) verbatim**, including wording and remediation advice. They already print `importer`, `specifier` and `target`.
+
+**Two consequences to handle, not skip:**
+
+**(a) `files` must carry its importer.** The reports print which file caused each violation, so a bare `Set` of paths loses information the existing wording depends on. Change `walkWorkerGraph`'s `files` from `Set<string>` to `Map<string, string>` (repo-relative path → repo-relative importer, empty string for entrypoints), and update `scripts/worker-graph.mjs` accordingly:
+
+```javascript
+const files = new Map();
+// …in walk(), replace `files.add(relative(root, file))` with:
+files.set(relative(root, file), importerRel);
+```
+threading an `importerRel` argument through `walk(file, importerRel = '')`.
+
+**(b) Preserve the recursion stop.** The current `walk()` deliberately does **not** recurse into a file failing `shipsInRuntimeImage` (line 121-122: *"don't recurse into a file that won't exist at runtime"*). `walkWorkerGraph` has no such concept, so it would descend through e.g. the whole `components/` subtree on a violation and harvest its bare specifiers — which in this PR become **prune roots**. That silently widens the tree exactly when the guard is telling you something is wrong.
+
+Give the walk an optional predicate and pass the guard's:
+
+```javascript
+// scripts/worker-graph.mjs — in walkWorkerGraph({ root, entrypoints, shouldFollow })
+if (shouldFollow && !shouldFollow(relative(root, resolved))) {
+  files.set(relative(root, resolved), importer);
+  continue; // record the violation, do not descend
+}
+walk(resolved, importer);
+```
+
+The guard passes `shouldFollow: shipsInRuntimeImage`. The prune script passes nothing, so it walks the full graph — correct, because it runs against a tree where everything still exists.
 
 - [ ] **Step 4: Verify the count changed only because of the new entrypoint**
 
 ```bash
 pnpm lint:worker-graph
 ```
-Expected: OK, with a module count **≥ 72** (adding `prisma/seed.ts` pulls in at least it and `lib/reminders/system-user.ts`).
+Expected: `OK (73 modules reachable …)` — exactly 73, up from 72. Adding `prisma/seed.ts` contributes itself; `lib/reminders/system-user.ts` was already reachable from the worker.
+
+A count other than 73 means the walk changed behaviour, not just its location. Investigate before continuing.
 
 If it reports violations, they are real: something reachable from `prisma/seed.ts` is not copied into the runtime image. Fix by moving the code under `lib/`, not by narrowing the entrypoints.
 
 - [ ] **Step 5: Add unit tests**
 
-Create `scripts/worker-graph.test.mjs` covering: relative resolution, `@/` alias resolution, bare-specifier collection with the importer recorded, scoped-package name extraction (`@scope/pkg/sub` → `@scope/pkg`), `node:` builtins excluded, and comment stripping. Build fixtures under a temp dir; do not walk the real repo in tests.
+**Location matters.** Put them at `tests/unit/worker-graph.test.ts`, not next to the script:
+
+- `vitest.config.ts`'s `include` only matches `*.test.ts` / `*.test.tsx`, so a `.mjs` test file matches nothing and vitest reports "No test files found" rather than failing.
+- `test:unit` is `vitest run tests/unit lib worker/jobs components app` — explicit directory arguments. Adding a glob to `include` would **not** make a `scripts/` test run under `pnpm verify` or in CI's `unit` job.
+
+`tests/unit/**/*.test.ts` is already in both, so this needs **no config change**. Do **not** add `scripts/**` to `coverage.include` — it would add a large, thinly-covered denominator and redden the floor for no benefit.
+
+Import the ESM script directly; add `// @ts-expect-error — untyped .mjs` if TS objects:
+
+```typescript
+const { walkWorkerGraph, packageNameOf } = await import('../../scripts/worker-graph.mjs');
+```
+
+Cover: relative resolution, `@/` alias resolution, bare-specifier collection with the importer recorded, scoped-package name extraction (`@scope/pkg/sub` → `@scope/pkg`), `node:` builtins excluded, comment stripping, and `shouldFollow` halting recursion while still recording the file. Build fixtures in a temp dir; never walk the real repo.
 
 - [ ] **Step 6: Run the tests**
 
 ```bash
-pnpm exec vitest run scripts/worker-graph.test.mjs
+pnpm exec vitest run tests/unit/worker-graph.test.ts
 ```
 Expected: PASS.
 
-If `scripts/**` is not in the Vitest unit include, add it to `vitest.config.ts` in the same commit — the coverage include must match, or the floor will move for the wrong reason.
+If it says "No test files found", the file is misnamed or misplaced — re-read Step 5.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add scripts/worker-graph.mjs scripts/worker-graph.test.mjs scripts/lint-worker-runtime-graph.mjs vitest.config.ts
+git add scripts/worker-graph.mjs tests/unit/worker-graph.test.ts scripts/lint-worker-runtime-graph.mjs
 git commit -m "refactor(scripts): extract the worker import graph walk
 
 Two consumers need one definition of what the worker reaches: the
@@ -321,25 +370,41 @@ git rev-parse --short HEAD
 ## Task 3: The prune script
 
 **Files:**
-- Create: `scripts/prune-worker-tree.mjs`, `scripts/prune-worker-tree.test.mjs`
+- Create: `scripts/prune-worker-tree.mjs`, `tests/unit/prune-worker-tree.test.ts`
 
 - [ ] **Step 1: Write the failing test first**
 
-`scripts/prune-worker-tree.test.mjs` builds a synthetic `.pnpm`-shaped fixture in a temp dir:
+Same location rule as Task 1 Step 5 — `tests/unit/prune-worker-tree.test.ts`, so it runs under `pnpm verify` and CI without config changes.
+
+Build a synthetic `.pnpm`-shaped fixture in a temp dir:
 
 ```
 node_modules/
   a -> .pnpm/a@1.0.0/node_modules/a
   .pnpm/
-    a@1.0.0/node_modules/a/          (+ nested node_modules/b -> ../../../b@1.0.0/node_modules/b)
+    a@1.0.0/node_modules/a/          (+ nested node_modules/b -> ../../b@1.0.0/node_modules/b)
     b@1.0.0/node_modules/b/
     orphan@1.0.0/node_modules/orphan/
 ```
 
-Assert `computeClosure({ nodeModules, roots: ['a'] })` returns `{'a@1.0.0','b@1.0.0'}` and excludes `orphan@1.0.0`. Cover: transitive reach through nested symlinks, scoped packages (`@scope/pkg`), a root that does not exist (must throw, not silently skip), and cycles (a → b → a must terminate).
+**The nested symlink is `../../`, two levels, not three.** From
+`.pnpm/a@1.0.0/node_modules/` two `..` lands at `.pnpm/`, which is where sibling
+store entries live. This matches real pnpm — verify against this repo:
 
 ```bash
-pnpm exec vitest run scripts/prune-worker-tree.test.mjs
+readlink node_modules/.pnpm/pg-boss@*/node_modules/pg
+```
+Expected: `../../pg@8.22.0/node_modules/pg`.
+
+Three `..` would land at `node_modules/`, producing a dangling link that
+`realpathSync` throws on and the `/* dangling */` catch swallows — so `b@1.0.0`
+would never be reached and you would debug `computeClosure`, which is correct,
+instead of the fixture.
+
+Assert `computeClosure({ nodeModules, roots: ['a'] })` returns `{'a@1.0.0','b@1.0.0'}` and excludes `orphan@1.0.0`. Cover: transitive reach through nested symlinks, scoped packages (`@scope/pkg` → store entry `@scope+pkg@1.0.0`), a root that does not exist (must throw, not silently skip), and cycles (a → b → a must terminate).
+
+```bash
+pnpm exec vitest run tests/unit/prune-worker-tree.test.ts
 ```
 Expected: FAIL — module not found.
 
@@ -365,15 +430,20 @@ const BOOT_TOOLS = ['tsx', 'prisma'];
 // Asserted present AFTER pruning, by stat-ing the resulting tree — not by
 // testing membership of the computed root set, which would be vacuous for tsx
 // and prisma (they are hardcoded roots above).
-//
-// typescript is the non-obvious one: the Prisma CLI reads prisma.config.ts at
-// web boot and needs a TS loader. It is a devDependency surviving only as a
-// transitive of the `prisma` production package.
 const SENTINELS = [
-  'tsx', 'prisma', 'typescript',
+  'tsx', 'prisma',
   '@prisma/client', '@prisma/adapter-pg',
   'pg-boss', 'sharp', 'react-dom',
 ];
+
+// typescript needs a DIFFERENT check and cannot go in the list above.
+//
+// The Prisma CLI reads prisma.config.ts at web boot, so it needs a TS loader at
+// runtime. But typescript is a devDependency: `pnpm prune --prod` has already
+// removed its top-level node_modules/typescript symlink before this script
+// runs. It survives only as a nested transitive inside the `prisma` store
+// entry, so a top-level existsSync would fail on every single build.
+const STORE_SENTINEL_PREFIXES = ['typescript@'];
 
 // Catastrophe floor only. Deliberately slack: the denominator is the full
 // production tree, and this design's premise is that web-only dependencies are
@@ -481,6 +551,14 @@ function main() {
   }
 
   const missing = SENTINELS.filter((s) => !existsSync(join(nodeModules, s)));
+
+  // Store-level sentinels have no top-level symlink to stat (see the comment on
+  // STORE_SENTINEL_PREFIXES), so check the surviving .pnpm entries instead.
+  const survivors = readdirSync(store);
+  for (const prefix of STORE_SENTINEL_PREFIXES) {
+    if (!survivors.some((d) => d.startsWith(prefix))) missing.push(`${prefix}* (in .pnpm)`);
+  }
+
   if (missing.length > 0) {
     console.error(`prune-worker-tree: FAILED — sentinels missing after prune: ${missing.join(', ')}`);
     console.error('These are required at runtime. The closure walk is wrong; do not ship this image.');
@@ -502,14 +580,14 @@ if (import.meta.url === `file://${process.argv[1]}`) main();
 - [ ] **Step 3: Run the tests**
 
 ```bash
-pnpm exec vitest run scripts/prune-worker-tree.test.mjs
+pnpm exec vitest run tests/unit/prune-worker-tree.test.ts
 ```
 Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/prune-worker-tree.mjs scripts/prune-worker-tree.test.mjs
+git add scripts/prune-worker-tree.mjs tests/unit/prune-worker-tree.test.ts
 git commit -m "feat(scripts): prune node_modules to the worker's closure
 
 Walks pnpm's .pnpm symlink graph from roots derived from the real import
@@ -556,7 +634,7 @@ If it **ABORTED** on the floor, the import walk regressed — debug `pnpm lint:w
 ```bash
 ./scripts/smoke-image.sh house-manager:smoke
 ```
-Expected: `SMOKE PASS` with all four ✓ lines.
+Expected: `SMOKE PASS` with all five ✓ lines.
 
 The `✓ rendered 404 page` line matters most here. PR1 could pass it while leaning on the sibling tree via upward module resolution; this is the first build where that crutch is gone, so this is the moment a gap in the standalone bundle surfaces.
 
