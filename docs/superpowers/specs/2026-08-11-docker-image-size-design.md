@@ -230,10 +230,14 @@ Every invocation must be written out explicitly:
   `node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js`
 - worker: `node_modules/.bin/tsx worker/index.ts`
 
-Both the in-repo `docker-compose.yml` (lines 79 and 94) and the GitOps compose
-currently invoke these through `pnpm`, so **both files change in PR1** — the
-worker's command breaks alongside web's the moment pnpm leaves the image. There
-is exactly one coordinated GitOps edit, and it belongs to PR1.
+Both the in-repo `docker-compose.yml` (lines 79 and 94) and the production
+compose currently invoke these through `pnpm`, so both must change — the
+worker's command breaks alongside web's the moment pnpm leaves the image.
+
+**Only the in-repo `docker-compose.yml` is in scope for PR1.** The production
+compose lives in a separate GitOps repo and is edited by the maintainer
+directly; PR1 must ship the required delta as documentation rather than
+attempting the change. See *Production compose handoff* below.
 
 ### `outputFileTracingRoot`
 
@@ -423,6 +427,34 @@ Dropping the unused `vips` / `vips-heif` apk packages — **77 MB measured**
 bundled build already carries HEIF, verified by `sharp.versions` reporting vips
 8.18.3 + heif 1.23.1 while the apk packages were 8.18.2. The packages are 2.7 MB
 themselves but drag in glib/cairo/pango/libheif transitively.
+
+## Production compose handoff
+
+PR1 makes a **breaking image change**: the new image has no `pnpm` and no
+`next start`. Old compose + new image fails, and new compose + old image fails,
+so the tag bump and the compose edit must land together. Both PRs are otherwise
+self-contained; this is the only step outside the repo.
+
+Two `command:` lines change, nothing else:
+
+```yaml
+# web
+command: sh -c "node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts && node web/server.js"
+
+# worker
+command: node_modules/.bin/tsx worker/index.ts
+```
+
+`HOSTNAME=0.0.0.0` and `PORT=3000` are baked into the image as `ENV`, so no
+compose change is needed for them. No environment variable, volume, port,
+healthcheck or `depends_on` changes.
+
+Rollback is the previous image tag together with the previous compose — they
+must move as a pair in both directions.
+
+One caveat worth knowing: `ENV HOSTNAME=0.0.0.0` overrides the conventional
+container-hostname variable. Pino is unaffected (it reads `os.hostname()`, not
+the env var), but anything else keying off `$HOSTNAME` would see `0.0.0.0`.
 
 ## Out of scope
 
