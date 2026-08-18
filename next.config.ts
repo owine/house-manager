@@ -31,6 +31,12 @@ const nextConfig: NextConfig = {
   // scripts/smoke-image.sh that caught it. Upstream: vercel/next.js#97358,
   // fixed by #97372 but only on canary — 16.3.1 is still the latest stable, so
   // this stays until a release carries the fix, then it can go.
+  //
+  // The glob names pnpm's store layout because that is literally where the
+  // file sits in the trace — there is no package-manager-neutral spelling. If
+  // that layout ever changes the glob matches nothing *silently* and the
+  // container goes back to dying at boot; scripts/smoke-image.sh is what
+  // catches that, which is the same reason it caught this.
   outputFileTracingIncludes: {
     '/*': ['./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*'],
   },
