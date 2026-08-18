@@ -7,6 +7,39 @@ const nextConfig: NextConfig = {
   // copies that to /app/web, which is what lets /app/node_modules be pruned
   // to the worker's closure in a follow-up.
   output: 'standalone',
+  // Next 16.3.1 bumped @swc/helpers 0.5.15 -> 0.5.23, which added a
+  // `module-sync` condition to every `./_/*` subpath export:
+  //
+  //   "./_/_interop_require_default": {
+  //     "module-sync": "./esm/_interop_require_default.js",   // <- new in 0.5.23
+  //     "import":      "./esm/_interop_require_default.js",
+  //     "default":     "./cjs/_interop_require_default.cjs"
+  //   }
+  //
+  // next/dist requires `@swc/helpers/_/_interop_require_default` from ~57
+  // places. Node 22.10+/24 honours `module-sync` from CJS `require()`, so at
+  // runtime that now resolves to the ESM file — but the file tracer still only
+  // copies the `cjs/` one into .next/standalone. The bundle then has a
+  // @swc/helpers whose package.json resolves a subpath to a file that isn't
+  // there, and web dies at boot with `createEsmNotFoundErr`:
+  //
+  //   Cannot find module '/app/web/node_modules/.pnpm/next@16.3.1_.../
+  //     node_modules/@swc/helpers/esm/_interop_require_default.js'
+  //
+  // Nothing but the image catches this: typecheck, `next build`, and every
+  // vitest/playwright suite resolve against the full source tree. It was
+  // scripts/smoke-image.sh that caught it. Upstream: vercel/next.js#97358,
+  // fixed by #97372 but only on canary — 16.3.1 is still the latest stable, so
+  // this stays until a release carries the fix, then it can go.
+  //
+  // The glob names pnpm's store layout because that is literally where the
+  // file sits in the trace — there is no package-manager-neutral spelling. If
+  // that layout ever changes the glob matches nothing *silently* and the
+  // container goes back to dying at boot; scripts/smoke-image.sh is what
+  // catches that, which is the same reason it caught this.
+  outputFileTracingIncludes: {
+    '/*': ['./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*'],
+  },
   // See tsconfig.build.json — keeps `next build`'s CLI type-checker off test
   // files, which aren't in the Docker build context.
   typescript: {
