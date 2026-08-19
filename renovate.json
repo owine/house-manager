@@ -29,13 +29,14 @@
   },
   "customManagers": [
     {
-      "description": "Track pinned Alpine apk packages via Repology. IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24). Its test-directory un-ignore lives in the top-level `regex` block, not here — custom managers reject an inline `ignorePaths`.",
+      "description": "Track pinned Alpine apk packages against the Alpine CDN package index via the shared `custom.alpine` datasource (supplied by `github>owine/renovate-config:alpine` — do not define a customDatasources block here). IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24); the preset derives the CDN release-line URL from that prefix, so it is still a one-line edit. The preset points at /main/x86_64/ — a package that lives in the Alpine *community* index needs a per-repo packageRule overriding registryUrls, and is otherwise SILENTLY untracked: no warning, no dashboard entry. Both pins here (curl, postgresql18-client) are main-index packages, verified 2026-08-19. extractVersionTemplate is load-bearing: the html format turns every href in the directory listing into a candidate, and the `\\d` anchor after the package name stops a pin matching a longer sibling (gd vs gd-dev). Its test-directory un-ignore lives in the top-level `regex` block, not here — custom managers reject an inline `ignorePaths`.",
       "customType": "regex",
       "managerFilePatterns": ["/Dockerfile$/"],
       "matchStringsStrategy": "any",
       "matchStrings": ["\\s\\s(?<package>[a-z0-9][a-z0-9-_]+)=(?<currentValue>[a-z0-9-_.]+)\\s+"],
       "versioningTemplate": "loose",
-      "datasourceTemplate": "repology",
+      "datasourceTemplate": "custom.alpine",
+      "extractVersionTemplate": "^{{{package}}}-(?<version>\\d.*)\\.apk$",
       "depNameTemplate": "alpine_3_24/{{package}}"
     },
     {
