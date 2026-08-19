@@ -84,8 +84,12 @@ RUN node scripts/prune-worker-tree.mjs
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
-# apk pins: Alpine 3.24, Renovate-tracked via Repology (see renovate.json —
-# its depNameTemplate carries the alpine major and must move with the base image)
+# apk pins: Alpine 3.24, Renovate-tracked against the Alpine CDN package index
+# via the shared custom.alpine datasource (see renovate.json — its
+# depNameTemplate carries the alpine release line, must move with the base
+# image, and is what the preset derives the CDN URL from). Both packages here
+# live in the /main/ index; a community-index package needs a per-repo
+# registryUrls override or it is silently untracked.
 # postgresql18-client provides pg_dump for the worker's nightly DB backup job
 # (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
 # pgvector:pg18, matched.
