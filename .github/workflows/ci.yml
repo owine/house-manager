@@ -37,7 +37,7 @@ env:
   # the action's `runtime:` input reads `devEngines.runtime` (absent here) or an
   # inline version, and neither keeps the Renovate annotation on NODE_VERSION.
   # renovate: datasource=npm depName=pnpm
-  PNPM_VERSION: 11.21.0
+  PNPM_VERSION: 11.22.0
   # renovate: datasource=node-version depName=node
   NODE_VERSION: 24.19.0
   # Silence the Prisma CLI's "Update available" banner. Not cosmetic:
