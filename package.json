@@ -117,7 +117,7 @@
     "tailwindcss": "4.3.3",
     "testcontainers": "12.1.0",
     "typescript": "7.0.2",
-    "vite": "8.2.1",
+    "vite": "8.2.2",
     "vitest": "4.1.11"
   }
 }
