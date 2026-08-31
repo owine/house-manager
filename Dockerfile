@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.26.0@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
-FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS base
 # renovate: datasource=npm depName=pnpm
 # Must match package.json "packageManager" exactly — otherwise corepack will
 # auto-fetch the package.json-pinned version at container start (which fails
 # with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY in non-TTY runtimes).
-ARG PNPM_VERSION=11.22.0
+ARG PNPM_VERSION=11.24.0
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 WORKDIR /app
 # Set here, not just in the runtime stage: `next build` runs in the build stage
@@ -83,7 +83,7 @@ RUN pnpm prune --prod
 RUN node scripts/prune-worker-tree.mjs
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
-FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS runtime
 # apk pins: Alpine 3.24, Renovate-tracked against the Alpine CDN package index
 # via the shared custom.alpine datasource (see renovate.json — its
 # depNameTemplate carries the alpine release line, must move with the base
