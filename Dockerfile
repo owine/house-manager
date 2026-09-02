@@ -104,7 +104,7 @@ FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de6
 # never loaded. If HEIC input ever breaks, the fix is on the sharp side (check
 # `sharp.format.heif.input.fileSuffix`) — re-adding these will not help.
 RUN apk add --no-cache \
-  curl=8.21.0-r0 \
+  curl=8.22.0-r0 \
   postgresql18-client=18.6-r0
 WORKDIR /app
 ENV NODE_ENV=production
