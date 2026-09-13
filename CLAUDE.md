@@ -252,6 +252,36 @@ Two rules survive the collapse:
   rather than downgrading the `typescript` entry. No first-party code imports that API
   today.
 
+### `.env` is loaded per entry point, never globally
+
+Nothing loads `.env` for the whole process tree. Every entry point does it itself:
+Next.js natively, `tsx --env-file=.env` for the e2e harness, `--env-file-if-exists` for
+`db:seed`, `dotenvFallbacks()` in `vitest.env.ts` for Vitest, and `process.loadEnvFile()`
+at the top of `prisma.config.ts` for the Prisma CLI. **A new entry point must wire itself
+up** — nothing does it for you, and the symptom is never "`.env` wasn't loaded".
+
+Prisma 7 is the sharp one. It stopped loading `.env` automatically, and `env('DATABASE_URL')`
+resolves at config *load* time, so without that line every `db:*` command dies with
+`PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL`.
+
+That regression arrived with the Prisma 6 -> 7 upgrade (`28066ac`, 2026-05-04) — 6 loaded
+`.env` for you — and then hid behind two independent masks:
+
+1. `node_modules/.prisma/client` persists, so nothing re-runs `generate` until something
+   rebuilds `node_modules`.
+2. CI sets `DATABASE_URL` as a **job-level env** in every Prisma job, so CI cannot
+   reproduce it.
+
+It therefore only bites on a fresh clone or after a lockfile-drift auto-install — and it
+bites as the *entire* integration suite failing with `Cannot find module
+'.prisma/client/default'`, with the repair command (`pnpm db:generate`) broken too. If you
+ever see that module error, the cause is env loading, not a corrupt install.
+
+Use `process.loadEnvFile()`, not `dotenv`: `engines.node` is pinned well past the 20.12
+that added it, so the builtin needs no feature check, and it does **not** overwrite
+already-set variables — which is what keeps CI's job env and a one-off
+`DATABASE_URL=… pnpm db:migrate` winning over `.env`.
+
 ### Calendar dates are not instants
 
 This is the repo's most expensive recurring bug class — fifteen bugs, eight fixes. The
@@ -323,7 +353,7 @@ notified (`reminders-tick` filters `kind: 'REMINDER'`), may have zero targets, a
 server-side. Digests intentionally *do* include chores — that asymmetry is by design,
 don't "fix" it with a kind filter.
 
-### `pnpm lint` is three tools, and two of them surprise people
+### `pnpm lint` is four tools, and three of them surprise people
 
 - **`lint:tokens`** (`scripts/lint-css-tokens.mjs`) asserts every `var(--token)` reference
   has a matching definition somewhere in the tree. A typo'd token resolves empty and
@@ -333,7 +363,11 @@ don't "fix" it with a kind filter.
   runs on **pre-push**, not pre-commit, because mid-branch exports are legitimately
   transient. It most often trips on a speculatively-exported schema or a new
   entry-shaped file missing from the `entry` array in `knip.json`. `components/ui/**` is
-  ignored, so unused shadcn primitives are fine.
+  ignored, so unused shadcn primitives are fine. It runs through
+  `scripts/lint-knip.mjs`, which exists because knip treats a **config-load failure as
+  non-fatal** — it prints `ERROR: …` and exits 0, so `pnpm lint` stayed green while a
+  plugin was silently switched off. The wrapper passes knip's own exit code through and
+  fails on those `ERROR:` lines. Don't call `knip` directly in a script.
 
 Never `--no-verify`. If a hook blocks, fix the hook or the issue. Note that `git commit`
 can fail *silently* behind the Biome pre-commit hook — verify HEAD actually moved.
