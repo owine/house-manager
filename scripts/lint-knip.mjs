@@ -16,14 +16,31 @@
 // through; this only *adds* the missing failure mode.
 
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const KNIP_BIN = new URL('../node_modules/.bin/knip', import.meta.url).pathname;
+// `fileURLToPath`, not `URL.pathname`: pathname keeps percent-encoding, so a
+// checkout under a path containing a space resolves to a non-existent
+// `.../My%20Repos/...` and spawn dies with ENOENT. That bites on every OS, not
+// just Windows.
+const KNIP_BIN = fileURLToPath(new URL('../node_modules/.bin/knip', import.meta.url));
+
+// pnpm writes a directly-spawnable symlink on POSIX but a `.cmd` shim on
+// Windows, and a shim only runs through a shell. Everything handed to a shell
+// gets re-parsed, so quote it -- otherwise the space-in-path case above comes
+// straight back in a different disguise.
+const isWindows = process.platform === 'win32';
+const forwarded = process.argv.slice(2);
+const KNIP_COMMAND = isWindows ? `"${KNIP_BIN}.cmd"` : KNIP_BIN;
+const KNIP_ARGS = isWindows ? forwarded.map((a) => `"${a}"`) : forwarded;
 
 // knip writes findings to stdout and these ERROR: lines to stderr. Capture both
 // so the check doesn't depend on which stream knip chose, and re-emit each
 // chunk as it arrives so output stays streaming rather than buffered to the end.
 let combined = '';
-const child = spawn(KNIP_BIN, process.argv.slice(2), { stdio: ['inherit', 'pipe', 'pipe'] });
+const child = spawn(KNIP_COMMAND, KNIP_ARGS, {
+  shell: isWindows,
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
 
 for (const [stream, sink] of [
   [child.stdout, process.stdout],
