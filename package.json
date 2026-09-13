@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check . && pnpm lint:tokens && pnpm lint:worker-graph && pnpm lint:knip",
     "lint:fix": "biome check --write .",
-    "lint:knip": "knip",
+    "lint:knip": "node scripts/lint-knip.mjs",
     "lint:tokens": "node scripts/lint-css-tokens.mjs",
     "lint:worker-graph": "node scripts/lint-worker-runtime-graph.mjs",
     "format": "biome format --write .",
@@ -38,7 +38,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "worker:dev": "tsx worker/index.ts",
     "worker:start": "tsx worker/index.ts"
   },

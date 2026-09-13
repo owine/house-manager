@@ -125,7 +125,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # knip loads prisma.config.ts, which resolves env('DATABASE_URL') at
+      # config *load* time. There is no .env in CI, so without this knip prints
+      # `ERROR: Error loading prisma.config.ts` and runs with its Prisma plugin
+      # switched off. That went unnoticed because knip exits 0 on a config
+      # error; scripts/lint-knip.mjs now fails on it. Nothing here connects --
+      # this is the same load-time placeholder the db:generate steps use.
       - run: pnpm lint
+        env:
+          DATABASE_URL: postgresql://build:build@localhost:5432/build
 
   typecheck:
     runs-on: ubuntu-24.04
