@@ -5,6 +5,7 @@ import {
   setupIntegration,
   teardownIntegration,
   todayCal,
+  waitForMeiliTask,
 } from './helpers';
 
 vi.mock('@/lib/env', () => ({
@@ -43,7 +44,19 @@ beforeEach(async () => {
   await ctx.prisma.part.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.vendor.deleteMany();
-  await ctx.meili.deleteIndex(SEARCH_INDEX_NAME).catch(() => {});
+  // Await the deletion TASK, not merely its enqueue. Index deletion is async
+  // in Meili, so the old fire-and-forget form left a delete of this very index
+  // in flight while the reindex under test ran. Probing the real engine (v1.10
+  // and v1.51, idle and with a jammed scheduler) showed task order is always
+  // preserved and the documents still land, so this was NOT the cause of the
+  // main-branch flakes -- but it did make `deleteAllDocuments` fail with
+  // `index_not_found` on every racing run, and a test that races its own
+  // fixture teardown is not worth keeping regardless.
+  //
+  // Deliberately the raw client call, not waitForMeiliTask: this task legitimately
+  // fails with `index_not_found` when a prior test left no index behind.
+  const deletion = await ctx.meili.deleteIndex(SEARCH_INDEX_NAME);
+  await ctx.meili.tasks.waitForTask(deletion.taskUid);
 });
 
 describe('handleSearchReindex', () => {
@@ -51,7 +64,7 @@ describe('handleSearchReindex', () => {
     const result = await handleSearchReindex();
     expect(result.processed).toBe(0);
     if (result.lastTaskUid !== null) {
-      await ctx.meili.tasks.waitForTask(result.lastTaskUid);
+      await waitForMeiliTask(ctx.meili, result.lastTaskUid);
     }
     const stats = await ctx.meili.index(SEARCH_INDEX_NAME).getStats();
     expect(stats.numberOfDocuments).toBe(0);
@@ -84,7 +97,7 @@ describe('handleSearchReindex', () => {
     const result = await handleSearchReindex();
     expect(result.processed).toBe(6);
     if (result.lastTaskUid !== null) {
-      await ctx.meili.tasks.waitForTask(result.lastTaskUid);
+      await waitForMeiliTask(ctx.meili, result.lastTaskUid);
     }
 
     const stats = await ctx.meili.index(SEARCH_INDEX_NAME).getStats();
@@ -119,7 +132,7 @@ describe('handleSearchReindex', () => {
     });
 
     const result = await handleSearchReindex();
-    if (result.lastTaskUid !== null) await ctx.meili.tasks.waitForTask(result.lastTaskUid);
+    if (result.lastTaskUid !== null) await waitForMeiliTask(ctx.meili, result.lastTaskUid);
     const idx = ctx.meili.index(SEARCH_INDEX_NAME);
 
     // THE assertion this PR exists for: a spec value, not a name.

@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_INDEX_NAME } from '@/lib/search/client';
 import { INDEX_SETTINGS } from '@/lib/search/schema';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  waitForMeiliTask,
+} from './helpers';
 
 vi.mock('@/lib/env', () => ({
   getEnv: vi.fn(() => ({
@@ -28,8 +33,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const idx = ctx.meili.index(SEARCH_INDEX_NAME);
-  await ctx.meili.tasks.waitForTask((await idx.deleteAllDocuments()).taskUid);
-  await ctx.meili.tasks.waitForTask(
+  await waitForMeiliTask(ctx.meili, (await idx.deleteAllDocuments()).taskUid);
+  await waitForMeiliTask(
+    ctx.meili,
     (
       await idx.addDocuments([
         {

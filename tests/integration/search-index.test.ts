@@ -6,6 +6,7 @@ import {
   setupIntegration,
   teardownIntegration,
   todayCal,
+  waitForMeiliTask,
 } from './helpers';
 
 vi.mock('@/lib/env', () => ({
@@ -49,7 +50,7 @@ beforeEach(async () => {
   await ctx.prisma.system.deleteMany();
   await ctx.prisma.vendor.deleteMany();
   const idx = ctx.meili.index(SEARCH_INDEX_NAME);
-  await ctx.meili.tasks.waitForTask((await idx.deleteAllDocuments()).taskUid);
+  await waitForMeiliTask(ctx.meili, (await idx.deleteAllDocuments()).taskUid);
 });
 
 describe('handleSearchIndex', () => {
@@ -58,7 +59,7 @@ describe('handleSearchIndex', () => {
       data: { name: 'Furnace', categoryId },
     });
     const taskUid = await handleSearchIndex({ kind: 'item', id: item.id, op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('furnace');
     expect(res.hits).toHaveLength(1);
     expect(res.hits[0].id).toBe(`item-${item.id}`);
@@ -66,10 +67,12 @@ describe('handleSearchIndex', () => {
 
   it('delete: removes the document', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'Boiler', categoryId } });
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'upsert' }),
     );
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'delete' }),
     );
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('boiler');
@@ -78,7 +81,7 @@ describe('handleSearchIndex', () => {
 
   it('upsert: returns null transform when row was deleted between enqueue and pickup', async () => {
     const taskUid = await handleSearchIndex({ kind: 'item', id: 'nonexistent', op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('anything');
     expect(res.hits).toHaveLength(0);
   });
@@ -93,14 +96,17 @@ describe('handleSearchIndex', () => {
         targets: { create: [{ itemId: item.id, nextDueOn: todayCal() }] },
       },
     });
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'upsert' }),
     );
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'reminder', id: reminder.id, op: 'upsert' }),
     );
     await ctx.prisma.item.update({ where: { id: item.id }, data: { name: 'NewName' } });
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'upsert' }),
     );
     const reminderDoc = await ctx.meili
@@ -125,7 +131,8 @@ describe('handleSearchIndex', () => {
         },
       },
     });
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'service', id: sr.id, op: 'upsert' }),
     );
 
@@ -146,13 +153,16 @@ describe('handleSearchIndex', () => {
         targets: { create: [{ itemId: item.id, nextDueOn: todayCal() }] },
       },
     });
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'upsert' }),
     );
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'reminder', id: reminder.id, op: 'upsert' }),
     );
-    await ctx.meili.tasks.waitForTask(
+    await waitForMeiliTask(
+      ctx.meili,
       await handleSearchIndex({ kind: 'item', id: item.id, op: 'delete' }),
     );
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('r1');

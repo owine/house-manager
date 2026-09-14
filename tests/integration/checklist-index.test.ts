@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_INDEX_NAME } from '@/lib/search/client';
 import { INDEX_SETTINGS } from '@/lib/search/schema';
-import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+import {
+  type IntegrationContext,
+  setupIntegration,
+  teardownIntegration,
+  waitForMeiliTask,
+} from './helpers';
 
 vi.mock('@/lib/env', () => ({
   getEnv: vi.fn(() => ({
@@ -29,7 +34,7 @@ beforeEach(async () => {
   await ctx.prisma.checklistItem.deleteMany();
   await ctx.prisma.checklist.deleteMany();
   const idx = ctx.meili.index(SEARCH_INDEX_NAME);
-  await ctx.meili.tasks.waitForTask((await idx.deleteAllDocuments()).taskUid);
+  await waitForMeiliTask(ctx.meili, (await idx.deleteAllDocuments()).taskUid);
 });
 
 describe('checklist search indexing', () => {
@@ -47,7 +52,7 @@ describe('checklist search indexing', () => {
       },
     });
     const taskUid = await handleSearchIndex({ kind: 'checklist', id: cl.id, op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
 
     const res = await ctx.meili.index(SEARCH_INDEX_NAME).search('sump pump');
     expect(res.hits).toHaveLength(1);
@@ -61,11 +66,11 @@ describe('checklist search indexing', () => {
   it('delete: removes the doc from the index', async () => {
     const cl = await ctx.prisma.checklist.create({ data: { name: 'Deletable' } });
     let taskUid = await handleSearchIndex({ kind: 'checklist', id: cl.id, op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
     expect((await ctx.meili.index(SEARCH_INDEX_NAME).search('Deletable')).hits).toHaveLength(1);
 
     taskUid = await handleSearchIndex({ kind: 'checklist', id: cl.id, op: 'delete' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
     expect((await ctx.meili.index(SEARCH_INDEX_NAME).search('Deletable')).hits).toHaveLength(0);
   });
 
@@ -74,12 +79,12 @@ describe('checklist search indexing', () => {
     // and the worker falls back to deleting the doc.
     const cl = await ctx.prisma.checklist.create({ data: { name: 'Soon gone' } });
     let taskUid = await handleSearchIndex({ kind: 'checklist', id: cl.id, op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
 
     await ctx.prisma.checklistItem.deleteMany({ where: { checklistId: cl.id } });
     await ctx.prisma.checklist.delete({ where: { id: cl.id } });
     taskUid = await handleSearchIndex({ kind: 'checklist', id: cl.id, op: 'upsert' });
-    await ctx.meili.tasks.waitForTask(taskUid);
+    await waitForMeiliTask(ctx.meili, taskUid);
 
     expect((await ctx.meili.index(SEARCH_INDEX_NAME).search('Soon gone')).hits).toHaveLength(0);
   });

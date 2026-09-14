@@ -19,6 +19,10 @@ WORKER="smoke-worker-$$"
 
 # pgvector, NOT plain postgres: the squashed migration does CREATE EXTENSION
 # and `migrate deploy` fails without it. Matches tests/integration/setup.ts.
+# The `renovate:` line is load-bearing, not decoration: no first-party manager
+# parses a shell assignment, so without it this pin is tracked by nothing. See
+# the `annotated image pins` customManager in renovate.json.
+# renovate: datasource=docker depName=pgvector/pgvector
 PG_IMAGE="pgvector/pgvector:pg18"
 
 # Role commands. The image ships no pnpm, and nothing puts node_modules/.bin

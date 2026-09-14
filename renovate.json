@@ -18,7 +18,7 @@
     ]
   },
   "regex": {
-    "description": "Same un-ignore as the `dockerfile` block above, applied to the custom regex manager. NOT redundant with it: managers are separate config namespaces, so un-ignoring test dirs for `dockerfile` does nothing for this one. The Alpine apk manager below matches `/Dockerfile$/`, which also matches tests/e2e/visual.Dockerfile, yet it inherits the preset's `**/tests/**` ignore independently. No live impact today — the visual harness pins no apk packages — but adding one there would be silently untracked, reproducing the #171 -> #323 failure exactly. The key is `regex`, not `custom.regex`: that is the name Renovate's own schema registers this manager under for config scoping, and `ignorePaths` is rejected inline on a customManagers entry. **The two ignorePaths lists must stay in sync** — editing one does not propagate to the other.",
+    "description": "Same un-ignore as the `dockerfile` block above, applied to the custom regex manager. NOT redundant with it: managers are separate config namespaces, so un-ignoring test dirs for `dockerfile` does nothing for this one. The Alpine apk manager below matches `/Dockerfile$/`, which also matches tests/e2e/visual.Dockerfile, yet it inherits the preset's `**/tests/**` ignore independently. No live impact from that particular path today — the visual harness pins no apk packages — but adding one there would be silently untracked, reproducing the #171 -> #323 failure exactly. The key is `regex`, not `custom.regex`: that is the name Renovate's own schema registers this manager under for config scoping, and `ignorePaths` is rejected inline on a customManagers entry. **The two ignorePaths lists must stay in sync** — editing one does not propagate to the other. This block is now load-bearing rather than precautionary: the `annotated image pins` customManager below reads tests/integration/setup.ts, which `**/tests/**` would hide.",
     "ignorePaths": [
       "**/node_modules/**",
       "**/bower_components/**",
@@ -40,6 +40,16 @@
       "depNameTemplate": "alpine_3_24/{{package}}"
     },
     {
+      "description": "`annotated image pins` — tracks container images pinned inside files no first-party manager can parse: a TypeScript constant (tests/integration/setup.ts) and a shell assignment (scripts/smoke-image.sh). Both were completely untracked before this: `getmeili/meilisearch` sat at v1.10 in the integration stack while docker-compose.yml and ci.yml had moved to v1.53, so every integration test validated against a search engine 43 minors behind production and nothing reported it. Same shape as the #171 -> #323 visual.Dockerfile miss, one layer further out. The contract is the `renovate: datasource=… depName=…` comment on the line DIRECTLY above a single quoted `image:tag` literal — move either half and the pin goes silently untracked again, which is why both files carry a comment saying so. Reaching tests/integration/setup.ts also depends on the top-level `regex` ignorePaths block above: without it `:ignoreModulesAndTests`'s `**/tests/**` hides the file from this manager entirely.",
+      "customType": "regex",
+      "managerFilePatterns": ["tests/integration/setup.ts", "scripts/smoke-image.sh"],
+      "matchStringsStrategy": "any",
+      "matchStrings": [
+        "(?://|#) renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n.*?[\"'][^\"':]+:(?<currentValue>[^\"']+)[\"']"
+      ],
+      "versioningTemplate": "docker"
+    },
+    {
       "customType": "jsonata",
       "datasourceTemplate": "npm",
       "depNameTemplate": "@biomejs/biome",
@@ -58,6 +68,18 @@
       "description": "Adds the visual-harness base image to the `playwright` group. THE NPM SIDE IS NOT LISTED HERE ON PURPOSE — do not re-add @playwright/test: `github>owine/renovate-config:node` already groups playwright, playwright-core, @playwright/test and @axe-core/playwright under this exact group name (owine/renovate-config#92), and identical group names merge rather than conflict. That preset rule is `matchDatasources: [npm]`-scoped, so it structurally cannot reach a docker image; pulling mcr.microsoft.com/playwright in is the entire remaining job of this rule. The coupling it encodes is real but repo-local: tests/e2e/visual.Dockerfile pins `mcr.microsoft.com/playwright:vX.Y.Z-noble` and the container fails at browser launch with `Executable doesn't exist` if the image and the npm client bump separately (#324, #325). Load-bearing detail: `github>owine/renovate-config:docker` -> `dockerfile bases` is matchManagers:[dockerfile] with an ALL-NEGATIVE package list, so it matches this image too — this rule wins only because a consumer's own packageRules are appended after everything from `extends` and the last matching rule sets groupName. Move it into a preset, or otherwise lose that ordering, and the image silently drifts into `dockerfile bases` while the npm client stays here. Note @axe-core/playwright now rides this group via the preset; the earlier local rule deliberately excluded it, and #92 reversed that call upstream because it peers on playwright-core.",
       "matchPackageNames": ["mcr.microsoft.com/playwright"],
       "groupName": "playwright"
+    },
+    {
+      "description": "Move every Meilisearch pin in one PR. The engine is pinned in three places under three different managers — docker-compose.yml (docker-compose), .github/workflows/ci.yml service containers (github-actions), and tests/integration/setup.ts (the `annotated image pins` customManager above) — and nothing upstream groups across managers, so left alone they bump in separate PRs and drift. That drift is not hypothetical: the integration stack sat on v1.10 against a v1.53 production for months. Identical reasoning to the `playwright` group directly above, where an image and its client bumping separately produced #324/#325. This rule is deliberately NOT update-type-scoped: a Meili major is exactly the case where all three must move together.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["getmeili/meilisearch"],
+      "groupName": "meilisearch"
+    },
+    {
+      "description": "Same lockstep as the `meilisearch` group above, for Postgres. Pinned in four places across three managers: docker-compose.yml, ci.yml service containers, tests/integration/setup.ts and scripts/smoke-image.sh. It must be pgvector/pgvector rather than plain postgres — the squashed migration runs CREATE EXTENSION vector and `migrate deploy` fails without it — so a bump landing in only some of the four means the smoke test or the integration suite runs a different major than production.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["pgvector/pgvector"],
+      "groupName": "postgres"
     }
   ]
 }
