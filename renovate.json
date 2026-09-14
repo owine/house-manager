@@ -55,8 +55,8 @@
       "groupName": "gitguardian"
     },
     {
-      "description": "The Playwright npm client and the visual-harness base image must stay version-consistent — a mismatch makes the container fail at browser launch with 'Executable doesn't exist'. Deliberately excludes @axe-core/playwright, which versions independently.",
-      "matchPackageNames": ["@playwright/test", "mcr.microsoft.com/playwright"],
+      "description": "Adds the visual-harness base image to the `playwright` group. THE NPM SIDE IS NOT LISTED HERE ON PURPOSE — do not re-add @playwright/test: `github>owine/renovate-config:node` already groups playwright, playwright-core, @playwright/test and @axe-core/playwright under this exact group name (owine/renovate-config#92), and identical group names merge rather than conflict. That preset rule is `matchDatasources: [npm]`-scoped, so it structurally cannot reach a docker image; pulling mcr.microsoft.com/playwright in is the entire remaining job of this rule. The coupling it encodes is real but repo-local: tests/e2e/visual.Dockerfile pins `mcr.microsoft.com/playwright:vX.Y.Z-noble` and the container fails at browser launch with `Executable doesn't exist` if the image and the npm client bump separately (#324, #325). Load-bearing detail: `github>owine/renovate-config:docker` -> `dockerfile bases` is matchManagers:[dockerfile] with an ALL-NEGATIVE package list, so it matches this image too — this rule wins only because a consumer's own packageRules are appended after everything from `extends` and the last matching rule sets groupName. Move it into a preset, or otherwise lose that ordering, and the image silently drifts into `dockerfile bases` while the npm client stays here. Note @axe-core/playwright now rides this group via the preset; the earlier local rule deliberately excluded it, and #92 reversed that call upstream because it peers on playwright-core.",
+      "matchPackageNames": ["mcr.microsoft.com/playwright"],
       "groupName": "playwright"
     }
   ]
