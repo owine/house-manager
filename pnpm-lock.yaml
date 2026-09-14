@@ -609,15 +609,15 @@ packages:
     resolution: {integrity: sha512-gLNsunvwf3mCi5u5o46/Z/JcJMnhbHSaZ69rkgPzNM3J4s8hWwpPUQB6/tt0EDFyCiWzxANlx+2LJwpYj4zS1w==}
     engines: {node: '>=20.19.0'}
 
-  '@csstools/css-calc@3.3.0':
-    resolution: {integrity: sha512-c5ihYsPkdG6JCkU2zTMm4+k6r7RXuGxtWYhu5DHMIiF1FHzrfmHL5so11AoFpUv/tu61xfcmT4AmKoFfMPoqdQ==}
+  '@csstools/css-calc@3.4.0':
+    resolution: {integrity: sha512-XQKj5B7QiZcHiegCOCAzcAOJdhGgWOHbbu62h5e5mkHnn8lWcfiJhllkqWmxu5zWR9jucPHuo1iTB56P033hcg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-color-parser@4.2.2':
-    resolution: {integrity: sha512-3QKjR/vxyjcSXBLgb6lP0S3MGdvwbmqSsvLPbYdVORqPDc8FX1HAJ0Spk38bxaRXgvENTA47tlhhbb5Z2e8hEg==}
+  '@csstools/css-color-parser@4.2.3':
+    resolution: {integrity: sha512-y4LpL+lmpuyKDiEFq2PnZUVFdAjsoB/qQJod79yLNokXyW7jewi+/WJ69EfItj8A2unWtxXnGjw6LYXgXu5ZjA==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
@@ -2360,8 +2360,8 @@ packages:
   '@ts-morph/common@0.27.0':
     resolution: {integrity: sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ==}
 
-  '@tybys/wasm-util@0.10.3':
-    resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
+  '@tybys/wasm-util@0.10.4':
+    resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
 
   '@types/aria-query@5.0.4':
     resolution: {integrity: sha512-rfT93uj5s0PRL7EzccGMs3brplhcrghnDoV26NqKhCAS1hVo+WdNsPvE/yb6ilfr5hi2MEk6d5EWJTKdxg8jVw==}
@@ -2454,9 +2454,6 @@ packages:
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
     peerDependencies:
       '@types/react': ^19.3.0
-
-  '@types/react@19.2.18':
-    resolution: {integrity: sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==}
 
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
@@ -6071,8 +6068,8 @@ snapshots:
 
   '@asamuzakjp/css-color@6.0.7':
     dependencies:
-      '@csstools/css-calc': 3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-color-parser': 4.2.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-calc': 3.4.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-color-parser': 4.2.3(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
       lru-cache: 11.5.2
@@ -6364,15 +6361,15 @@ snapshots:
 
   '@csstools/color-helpers@6.1.1': {}
 
-  '@csstools/css-calc@3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-calc@3.4.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-color-parser@4.2.2(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-color-parser@4.2.3(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/color-helpers': 6.1.1
-      '@csstools/css-calc': 3.3.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-calc': 3.4.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
@@ -6795,7 +6792,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.2
       '@emnapi/runtime': 1.11.2
-      '@tybys/wasm-util': 0.10.3
+      '@tybys/wasm-util': 0.10.4
     optional: true
 
   '@next/env@16.3.4': {}
@@ -7698,7 +7695,7 @@ snapshots:
       minimatch: 10.2.6
       path-browserify: 1.0.1
 
-  '@tybys/wasm-util@0.10.3':
+  '@tybys/wasm-util@0.10.4':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -7801,10 +7798,6 @@ snapshots:
     dependencies:
       '@types/react': 19.3.0
 
-  '@types/react@19.2.18':
-    dependencies:
-      csstype: 3.2.3
-
   '@types/react@19.3.0':
     dependencies:
       csstype: 3.2.3
@@ -7900,12 +7893,12 @@ snapshots:
 
   '@visx/event@4.0.1-alpha.0':
     dependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
       '@visx/point': 4.0.1-alpha.0
 
   '@visx/grid@4.0.1-alpha.0(react@19.3.0)':
     dependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
       '@visx/curve': 4.0.1-alpha.0
       '@visx/group': 4.0.1-alpha.0(react@19.3.0)
       '@visx/point': 4.0.1-alpha.0
@@ -7916,7 +7909,7 @@ snapshots:
 
   '@visx/group@4.0.1-alpha.0(react@19.3.0)':
     dependencies:
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
       classnames: 2.5.1
       react: 19.3.0
 
@@ -7925,7 +7918,7 @@ snapshots:
   '@visx/responsive@4.0.1-alpha.0(react@19.3.0)':
     dependencies:
       '@types/lodash': 4.17.25
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
       lodash: 4.18.1
       react: 19.3.0
 
@@ -7936,7 +7929,7 @@ snapshots:
   '@visx/shape@4.0.1-alpha.0(react@19.3.0)':
     dependencies:
       '@types/lodash': 4.17.25
-      '@types/react': 19.2.18
+      '@types/react': 19.3.0
       '@visx/curve': 4.0.1-alpha.0
       '@visx/group': 4.0.1-alpha.0(react@19.3.0)
       '@visx/scale': 4.0.1-alpha.0
