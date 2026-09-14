@@ -19,7 +19,7 @@ import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 // renovate: datasource=docker depName=pgvector/pgvector
 const POSTGRES_IMAGE = 'pgvector/pgvector:pg18';
 // renovate: datasource=docker depName=getmeili/meilisearch
-const MEILI_IMAGE = 'getmeili/meilisearch:v1.10';
+const MEILI_IMAGE = 'getmeili/meilisearch:v1.53';
 
 export type TestStack = {
   postgres: StartedPostgreSqlContainer;
