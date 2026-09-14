@@ -30,8 +30,35 @@ function createTestPrismaClient(adapter: PrismaPg) {
   return applyPrismaExtensions(new PrismaClient({ adapter }));
 }
 
-import { Meilisearch } from 'meilisearch';
+import { Meilisearch, type Task } from 'meilisearch';
 import { startStack, stopStack, type TestStack } from './setup';
+
+/**
+ * Wait for a Meilisearch task AND assert it succeeded.
+ *
+ * Always use this instead of `meili.tasks.waitForTask` directly. The client's
+ * `waitForTask` resolves for a task in ANY terminal state -- a `failed` task
+ * comes back exactly like a `succeeded` one, and it only throws on its own
+ * 5s timeout. A caller that ignores the return value therefore cannot tell
+ * "the engine indexed my documents" from "the engine rejected them", and the
+ * failure surfaces one line later as a content assertion on an empty index:
+ * `expected +0 to be 6`, `expected [] to include 'part-…'`. Both of those
+ * flaked on main (runs 34751352721 and 34859283578) with the task's own
+ * `error.code` -- the only thing that names the cause -- fetched, returned and
+ * thrown away.
+ *
+ * This does not make a flake less likely; it makes the next one legible.
+ */
+export async function waitForMeiliTask(meili: Meilisearch, taskUid: number): Promise<Task> {
+  const task = await meili.tasks.waitForTask(taskUid);
+  if (task.status !== 'succeeded') {
+    throw new Error(
+      `Meilisearch task ${taskUid} (${task.type}) ended as "${task.status}": ` +
+        `${task.error?.code ?? '<no error code>'} - ${task.error?.message ?? '<no message>'}`,
+    );
+  }
+  return task;
+}
 
 export type IntegrationContext = {
   stack: TestStack;
