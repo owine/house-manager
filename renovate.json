@@ -29,17 +29,6 @@
   },
   "customManagers": [
     {
-      "description": "Track pinned Alpine apk packages against the Alpine CDN package index via the shared `custom.alpine` datasource (supplied by `github>owine/renovate-config:alpine` — do not define a customDatasources block here). IMPORTANT: bump alpine version in depNameTemplate when the base image changes (e.g. alpine_3_23 -> alpine_3_24); the preset derives the CDN release-line URL from that prefix, so it is still a one-line edit. The preset points at /main/x86_64/ — a package that lives in the Alpine *community* index needs a per-repo packageRule overriding registryUrls, and is otherwise SILENTLY untracked: no warning, no dashboard entry. Both pins here (curl, postgresql18-client) are main-index packages, verified 2026-08-19. extractVersionTemplate is load-bearing: the html format turns every href in the directory listing into a candidate, and the `\\d` anchor after the package name stops a pin matching a longer sibling (gd vs gd-dev). Its test-directory un-ignore lives in the top-level `regex` block, not here — custom managers reject an inline `ignorePaths`.",
-      "customType": "regex",
-      "managerFilePatterns": ["/Dockerfile$/"],
-      "matchStringsStrategy": "any",
-      "matchStrings": ["\\s\\s(?<package>[a-z0-9][a-z0-9-_]+)=(?<currentValue>[a-z0-9-_.]+)\\s+"],
-      "versioningTemplate": "loose",
-      "datasourceTemplate": "custom.alpine",
-      "extractVersionTemplate": "^{{{package}}}-(?<version>\\d.*)\\.apk$",
-      "depNameTemplate": "alpine_3_24/{{package}}"
-    },
-    {
       "description": "`annotated image pins` — tracks container images pinned inside files no first-party manager can parse: a TypeScript constant (tests/integration/setup.ts) and a shell assignment (scripts/smoke-image.sh). Both were completely untracked before this: `getmeili/meilisearch` sat at v1.10 in the integration stack while docker-compose.yml and ci.yml had moved to v1.53, so every integration test validated against a search engine 43 minors behind production and nothing reported it. Same shape as the #171 -> #323 visual.Dockerfile miss, one layer further out. The contract is the `renovate: datasource=… depName=…` comment on the line DIRECTLY above a single quoted `image:tag` literal — move either half and the pin goes silently untracked again, which is why both files carry a comment saying so. Reaching tests/integration/setup.ts also depends on the top-level `regex` ignorePaths block above: without it `:ignoreModulesAndTests`'s `**/tests/**` hides the file from this manager entirely.",
       "customType": "regex",
       "managerFilePatterns": ["tests/integration/setup.ts", "scripts/smoke-image.sh"],
@@ -59,6 +48,13 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "Alpine apk pins are extracted by Renovate's built-in dockerfile manager (>= 44.97.1) as datasource `apk`; the :alpine preset supplies the grouping, rangeStrategy and automerge posture but stays release-line agnostic, so this URL is the ONE place the Alpine release line is written. Bump `branch=v3.24` when the base image crosses a release line (3.24 -> 3.25). `components=main,community` merges both indexes in a single lookup (registryStrategy 'merge'), so community packages need no separate registryUrls override.",
+      "matchDatasources": ["apk"],
+      "registryUrls": [
+        "https://dl-cdn.alpinelinux.org/alpine?branch=v3.24&components=main,community&arch=x86_64"
+      ]
+    },
     {
       "description": "GitGuardian (action + ggshield CLI) must stay version-consistent",
       "matchPackageNames": ["GitGuardian/ggshield-action", "ggshield"],
