@@ -474,12 +474,20 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      # These runner labels are INVISIBLE to Renovate: its github-actions manager
-      # only extracts literal `runs-on:` values and does not traverse
-      # strategy.matrix.include[]. Bump them by hand alongside every Renovate
-      # runner-image PR — a half-migrated matrix builds amd64 and arm64 on
-      # different Ubuntu releases and stays GREEN, because both images work and
-      # nothing flags the mismatch. Confirmed in doc-scanner#209.
+      # Renovate's built-in github-actions manager CANNOT see these labels: it
+      # reads `runs-on:` off parsed YAML, where this job's value is the literal
+      # string `${{ matrix.runner }}` with no version in it. Left untracked that
+      # fails GREEN — amd64 and arm64 build on different Ubuntu releases, both
+      # runner images work, and nothing flags the mismatch (doc-scanner#209; here
+      # #481 bumped 12 literal `runs-on:` values and left these two behind).
+      # They are now tracked by a second `github-runners` customManager in the
+      # shared preset (owine/renovate-config#103), which keys on the `runner:`
+      # key and lands them in the SAME PR as the literal values. So do not bump
+      # by hand — but keep the shape: one line per label, `runner: <os>-<ver>`,
+      # version first character a digit, suffix included (`26.04-arm` is its own
+      # datasource version, not `26.04` decorated). Moving a label behind an env
+      # var, renaming the key, or splitting it across lines makes it untracked
+      # again, silently and with no error anywhere.
       matrix:
         include:
           - platform: linux/amd64
