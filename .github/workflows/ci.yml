@@ -474,12 +474,18 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
+      # These runner labels are INVISIBLE to Renovate: its github-actions manager
+      # only extracts literal `runs-on:` values and does not traverse
+      # strategy.matrix.include[]. Bump them by hand alongside every Renovate
+      # runner-image PR — a half-migrated matrix builds amd64 and arm64 on
+      # different Ubuntu releases and stays GREEN, because both images work and
+      # nothing flags the mismatch. Confirmed in doc-scanner#209.
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
