@@ -43,13 +43,35 @@ env:
 #     version is declared in `devEngines.runtime` -- adding one to package.json
 #     would silently take precedence over .nvmrc, so pass `node-version-file`
 #     explicitly here if that ever changes.
-# The two inputs that ARE set are both non-default:
-#   - `cache: true` -- v3 caches the pnpm store itself, keyed on the lockfile
-#     hash. This was left off under v2 because setup-node's `cache: pnpm` did
-#     it; setup-node is gone, so there is no second cache to collide with.
-#   - `require-lockfile: true` -- runs the install with `--frozen-lockfile`,
-#     and fails outright if pnpm-lock.yaml is missing rather than resolving
-#     from the registry, writing a fresh lockfile and exiting 0.
+# `require-lockfile: true` is the ONLY input set, and it is non-default: it
+# runs the install with `--frozen-lockfile`, and fails outright if
+# pnpm-lock.yaml is missing rather than resolving from the registry, writing a
+# fresh lockfile and exiting 0. That missing-lockfile failure is the load-
+# bearing half -- pnpm already refuses to update an existing lockfile under CI.
+#
+# `cache` is deliberately LEFT AT ITS DEFAULT OF false, i.e. the pnpm store is
+# not cached at all. It was on for exactly one merge (#487) and measured worse
+# than no cache. Per job, from the run logs:
+#   warm (prefix hit):  6.8-8.2s restore + 6.5s install = 13.3-14.7s
+#   cold (no store):                      16.2-16.7s    = 16.2-16.7s
+# The store only saves the *download*; pnpm still links all ~1026 packages into
+# node_modules either way, and pulling 385MB back out of the Actions cache costs
+# about as much as fetching them from the registry. So it buys 2-3s per job --
+# ~3s of critical path, since the jobs are parallel.
+#
+# What it cost was the whole repo's cache quota. v3 appends
+# `-<runId>-<attempt>-<uuid>` to the save key, so the exact key can NEVER match:
+# every restore is a prefix fallback and all eight jobs unconditionally save
+# their own ~385MB copy. That is 3.23GB written per run against a 10GB
+# repository-wide ceiling shared with BuildKit, which is what put the pool into
+# permanent LRU eviction (12.55GB / 142 entries before this was unwound).
+#
+# The tiny `pnpm-lockfile-verified-*` cache (607 B) is unaffected -- v3 saves
+# and restores it regardless of the `cache` input, and it is the one key here
+# that actually exact-hits.
+#
+# If you turn `cache: true` back on, turn it on for ONE job, not eight, and
+# re-read the numbers above first.
 
 jobs:
   # Detect whether any image-affecting paths changed. Used to gate the
@@ -120,7 +142,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       # knip loads prisma.config.ts, which resolves env('DATABASE_URL') at
       # config *load* time. There is no .env in CI, so without this knip prints
@@ -138,7 +159,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
         env:
@@ -166,7 +186,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
       - name: Apply committed migrations to a fresh DB
@@ -197,7 +216,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
         env:
@@ -228,7 +246,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
         env:
@@ -305,7 +322,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
       - run: pnpm db:deploy
@@ -373,7 +389,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       - run: pnpm db:generate
       - run: pnpm db:deploy
@@ -399,7 +414,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          cache: true
           require-lockfile: true
       # Both artifacts land flat in .vitest-reports/ (each is a single
       # blob-*.json), which is the directory `--merge-reports` reads.
@@ -469,6 +483,31 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+      # NO `cache-from`/`cache-to: type=gha` here, deliberately. It was
+      # `mode=max` until this was measured, and the export cost more than the
+      # import ever returned. `COPY . .` (Dockerfile:27) sits in the `build`
+      # stage above every expensive step, and `.github/` is not in
+      # .dockerignore, so essentially every commit -- including workflow-only
+      # ones -- invalidates it. Only `base` and `deps` (Dockerfile:3-22) can
+      # survive a run, and the amd64 numbers say even that is noise:
+      #
+      #   run           change            step   gha export   net build   deps
+      #   34882853997   next 16.3.5       272s      155.9s       116s    REBUILT
+      #   34919347550   react-hook-form   342s      220.7s       121s    REBUILT
+      #   35245802272   Alpine apk pins   183s       73.9s       109s    CACHED
+      #   35450895233   ci.yml only       140s       38.0s       102s    CACHED
+      #   35548033635   ci.yml only       190s       73.4s       117s    CACHED
+      #   35548752591   lockfile          302s      186.1s       116s    REBUILT
+      #
+      # Net build work is 102-121s whether the deps layer hit or not, so the
+      # import bought <=15s. The export cost 38-221s per platform leg per run
+      # (62% of the #488 amd64 step) and was 5.55GB of the repo's 10GB cache
+      # quota. `mode=min` does not rescue it: it would export the runtime
+      # stage's layers, which are `COPY --from=build` of a stage that just
+      # rebuilt, so it pays an export for an import that cannot hit either.
+      #
+      # If you reinstate this, re-measure `exporting to GitHub Actions Cache`
+      # against `net build` -- a green run proves nothing about either.
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -482,13 +521,12 @@ jobs:
           # downstream consumes the digest. On PRs: build to verify the
           # Dockerfile + bundle works, but don't push (no GHCR pollution).
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
-          cache-from: type=gha,scope=${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
       # The build above uses an explicit `outputs:` with push-by-digest, so the
       # image is never tagged locally and `load: true` is not a drop-in. This
       # second invocation runs against the same buildx builder in the same job,
-      # so every layer is already in buildkit's local cache and nothing is
-      # recompiled (cache-from is belt-and-braces). The cost is the `load`
+      # so every layer is already in buildkit's LOCAL cache and nothing is
+      # recompiled -- verified in the logs, which show all 28 steps CACHED in
+      # 8-11s. That is why it needs no `cache-from`. The cost is the `load`
       # export of the image into the docker daemon, which is minutes, not
       # seconds — hence the timeout below.
       - name: Load image locally for smoke test
@@ -501,7 +539,6 @@ jobs:
             GIT_SHA=${{ github.sha }}
           load: true
           tags: house-manager:smoke
-          cache-from: type=gha,scope=${{ matrix.platform }}
       # Boots both roles from the image that was actually built. Guards the
       # standalone bundle and (in the follow-up PR) the pruned worker tree.
       - name: Smoke test the image

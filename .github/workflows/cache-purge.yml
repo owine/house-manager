@@ -1,0 +1,52 @@
+name: Cache purge
+
+# A merged or closed PR's caches are written under `refs/pull/<n>/merge`, which
+# nothing can ever restore from again: a branch only reads its own ref and its
+# base. They still count against the repository-wide 10GB Actions cache quota
+# until LRU gets to them, so in the meantime they evict LIVE caches on main.
+#
+# This is insurance, not the fix. The 12.55GB / 142-entry overflow that prompted
+# it was mostly self-inflicted by main's own jobs (see the `cache` discussion
+# above `jobs:` in ci.yml, and the BuildKit block in build-image); at the time
+# it was measured a manual sweep of this same scope reclaimed 4.78GB across 47
+# dead entries. Keeping the sweep automatic means the headroom those two changes
+# bought does not quietly get spent again by merged PRs.
+
+on:
+  pull_request:
+    types: [closed]
+
+# Never let two closes race the same listing.
+concurrency:
+  group: cache-purge-${{ github.event.number }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+
+jobs:
+  purge:
+    # A `pull_request` event from a fork gets a read-only GITHUB_TOKEN, so
+    # `actions: write` above is not granted and the delete would 403. Skip
+    # rather than fail; a fork's caches are scoped to the fork anyway.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Delete caches scoped to this PR's merge ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.number }}/merge
+        run: |
+          set -euo pipefail
+          # `gh cache delete --all` exits 1 with "no caches to delete" when the
+          # ref is already clean, which is the common case for a docs-only PR.
+          # That is success here, so match it rather than blanket `|| true` --
+          # a real permissions or API failure must still fail the job.
+          if out=$(gh cache delete --all --ref "$REF" 2>&1); then
+            echo "$out"
+          else
+            echo "$out"
+            echo "$out" | grep -qi 'no caches' || exit 1
+          fi
+          gh cache list --ref "$REF" --limit 100
