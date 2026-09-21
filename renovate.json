@@ -76,6 +76,12 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["pgvector/pgvector"],
       "groupName": "postgres"
+    },
+    {
+      "description": "NEVER pin a digest onto an image tracked by the `annotated image pins` customManager above. Its matchStrings capture `currentValue` only, so a TypeScript constant (`'getmeili/meilisearch:v1.53'`) and a shell assignment have nowhere to put a sha256: auto-replace rewrites the value, asserts the result contains newDigest, fails that assert, and hard-errors the WHOLE branch. Both the `meilisearch` and `postgres` groups above sat under Errored on the Dependency Dashboard for exactly this reason, even though their docker-compose.yml and ci.yml halves would have applied fine -- a grouped branch fails as a unit. Confirmed in the Mend log for run 0843b6d5: `manager=regex packageFile=tests/integration/setup.ts msg=\"Digest is not updated\"` immediately followed by `Error updating branch: update failure`, on both branches. IDENTICAL SHAPE to the `uses-with` carve-out in github>owine/renovate-config default.json -- same failed assert, different manager -- so read that rule's description for the full mechanism. NO DIGEST COVERAGE IS LOST: ci.yml service containers stay digest-pinned (github-actions manager, pinDigests true), and docker-compose.yml is digest-free BY DESIGN per the preset's docker-compose rule (\"keeps compose files readable for humans editing them by hand\"). This customManager exists to stop VERSION drift -- the integration stack sat on v1.10 against a v1.53 production -- not to provide immutability. Scoped to the manager + docker datasource rather than to the two package names so a third annotated image pin added later cannot reintroduce the failure. If a second repo adopts annotated image pins, promote this to the shared preset rather than copying it.",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
     }
   ]
 }
