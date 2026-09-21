@@ -19,27 +19,6 @@ env:
   # to Intl, so this is hygiene, not a guard for that class. See
   # docs/superpowers/plans/2026-07-14-calendar-date-vs-instant.md.
   TZ: America/Chicago
-  # Kept in lockstep with package.json `packageManager`/`engines`, .nvmrc,
-  # and Dockerfile via Renovate (see renovate.json customManagers + the
-  # toolchain-versions packageRule).
-  # Consumed by the eight `pnpm/setup` steps below, which are deliberately
-  # byte-identical -- edit one, edit all. Two of their inputs are load-bearing
-  # and non-obvious:
-  #   - `install: false` -- the action's `install` input defaults to TRUE. Left
-  #     unset it runs a full cold-cache `pnpm install` before setup-node has
-  #     restored the store, and then every job's explicit
-  #     `pnpm install --frozen-lockfile` runs anyway. Two installs, eight jobs.
-  #   - `cache` is left at its default (false) -- `actions/setup-node`'s
-  #     `cache: pnpm` already caches the store. Enabling both double-caches it.
-  # `standalone: true` from action-setup@v6 has no successor input: fetching
-  # pnpm's native per-platform binary is the only thing setup@v2 does, which is
-  # also why it requires pnpm >= 11. setup-node stays for the runtime, because
-  # the action's `runtime:` input reads `devEngines.runtime` (absent here) or an
-  # inline version, and neither keeps the Renovate annotation on NODE_VERSION.
-  # renovate: datasource=npm depName=pnpm
-  PNPM_VERSION: 12.4.1
-  # renovate: datasource=node-version depName=node
-  NODE_VERSION: 24.21.0
   # Silence the Prisma CLI's "Update available" banner. Not cosmetic:
   # `migrate-check` captures stderr (`2>&1`) into the variable it greps for
   # schema drift, and the banner isn't in that step's allow-list, so it lands
@@ -48,6 +27,29 @@ env:
   # failure, not an obvious one. Workflow-wide because unit/integration/e2e
   # shell out to Prisma too.
   PRISMA_HIDE_UPDATE_MESSAGE: 'true'
+
+# The eight `pnpm/setup` steps below are deliberately byte-identical -- edit
+# one, edit all. Each replaces what used to be a trio (pnpm/setup +
+# actions/setup-node + an explicit `pnpm install --frozen-lockfile`): v3
+# installs the JS runtime and runs the install itself.
+#
+# Nothing is version-pinned in this file any more, and that is the point --
+# every version now comes from a file Renovate's `toolchain-versions` group
+# already tracks in one PR (.nvmrc, package.json, Dockerfile; see #468):
+#   - pnpm comes from package.json `packageManager`, which v3 reads when the
+#     `version` input is omitted.
+#   - Node comes from .nvmrc, which v3 auto-detects (it checks `.node-version`,
+#     `.nvmrc`, then `.tool-versions`). That detection only runs while no Node
+#     version is declared in `devEngines.runtime` -- adding one to package.json
+#     would silently take precedence over .nvmrc, so pass `node-version-file`
+#     explicitly here if that ever changes.
+# The two inputs that ARE set are both non-default:
+#   - `cache: true` -- v3 caches the pnpm store itself, keyed on the lockfile
+#     hash. This was left off under v2 because setup-node's `cache: pnpm` did
+#     it; setup-node is gone, so there is no second cache to collide with.
+#   - `require-lockfile: true` -- runs the install with `--frozen-lockfile`,
+#     and fails outright if pnpm-lock.yaml is missing rather than resolving
+#     from the registry, writing a fresh lockfile and exiting 0.
 
 jobs:
   # Detect whether any image-affecting paths changed. Used to gate the
@@ -116,15 +118,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       # knip loads prisma.config.ts, which resolves env('DATABASE_URL') at
       # config *load* time. There is no .env in CI, so without this knip prints
       # `ERROR: Error loading prisma.config.ts` and runs with its Prisma plugin
@@ -139,15 +136,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
@@ -172,15 +164,10 @@ jobs:
       DATABASE_URL: postgresql://housemanager:test@localhost:5432/housemanager
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
       - name: Apply committed migrations to a fresh DB
         run: pnpm db:deploy
@@ -208,15 +195,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
@@ -244,15 +226,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
@@ -326,15 +303,10 @@ jobs:
       WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm db:seed
@@ -399,15 +371,10 @@ jobs:
       WORKER_HEALTH_PORT: '3001'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm db:seed
@@ -430,15 +397,10 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          version: ${{ env.PNPM_VERSION }}
-          install: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache: true
+          require-lockfile: true
       # Both artifacts land flat in .vitest-reports/ (each is a single
       # blob-*.json), which is the directory `--merge-reports` reads.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
