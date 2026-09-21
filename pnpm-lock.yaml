@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: 0.126.0
-        version: 0.126.0(zod@4.6.5)
+        specifier: 0.127.0
+        version: 0.127.0(zod@4.6.5)
       '@auth/prisma-adapter':
         specifier: 2.11.3
         version: 2.11.3(@prisma/client@7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2))(typescript@7.0.2))
@@ -242,8 +242,8 @@ importers:
         specifier: 8.23.0
         version: 8.23.0
       pg-boss:
-        specifier: 12.33.1
-        version: 12.33.1
+        specifier: 12.33.2
+        version: 12.33.2
       pino:
         specifier: 10.3.1
         version: 10.3.1
@@ -390,8 +390,8 @@ packages:
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
     engines: {node: '>=10'}
 
-  '@anthropic-ai/sdk@0.126.0':
-    resolution: {integrity: sha512-VhiZl6rA/8uC+MgDaOhEcAWaIZ2tPnIY885jlZqxrGrutUW2nqCtophBtlsX0tk5kChBUjV/1NVjL3y0M4OwUg==}
+  '@anthropic-ai/sdk@0.127.0':
+    resolution: {integrity: sha512-OKiVbG9LHCxjn4fBJZJFy/Bz3hqE1RYpwaeSEDNheQnvz0XNKmGT/Lhkz2Sf1a27Ldt3vVv+BkU81I0U/8EpoQ==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -4921,8 +4921,8 @@ packages:
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
 
-  pg-boss@12.33.1:
-    resolution: {integrity: sha512-u0DdaO4DsDV2TeuOeie2pXxmoYmO84CRlAX/7AEdzpf3y+NOEjt+As714UmzaCNTgnKdcvLItnN9AZklsjzOLQ==}
+  pg-boss@12.33.2:
+    resolution: {integrity: sha512-45Tdl1I0UxwDY6XxdFvB5H8QdB3FEKeiTOBrnj7/RznhX4yRTPk5shI+FjfrO4fWZVdTimrc5bulsoPaeCeu2w==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -6081,7 +6081,7 @@ snapshots:
 
   '@alloc/quick-lru@5.3.0': {}
 
-  '@anthropic-ai/sdk@0.126.0(zod@4.6.5)':
+  '@anthropic-ai/sdk@0.127.0(zod@4.6.5)':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.1.1
@@ -9301,7 +9301,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -10299,7 +10299,7 @@ snapshots:
 
   perfect-debounce@2.1.0: {}
 
-  pg-boss@12.33.1:
+  pg-boss@12.33.2:
     dependencies:
       cron-parser: 5.10.1
       pg: 8.23.0
