@@ -5,7 +5,7 @@ FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c
 # Must match package.json "packageManager" exactly — otherwise corepack will
 # auto-fetch the package.json-pinned version at container start (which fails
 # with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY in non-TTY runtimes).
-ARG PNPM_VERSION=12.4.2
+ARG PNPM_VERSION=12.5.1
 RUN corepack enable && corepack prepare pnpm@$PNPM_VERSION --activate
 WORKDIR /app
 # Set here, not just in the runtime stage: `next build` runs in the build stage
