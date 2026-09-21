@@ -62,16 +62,32 @@ env:
 #   35550800091   cache OFF              30.5s        47s       1s      245s
 #   35551289209   cache OFF              25.2s        32s       3s      205s
 #
-# So turning it off costs +48 to +88s per run across eight PARALLEL jobs. The
-# critical path moves much less: it is bounded by the slowest setup, 19s -> 32s,
-# and that lands on lint/typecheck, not on the long poles (a11y and integration
-# are ~280s and dwarf it). Total billed time per run still FELL, because
-# removing the BuildKit export (see build-image) saves far more than this costs:
-# 1644s -> 1342s, and wall clock 706s -> 545s.
+# Read that against the WARM row (157s), which is the steady state a working
+# cache gives you: turning it off costs +48 to +88s per run across eight
+# PARALLEL jobs. Do not read it against the cold row -- 35548033635 is the
+# first run after #487 enabled the cache, so it paid a full install AND a full
+# 385MB save with nothing to restore. It is the worst of both and beats one
+# cache-off run by 14s; it is not a baseline for anything.
 #
-# Do not trust a two-job sample here; the first pass at this measured 2-3s from
-# one, which is roughly 6x off. The spread across eight jobs is wide (15.9-43.6s
-# for the same work) because eight cold installs hit the npm registry at once.
+# The critical path moves less than the per-run total suggests, because the
+# eight jobs are parallel: what matters is where the slow setups land, not
+# their sum. The slowest setup was 19s warm against 32-47s with the cache off.
+# Which job wears it varies, and it is NOT always a cheap one:
+#   35550800091  47s on typecheck   (58s job -- off the critical path)
+#   35551289209  32s on integration (272s job -- ON the critical path)
+# So budget for roughly +15 to +20s of critical path when it lands on
+# integration or e2e, and ~0 when it lands on lint/typecheck. Total billed time
+# per run still FELL either way, because removing the BuildKit export (see
+# build-image) saves far more than this costs: 1644s -> 1342s, and wall clock
+# 706s -> 545s.
+#
+# Do not trust a small sample here, and quote the whole spread rather than the
+# convenient end of it. The first pass measured 2-3s from two jobs, roughly 6x
+# off; the correction then wrote "19s -> 32s" for the worst-case setup while
+# its own table above said 47s. The spread across eight jobs is wide
+# (15.9-43.6s for identical work) because eight cold installs hit the npm
+# registry at once, so any single number quoted from it needs to say which end
+# it came from.
 #
 # What it cost was the whole repo's cache quota. v3 appends
 # `-<runId>-<attempt>-<uuid>` to the save key, so the exact key can NEVER match:
