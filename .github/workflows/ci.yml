@@ -50,14 +50,28 @@ env:
 # bearing half -- pnpm already refuses to update an existing lockfile under CI.
 #
 # `cache` is deliberately LEFT AT ITS DEFAULT OF false, i.e. the pnpm store is
-# not cached at all. It was on for exactly one merge (#487) and measured worse
-# than no cache. Per job, from the run logs:
-#   warm (prefix hit):  6.8-8.2s restore + 6.5s install = 13.3-14.7s
-#   cold (no store):                      16.2-16.7s    = 16.2-16.7s
-# The store only saves the *download*; pnpm still links all ~1026 packages into
-# node_modules either way, and pulling 385MB back out of the Actions cache costs
-# about as much as fetching them from the registry. So it buys 2-3s per job --
-# ~3s of critical path, since the jobs are parallel.
+# not cached at all. It was on for exactly one merge (#487). Caching the store
+# DOES save time -- the trade is time for cache quota, and the quota lost.
+#
+# Measured as the `pnpm/setup` step's own wall time, summed over the eight jobs
+# (the SAVE column is the `Post Run pnpm/setup` step):
+#
+#   run           state              setup mean   setup max   save   per-run
+#   35548752591   cache on, warm         12.8s        19s      55s      157s
+#   35548033635   cache on, cold         19.9s        31s      60s      219s
+#   35550800091   cache OFF              30.5s        47s       1s      245s
+#   35551289209   cache OFF              25.2s        32s       3s      205s
+#
+# So turning it off costs +48 to +88s per run across eight PARALLEL jobs. The
+# critical path moves much less: it is bounded by the slowest setup, 19s -> 32s,
+# and that lands on lint/typecheck, not on the long poles (a11y and integration
+# are ~280s and dwarf it). Total billed time per run still FELL, because
+# removing the BuildKit export (see build-image) saves far more than this costs:
+# 1644s -> 1342s, and wall clock 706s -> 545s.
+#
+# Do not trust a two-job sample here; the first pass at this measured 2-3s from
+# one, which is roughly 6x off. The spread across eight jobs is wide (15.9-43.6s
+# for the same work) because eight cold installs hit the npm registry at once.
 #
 # What it cost was the whole repo's cache quota. v3 appends
 # `-<runId>-<attempt>-<uuid>` to the save key, so the exact key can NEVER match:
@@ -66,9 +80,10 @@ env:
 # repository-wide ceiling shared with BuildKit, which is what put the pool into
 # permanent LRU eviction (12.55GB / 142 entries before this was unwound).
 #
-# The tiny `pnpm-lockfile-verified-*` cache (607 B) is unaffected -- v3 saves
+# The tiny `pnpm-lockfile-verified-*` cache (711 B) is unaffected -- v3 saves
 # and restores it regardless of the `cache` input, and it is the one key here
-# that actually exact-hits.
+# that actually exact-hits. It is also the ONLY entry this repo's CI still
+# leaves in the Actions cache; if you ever purge caches by hand, keep it.
 #
 # If you turn `cache: true` back on, turn it on for ONE job, not eight, and
 # re-read the numbers above first.
