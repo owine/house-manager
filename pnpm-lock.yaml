@@ -2495,9 +2495,6 @@ packages:
   '@types/node@18.19.130':
     resolution: {integrity: sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg==}
 
-  '@types/node@25.9.6':
-    resolution: {integrity: sha512-JR6Q/PV5DKFvjrGFVqQJdeG0qvsqQQLDa3TzFrqVwhqRXqwNaxPo2KYCtCQXpOdIulCouKwT7a6in9nFthBAzw==}
-
   '@types/node@25.9.7':
     resolution: {integrity: sha512-Y+axoNWOFLvDNFxNbDA+kqqV05imHwTu5bZWWO6tQM3Y2NX1jvzUJkYlf4nYnMCnvu4wQBKW6Nr+ok6yHWA9aQ==}
 
@@ -6066,9 +6063,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.6.2:
-    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
-
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
@@ -7765,13 +7759,13 @@ snapshots:
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       '@types/ssh2': 1.15.6
 
   '@types/dockerode@4.0.1':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       '@types/ssh2': 1.15.6
 
   '@types/estree-jsx@1.0.5':
@@ -7800,10 +7794,6 @@ snapshots:
     dependencies:
       undici-types: 5.26.5
 
-  '@types/node@25.9.6':
-    dependencies:
-      undici-types: 7.24.6
-
   '@types/node@25.9.7':
     dependencies:
       undici-types: 7.24.6
@@ -7824,11 +7814,11 @@ snapshots:
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
 
   '@types/ssh2@0.5.52':
     dependencies:
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       '@types/ssh2-streams': 0.1.13
 
   '@types/ssh2@1.15.6':
@@ -9301,7 +9291,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -9396,7 +9386,7 @@ snapshots:
       tinyglobby: 0.2.17
       unbash: 4.0.11
       yaml: 2.9.1
-      zod: 4.6.2
+      zod: 4.6.5
 
   lazystream@1.0.1:
     dependencies:
@@ -10510,7 +10500,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 25.9.6
+      '@types/node': 25.9.7
       long: 5.3.2
 
   proxy-addr@2.0.8:
@@ -11647,8 +11637,6 @@ snapshots:
       zod: 3.25.76
 
   zod@3.25.76: {}
-
-  zod@4.6.2: {}
 
   zod@4.6.5: {}
 
