@@ -39,14 +39,16 @@ jobs:
           REF: refs/pull/${{ github.event.number }}/merge
         run: |
           set -euo pipefail
-          # `gh cache delete --all` exits 1 with "no caches to delete" when the
-          # ref is already clean, which is the common case for a docs-only PR.
-          # That is success here, so match it rather than blanket `|| true` --
-          # a real permissions or API failure must still fail the job.
-          if out=$(gh cache delete --all --ref "$REF" 2>&1); then
-            echo "$out"
-          else
-            echo "$out"
-            echo "$out" | grep -qi 'no caches' || exit 1
-          fi
+          # `gh cache delete --all` exits 1 when the ref is already clean, which
+          # is the common case (a PR whose jobs all skipped). That is success
+          # here, and `--succeed-on-no-caches` is the flag gh provides for
+          # exactly this -- it only converts the empty case to exit 0, so a real
+          # permissions or API failure still fails the job. Do NOT reach for
+          # `|| true`, which would swallow those too.
+          #
+          # There is no confirmation flag to pass: `gh cache delete` does not
+          # prompt (unlike `gh repo delete`). `--confirm` is not in its flag
+          # list and would abort the step with `unknown flag`.
+          gh cache delete --all --succeed-on-no-caches --ref "$REF"
+          echo "Remaining caches on $REF:"
           gh cache list --ref "$REF" --limit 100
