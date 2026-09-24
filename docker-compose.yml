@@ -54,6 +54,12 @@ services:
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
       MEILI_ENV: development
+      # Migrate the on-disk DB in place when the image is bumped. Without it, a
+      # Renovate bump of the tag above crash-loops the container on its next
+      # recreate ("database version X is incompatible with engine version Y").
+      # Not atomic, but safe here: the index is derived data that
+      # search.reindex rebuilds from Postgres. Needs a DB from >= v1.12.
+      MEILI_UPGRADE_DB: "true"
     ports: ["7700:7700"]
     volumes:
       - meilidata:/meili_data
