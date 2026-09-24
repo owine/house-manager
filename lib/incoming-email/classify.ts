@@ -6,9 +6,9 @@
  * unit tests fixture-driven and lets a future Phase 5 swap an AI extractor
  * in at the worker layer without touching this code.
  *
- * Confidence floor for auto-stubbing a ServiceRecord: all three of
- * (kind=TICKET, vendor matched, item-or-system matched). Anything weaker
- * stays in the triage queue for the user.
+ * Confidence floor for auto-stubbing a ServiceRecord: all four of
+ * (kind=TICKET, vendor matched, item-or-system matched, sender passed DMARC).
+ * Anything weaker stays in the triage queue for the user.
  */
 
 export type ClassifyVendor = {
@@ -35,6 +35,13 @@ export type ClassifyInput = {
   vendors: ClassifyVendor[];
   items: ClassifyEntity[];
   systems: ClassifyEntity[];
+  /**
+   * Whether the sender passed DMARC (`dmarcPassed` in ./auth-results). Gates
+   * only `shouldAutoStubServiceRecord`: an unauthenticated email is still
+   * classified, just never auto-drafted. The vendor match above trusts the
+   * From: header, which is exactly what DMARC authenticates.
+   */
+  dmarcPassed: boolean;
 };
 
 type ClassifyKind = 'ESTIMATE' | 'INVOICE' | 'TICKET' | 'UNKNOWN';
@@ -260,7 +267,8 @@ export function classifyEmail(input: ClassifyInput): ClassifyResult {
     else if (systemId) targets.push({ itemId: null, systemId });
   }
 
-  const shouldAutoStubServiceRecord = kind === 'TICKET' && vendor !== null && targets.length > 0;
+  const shouldAutoStubServiceRecord =
+    input.dmarcPassed && kind === 'TICKET' && vendor !== null && targets.length > 0;
 
   return {
     kind,

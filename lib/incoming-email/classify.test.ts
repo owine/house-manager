@@ -41,6 +41,7 @@ function input(overrides: Partial<ClassifyInput> = {}): ClassifyInput {
     vendors: [VENDOR_ACME, VENDOR_BETA, VENDOR_DOMAIN_ONLY],
     items: [ITEM_HEAT_PUMP, ITEM_WATER_HEATER, ITEM_FURNACE, ITEM_AC],
     systems: [SYSTEM_HVAC],
+    dmarcPassed: true,
     ...overrides,
   };
 }
@@ -407,6 +408,23 @@ describe('classifyEmail — auto-stub gating', () => {
     );
     expect(r.kind).toBe('TICKET');
     expect(r.vendorId).toBe('v_acme');
+    expect(r.shouldAutoStubServiceRecord).toBe(false);
+  });
+
+  // The heuristic fallback is reachable by making the AI call fail, and its
+  // vendor match is an exact From: match, which spoofing satisfies.
+  it('does NOT fire when the sender did not pass DMARC', () => {
+    const r = classifyEmail(
+      input({
+        fromAddress: 'dispatch@acme.example',
+        subject: 'Service report — Heat Pump',
+        dmarcPassed: false,
+      }),
+    );
+    // Classification is unchanged; only the auto-draft is withheld.
+    expect(r.kind).toBe('TICKET');
+    expect(r.vendorId).toBe('v_acme');
+    expect(r.targets[0]?.itemId).toBe('i_hp');
     expect(r.shouldAutoStubServiceRecord).toBe(false);
   });
 });

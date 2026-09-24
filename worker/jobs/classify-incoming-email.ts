@@ -11,6 +11,7 @@ import {
   shouldAutoStub,
   validateCandidateIds,
 } from '@/lib/incoming-email/ai-classify';
+import { dmarcPassed, dmarcResult } from '@/lib/incoming-email/auth-results';
 import { classifyEmail } from '@/lib/incoming-email/classify';
 import { createServiceRecordForEmail } from '@/lib/incoming-email/create-service-record';
 import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
@@ -59,6 +60,9 @@ async function classifyOne(id: string): Promise<void> {
       receivedAt: true,
       state: true,
       createdServiceRecordId: true,
+      // ForwardEmail's SPF/DKIM/DMARC verdicts, as stored at ingest. The DMARC
+      // result is the one auto-stub input the email's author can't steer.
+      authResultsJson: true,
     },
   });
   if (!row) {
@@ -197,6 +201,7 @@ async function classifyOne(id: string): Promise<void> {
         targetItemId,
         targetSystemId,
         confidence: result.confidence,
+        dmarcPassed: dmarcPassed(row.authResultsJson),
       }) &&
       !row.createdServiceRecordId
     ) {
@@ -217,6 +222,9 @@ async function classifyOne(id: string): Promise<void> {
           kind: result.kind,
           confidence: result.confidence,
           vendorMatched: vendorId !== null,
+          targetMatched: targets.length > 0,
+          // Anything but 'pass' here is enough on its own to withhold the draft.
+          dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
         },
         'classify-incoming-email: AI classified (no auto-stub)',
       );
@@ -311,6 +319,7 @@ async function heuristicFallback(
     subject: string;
     receivedAt: Date;
     createdServiceRecordId: string | null;
+    authResultsJson: Prisma.JsonValue | null;
   },
   candidates: {
     vendors: Array<{ id: string; name: string; email: string | null; notes: string | null }>;
@@ -328,6 +337,9 @@ async function heuristicFallback(
     vendors: candidates.vendors,
     items: candidates.items,
     systems: candidates.systems,
+    // An attacker can force this path by making the AI call fail, and its
+    // vendor match trusts From: exactly. Same gate as the AI path.
+    dmarcPassed: dmarcPassed(row.authResultsJson),
   });
 
   await prisma.$transaction(async (tx) => {
@@ -371,7 +383,12 @@ async function heuristicFallback(
     });
   } else {
     log.info(
-      { id: row.id, kind: result.kind, vendorMatched: result.vendorId !== null },
+      {
+        id: row.id,
+        kind: result.kind,
+        vendorMatched: result.vendorId !== null,
+        dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
+      },
       'classify-incoming-email: heuristic classified (no auto-stub)',
     );
   }
