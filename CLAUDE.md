@@ -326,6 +326,31 @@ protected routes must go under the `(app)` route group. Route handlers in `app/a
 carry their own inline gate; the token-scoped `calendar/[token]` and
 `inbound-email/[token]` routes are deliberately public.
 
+### Inbound email is hostile input; the file route is the XSS boundary
+
+The webhook's token + HMAC authenticate **ForwardEmail**, not the sender. Whoever
+knows the inbox address controls the body, every attachment's bytes, filename and
+declared `Content-Type`, and can forge `From:`.
+
+- **`/api/files/[id]` decides what renders** (`lib/attachments/serve.ts`): a
+  raster/PDF allow-list inline, everything else an `application/octet-stream`
+  download, always `nosniff` + a `sandbox` CSP. It reads the stored type at
+  *serve* time, which is what covers rows ingested before types were sniffed.
+  Never serve a stored file any other way.
+- **Ingest trusts neither the declared type nor the name**
+  (`lib/incoming-email/normalize-attachment.ts`): magic-byte sniff to an
+  allow-listed type or octet-stream; on-disk name always `original.<ext>`.
+- **Auto-stub needs a DMARC pass** (`lib/incoming-email/auth-results.ts`), read
+  fail-closed from mailauth's `dmarc.status.result` in `authResultsJson`. It
+  gates *both* the AI and the heuristic path. Every other input is a model output
+  the email can steer. A vendor with no DMARC record never auto-stubs, by design.
+  DMARC proves the From *domain*, not that it is the vendor's.
+- **A `next.config.ts` `headers()` entry beats a route handler's header of the
+  same name.** Next writes config headers first and drops the handler's
+  (`send-response.js`), which is why the global CSP skips `/api/files/`. No
+  script-src CSP: it needs nonces from a `proxy.ts`, and a proxy truncates
+  bodies over 10 MB, which breaks inbound HMAC.
+
 ### Migrations carry SQL that Prisma cannot regenerate
 
 `prisma migrate diff` will not reproduce any of this — re-append it by hand if you ever
