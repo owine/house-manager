@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpUrlSchema } from './http-url';
 
 /**
  * An optional var whose empty string means "unset".
@@ -52,6 +53,12 @@ const EnvSchema = z.object({
   INBOUND_EMAIL_TOKEN: optionalEnv(z.string().min(16)),
   INBOUND_EMAIL_HMAC_KEY: optionalEnv(z.string().min(16)),
   APP_URL: optionalEnv(z.string().url()),
+  // Dead-man switch for the nightly backup (worker/jobs/pg-dump.ts). The job
+  // GETs this after every VALIDATED dump and never after a failure, so the
+  // monitor behind it (an uptime-kuma Push monitor) goes red by silence rather
+  // than by anything this process has to remember to send. Unset means no
+  // ping. The URL carries the monitor's push token: never log it.
+  BACKUP_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
   // Empty string is tolerated alongside undefined: the Dockerfile's
   // `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN` pattern produces an

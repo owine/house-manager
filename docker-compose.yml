@@ -24,6 +24,9 @@ x-app-env: &app-env
   ASK_ENABLED: ${ASK_ENABLED:-false}
   VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
   OCR_BACKEND: ${OCR_BACKEND:-tesseract}
+  # Dead-man ping for the nightly backup (docs/backups.md § Monitoring). Only
+  # the worker reads it; empty means unset.
+  BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
   # Optional observability vars. Set these once GlitchTip / Loki are running.
   # SENTRY_DSN: ${SENTRY_DSN:-}
   # NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
