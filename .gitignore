@@ -10,6 +10,7 @@ playwright-report
 test-results
 coverage
 /data
+/db-backups
 dist
 
 # Brainstorming visual companion mockups

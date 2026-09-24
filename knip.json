@@ -13,6 +13,7 @@
   ],
   "ignore": ["prisma/schema.prisma", "public/sw.js"],
   "ignoreDependencies": ["pino-pretty"],
+  "ignoreBinaries": ["pg_restore"],
   "rules": {
     "duplicates": "off"
   },

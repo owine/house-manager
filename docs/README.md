@@ -128,6 +128,7 @@ Validated at startup by `lib/env.ts` (Zod). The app fails fast on first `getEnv(
 |---|---|---|
 | `NODE_ENV` | `development` (Zod) / `production` (set by Dockerfile in built image) | |
 | `APP_URL` | unset | Used for absolute links in emails / push payloads |
+| `BACKUP_HEARTBEAT_URL` | unset | Worker. http(s) URL the nightly backup GETs after each validated dump, never after a failure, e.g. an uptime-kuma Push monitor. See [backups.md § Monitoring](backups.md#monitoring) |
 | `AUTH_URL` | unset | Consumed by Auth.js itself (not in the Zod schema). Set when fronted by a reverse proxy that needs an explicit base URL |
 
 ### Set automatically by the Docker image
@@ -242,7 +243,7 @@ together.
 
 - [`docs/TESTING.md`](TESTING.md) — test tiers, decision matrix, per-feature checklist, `@critical` policy, coverage floor.
 - [`docs/observability.md`](observability.md) — logging (Pino) and error reporting (Sentry/GlitchTip).
-- [`docs/backups.md`](backups.md) — pg_dump backups, sweeper, missed-tick recovery.
+- [`docs/backups.md`](backups.md) — pg_dump backups, the dead-man monitor, and the restore runbook.
 
 ## Architecture notes
 
