@@ -128,7 +128,12 @@ no auto-discovery. **Adding a job means three edits**: a `Queue` entry, a job mo
 under `worker/jobs/`, and an import + `boss.work` block in `worker/index.ts`.
 
 Ticks: `reminders.tick` and `notify-log.sweep` every 5 min, `digest.tick` every 30 min,
-`chore-auto-complete.tick` hourly, `search.reindex` and `pg-dump` daily at 03:00 UTC.
+`chore-auto-complete.tick` hourly, `search.reindex` and `pg-dump` daily at 03:00 UTC,
+`embed.backfill` daily at 03:30 UTC (and at every boot).
+
+Retry policy is per queue in `QUEUE_POLICY` (`lib/queue.ts`); unlisted queues run on
+pg-boss defaults (2 retries, no delay). `createQueue` is `ON CONFLICT DO NOTHING`, so a
+policy reaches an existing database only through the `updateQueue` call beside it.
 
 The worker runs under `tsx` in dev *and* prod — no compile step, deliberately (avoids
 path-alias/ESM-extension breakage from tsc-emitted JS). The `@/` alias is resolved at
@@ -206,10 +211,19 @@ alerting must treat anything but `healthy` as down.
 **Search and embeddings are eventually consistent by design.** `enqueueSearchIndex` and
 `enqueueEmbed` swallow their errors and log a warning — a failed enqueue must never fail
 the user's mutation. Recovery is the nightly `search.reindex` (rebuilds the single `house`
-Meili index in place) and `embed.backfill` (fires at every worker boot, plus the admin
-Rebuild button). Embeddings are gated on `ASK_ENABLED` at both producer and consumer, and
-`VoyageRetryableError` is rethrown to let pg-boss retry while `VoyageFatalError` is
-swallowed so it doesn't burn budget in a loop.
+Meili index in place) and `embed.backfill` (every boot, nightly, plus the admin Rebuild
+button). The backfill is the embedding pipeline's actual guarantee: it deletes chunks
+whose source is gone, archived or opted out; enqueues live rows with none; and re-enqueues
+any whose stored `contentHash` no longer matches the canonical text (DB reads only —
+Voyage is called just for the mismatches). `embeddings` is polymorphic with no FK, so **no
+cascade ever reaches it** — delete actions enqueue tombstones as a courtesy, and retrieval
+filters on the same liveness predicate (`lib/embedding/live-source.ts`) so a deleted source
+never reaches the chat prompt in between. A new `EmbeddingEntityType` needs a rule there
+(typecheck enforces it) and a rung in `buildCanonical`. `CHECKLIST_ITEM` is keyed by
+`ChecklistItem.id`, never the checklist's. Embeddings are gated on `ASK_ENABLED` at both
+producer and consumer (the orphan sweep is not — it calls no API). Voyage transport
+failures and timeouts are `VoyageRetryableError`, rethrown so pg-boss retries with backoff;
+`VoyageFatalError` is swallowed so it doesn't burn budget in a loop.
 
 **Frontend.** Pages are server components — zero of the 42 `page.tsx` files carry
 `'use client'`. Every page composes one of the shells in `app/(app)/_components/`:
