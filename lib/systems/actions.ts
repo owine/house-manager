@@ -3,7 +3,7 @@ import type { PartKind, Prisma, VendorRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db';
+import { prisma, type TransactionClient } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { enqueueSystemRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
@@ -91,9 +91,12 @@ export type SystemPartSummary = {
  * silently and takes its link rows with it. There is no RESTRICT violation to
  * catch, which is why this is a **pre-query** and not the `tryDeleteVendor`
  * probe: that pattern needs the database to say no, and here it says yes.
+ * The same holds for the reminder/warranty/service-record target tables —
+ * see findSystemDeleteBlockers.
  */
 export type TryDeleteSystemResult =
   | { ok: true }
+  | { ok: false; hasDependents: true; dependents: SystemDependentSummary[] }
   | { ok: false; hasParts: true; parts: SystemPartSummary[] }
   | { ok: false; formError: string };
 
@@ -134,25 +137,132 @@ function summarizeSystemParts(links: SystemPartLinkRow[]): SystemPartSummary[] {
   return out;
 }
 
+// ---------- Records that would be left pointing at nothing ----------
+
+export type SystemDependentSummary = {
+  kind: 'reminder' | 'warranty' | 'serviceRecord';
+  id: string;
+  label: string;
+};
+
+/** Thrown inside the transaction to force a rollback — same lever as StaleSystemPartsError. */
+class SystemDeleteBlockedError extends Error {
+  constructor(readonly dependents: SystemDependentSummary[]) {
+    super('system delete blocked by dependents');
+  }
+}
+
+function targetsOnlyThisSystem(systemId: string, targets: { systemId: string | null }[]): boolean {
+  return targets.length > 0 && targets.every((t) => t.systemId === systemId);
+}
+
+const byLabel = (a: SystemDependentSummary, b: SystemDependentSummary) =>
+  a.label.localeCompare(b.label);
+
 /**
- * The delete entry point. Deleting a system with no parts just works; with
- * parts it returns the list so the caller can prompt.
+ * Records whose ONLY target is this system. The target tables cascade from
+ * `System` (prisma/schema.prisma), so deleting it would silently leave them
+ * with none — and every "must have a target" rule here is app-level only:
+ *   - REMINDER needs ≥1 target: reminders-tick iterates target rows, the iCal
+ *     feed skips it, completeReminder refuses "Reminder has no targets".
+ *   - Warranty needs ≥1 target (targetsArraySchema); there is no warranty list
+ *     page, so a target-less warranty is unreachable.
+ *   - Service record needs a vendor, the self-performed marker, or ≥1 target
+ *     (requireAnchor in lib/service-records/schema.ts). One that keeps a vendor
+ *     or the marker stays valid and listed, so only unanchored ones block.
+ * CHOREs never block: see detachSoleTargetChores.
+ *
+ * Filtered in JS rather than with Prisma's `every`: `every: { systemId }` on a
+ * nullable column is exactly the three-valued-logic corner that is easy to get
+ * wrong, and the candidate set (records with SOME target here) is small.
+ */
+async function findSystemDeleteBlockers(
+  tx: TransactionClient,
+  systemId: string,
+): Promise<SystemDependentSummary[]> {
+  const reminders = await tx.reminder.findMany({
+    where: { kind: 'REMINDER', targets: { some: { systemId } } },
+    select: { id: true, title: true, targets: { select: { systemId: true } } },
+  });
+  const warranties = await tx.warranty.findMany({
+    where: { targets: { some: { systemId } } },
+    select: { id: true, provider: true, targets: { select: { systemId: true } } },
+  });
+  const serviceRecords = await tx.serviceRecord.findMany({
+    where: { targets: { some: { systemId } }, vendorId: null, selfPerformed: false },
+    select: { id: true, summary: true, targets: { select: { systemId: true } } },
+  });
+
+  return [
+    ...reminders
+      .filter((r) => targetsOnlyThisSystem(systemId, r.targets))
+      .map((r) => ({ kind: 'reminder' as const, id: r.id, label: r.title }))
+      .sort(byLabel),
+    ...warranties
+      .filter((w) => targetsOnlyThisSystem(systemId, w.targets))
+      .map((w) => ({ kind: 'warranty' as const, id: w.id, label: w.provider }))
+      .sort(byLabel),
+    ...serviceRecords
+      .filter((s) => targetsOnlyThisSystem(systemId, s.targets))
+      .map((s) => ({ kind: 'serviceRecord' as const, id: s.id, label: s.summary }))
+      .sort(byLabel),
+  ];
+}
+
+/**
+ * A CHORE whose only target is this system becomes a standalone chore — the
+ * item/system/part-all-NULL shape updateReminder reconciles a link-less chore
+ * to (lib/reminders/actions.ts). Converted IN PLACE rather than cascaded and
+ * re-created, so the row keeps its `nextDueOn`, `lastCompletedOn` and its
+ * ReminderCompletion history (which cascades from the target row). Safe
+ * against the NULLS NOT DISTINCT unique: a chore whose every target is this
+ * system cannot already have a standalone row.
+ */
+async function detachSoleTargetChores(tx: TransactionClient, systemId: string): Promise<void> {
+  const chores = await tx.reminder.findMany({
+    where: { kind: 'CHORE', targets: { some: { systemId } } },
+    select: { id: true, targets: { select: { systemId: true } } },
+  });
+  const ids = chores.filter((c) => targetsOnlyThisSystem(systemId, c.targets)).map((c) => c.id);
+  if (ids.length === 0) return;
+  await tx.reminderTarget.updateMany({
+    where: { systemId, reminderId: { in: ids } },
+    data: { systemId: null },
+  });
+}
+
+/**
+ * The delete entry point, run as one transaction so the checks and the delete
+ * see the same rows. Blockers are reported before parts: asking the user to
+ * archive parts only to refuse the delete afterwards would be worse.
  */
 export async function tryDeleteSystem(systemId: string): Promise<TryDeleteSystemResult> {
   const session = await auth();
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
-  const system = await prisma.system.findUnique({ where: { id: systemId }, select: { id: true } });
-  if (!system) return { ok: false, formError: 'System not found' };
+  const outcome = await prisma.$transaction(async (tx) => {
+    const system = await tx.system.findUnique({ where: { id: systemId }, select: { id: true } });
+    if (!system) return { kind: 'missing' as const };
 
-  const links = await prisma.partLink.findMany({
-    where: { systemId },
-    select: SYSTEM_PART_LINK_SELECT,
+    const dependents = await findSystemDeleteBlockers(tx, systemId);
+    if (dependents.length > 0) return { kind: 'blocked' as const, dependents };
+
+    const parts = summarizeSystemParts(
+      await tx.partLink.findMany({ where: { systemId }, select: SYSTEM_PART_LINK_SELECT }),
+    );
+    if (parts.length > 0) return { kind: 'parts' as const, parts };
+
+    await detachSoleTargetChores(tx, systemId);
+    await tx.system.delete({ where: { id: systemId } });
+    return { kind: 'deleted' as const };
   });
-  const parts = summarizeSystemParts(links);
-  if (parts.length > 0) return { ok: false, hasParts: true, parts };
 
-  await prisma.system.delete({ where: { id: systemId } });
+  if (outcome.kind === 'missing') return { ok: false, formError: 'System not found' };
+  if (outcome.kind === 'blocked') {
+    return { ok: false, hasDependents: true, dependents: outcome.dependents };
+  }
+  if (outcome.kind === 'parts') return { ok: false, hasParts: true, parts: outcome.parts };
+
   revalidateAfterSystemDelete();
   return { ok: true };
 }
@@ -161,6 +271,10 @@ function revalidateAfterSystemDelete() {
   revalidatePath('/systems');
   revalidatePath('/items');
   revalidatePath('/parts');
+  // Reminders, chores and warranties may have lost a target chip.
+  revalidatePath('/reminders');
+  revalidatePath('/chores');
+  revalidatePath('/dashboard');
 }
 
 const deleteSystemWithPartsInput = z.object({
@@ -171,7 +285,8 @@ const deleteSystemWithPartsInput = z.object({
 
 export type DeleteSystemWithPartsResult =
   | ActionResult<{ archivedCount: number; keptCount: number }>
-  | { ok: false; hasParts: true; parts: SystemPartSummary[] };
+  | { ok: false; hasParts: true; parts: SystemPartSummary[] }
+  | { ok: false; hasDependents: true; dependents: SystemDependentSummary[] };
 
 /** Thrown inside the transaction to force a rollback — Prisma has no other lever. */
 class StaleSystemPartsError extends Error {
@@ -215,6 +330,11 @@ export async function deleteSystemWithParts(input: {
       const system = await tx.system.findUnique({ where: { id: systemId }, select: { id: true } });
       if (!system) return null;
 
+      // Re-checked here, not trusted from the prompt: a sole-target reminder
+      // created between the prompt and the submit must still block.
+      const dependents = await findSystemDeleteBlockers(tx, systemId);
+      if (dependents.length > 0) throw new SystemDeleteBlockedError(dependents);
+
       const current = summarizeSystemParts(
         await tx.partLink.findMany({ where: { systemId }, select: SYSTEM_PART_LINK_SELECT }),
       );
@@ -232,6 +352,7 @@ export async function deleteSystemWithParts(input: {
         });
       }
       await tx.partLink.deleteMany({ where: { systemId } });
+      await detachSoleTargetChores(tx, systemId);
       await tx.system.delete({ where: { id: systemId } });
 
       return {
@@ -255,6 +376,9 @@ export async function deleteSystemWithParts(input: {
     revalidateAfterSystemDelete();
     return { ok: true, data: counts };
   } catch (error) {
+    if (error instanceof SystemDeleteBlockedError) {
+      return { ok: false, hasDependents: true, dependents: error.dependents };
+    }
     if (error instanceof StaleSystemPartsError) {
       return { ok: false, hasParts: true, parts: error.parts };
     }

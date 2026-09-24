@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
-import type { SystemPartSummary } from '@/lib/systems/actions';
+import type { SystemDependentSummary, SystemPartSummary } from '@/lib/systems/actions';
 
 type Props = {
   open: boolean;
@@ -26,6 +26,7 @@ type Props = {
     keepPartIds: string[];
   }) => Promise<
     | { ok: true; archivedCount: number; keptCount: number }
+    | { ok: false; hasDependents: true; dependents: SystemDependentSummary[] }
     | { ok: false; hasParts: true; parts: SystemPartSummary[] }
     | { ok: false; formError?: string }
   >;
@@ -74,6 +75,10 @@ export function DeleteSystemPartsDialog({
       if (r.ok) {
         toast.success(`System deleted · ${r.archivedCount} archived, ${r.keptCount} kept`);
         onOpenChange(false);
+        return;
+      }
+      if ('hasDependents' in r) {
+        // The caller closes this dialog and re-opens the blocking list.
         return;
       }
       if ('hasParts' in r) {

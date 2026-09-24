@@ -173,6 +173,11 @@ test('deleting a system prompts for its parts and archives exactly the checked s
 
   // The prompt: parts present, so the delete does not go straight through.
   await page.getByTestId('system-delete-trigger').click();
+  // Every system delete is confirmed first (Q-H5); the parts prompt follows.
+  await page.getByTestId('delete-system-alert-confirm').click();
+  // Wait out the alert's close: its title ("Permanently delete Central HVAC?")
+  // would also match the parts dialog's heading name as a substring.
+  await expect(page.getByTestId('delete-system-alert')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Delete Central HVAC?' })).toBeVisible();
 
   // Default-checked is `willBeOrphaned` only.

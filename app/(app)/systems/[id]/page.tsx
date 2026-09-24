@@ -161,6 +161,9 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
     'use server';
     const r = await tryDeleteSystem(id);
     if (r.ok) return { ok: true as const };
+    if ('hasDependents' in r) {
+      return { ok: false as const, hasDependents: true as const, dependents: r.dependents };
+    }
     if ('hasParts' in r) return { ok: false as const, hasParts: true as const, parts: r.parts };
     return { ok: false as const, formError: r.formError };
   }
@@ -174,6 +177,9 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
         archivedCount: r.data.archivedCount,
         keptCount: r.data.keptCount,
       };
+    }
+    if ('hasDependents' in r) {
+      return { ok: false as const, hasDependents: true as const, dependents: r.dependents };
     }
     if ('hasParts' in r) return { ok: false as const, hasParts: true as const, parts: r.parts };
     return { ok: false as const, formError: r.formError };
