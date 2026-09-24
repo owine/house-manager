@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
+import { stripReservedMetadata } from '@/lib/metadata/reserved-keys';
 import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import { type CreatePartInput, createPartSchema, PART_KINDS } from '@/lib/parts/schema';
 import type { ActionResult } from '@/lib/result';
@@ -59,8 +60,11 @@ export function PartForm({ defaultValues, action, submitLabel }: Props) {
       name: '',
       kind: 'OTHER',
       purchaseLinks: [],
-      metadata: {},
       ...defaultValues,
+      // Reserved keys (`_provenance`) are server-owned — updatePart re-attaches
+      // the stored ones. Left in, createPartSchema's client-side refine rejects
+      // the whole form on a field the user never touched.
+      metadata: stripReservedMetadata(defaultValues?.metadata),
     },
   });
 

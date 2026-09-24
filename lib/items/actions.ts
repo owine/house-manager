@@ -7,6 +7,7 @@ import { metadataSchemaFor } from '@/lib/categories';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { freeformMetadataSchema } from '@/lib/metadata/freeform';
+import { withStoredReservedMetadata } from '@/lib/metadata/reserved-keys';
 import { enqueueItemRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -121,20 +122,20 @@ export async function updateItem(input: unknown): Promise<ActionResult<{ id: str
     data.categoryId = category.id;
   }
   if (metadata !== undefined) {
-    const slug =
-      categorySlug ??
-      (
-        await prisma.item.findUnique({
-          where: { id },
-          select: { category: { select: { slug: true } } },
-        })
-      )?.category.slug;
+    // One read for both: the stored category (when the slug did not travel with
+    // the update) and the stored reserved keys to carry over.
+    const stored = await prisma.item.findUnique({
+      where: { id },
+      select: { metadata: true, category: { select: { slug: true } } },
+    });
+    const slug = categorySlug ?? stored?.category.slug;
     if (slug) {
       const metadataResult = metadataSchemaFor(slug).safeParse(metadata);
       if (!metadataResult.success) {
         return { ok: false, fieldErrors: metadataFieldErrors(metadataResult.error.issues, slug) };
       }
-      data.metadata = metadataResult.data as object;
+      // Reserved keys (`_provenance`) are server-owned — see withStoredReservedMetadata.
+      data.metadata = withStoredReservedMetadata(metadataResult.data, stored?.metadata);
     }
   }
 

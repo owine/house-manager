@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { applyActionFieldErrors } from '@/lib/forms/helpers';
 import { type CreateItemInput, createItemSchema } from '@/lib/items/schema';
+import { stripReservedMetadata } from '@/lib/metadata/reserved-keys';
 import type { ActionResult } from '@/lib/result';
 
 // Use z.input so purchaseDate stays as string in form state (resolver coerces via z.coerce.date)
@@ -70,8 +71,11 @@ export function ItemForm({
     defaultValues: {
       name: '',
       categorySlug: '',
-      metadata: {},
       ...defaultValues,
+      // Reserved keys (`_provenance`) are server-owned — updateItem re-attaches
+      // the stored ones. Stripped from the FIELD VALUE, not just the textarea:
+      // see stripReservedMetadata. `undefined` → `{}`, the old default.
+      metadata: stripReservedMetadata(defaultValues?.metadata),
     },
   });
 
