@@ -1,6 +1,15 @@
 import { PgBoss } from 'pg-boss';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startStack, stopStack, type TestStack } from './setup';
+
+// getBoss() reads only DATABASE_URL. Mock getEnv to exactly that, like every
+// other integration file: the real getEnv() validates the WHOLE schema, which
+// passes locally only because .env fills the gaps. CI sets no such vars for
+// this job, so the unmocked version failed there ("expected string, received
+// undefined"). Read lazily so beforeAll can point it at the container.
+vi.mock('@/lib/env', () => ({
+  getEnv: () => ({ DATABASE_URL: process.env.DATABASE_URL }),
+}));
 
 /**
  * Proves the A-M2 fix against a REAL pg-boss, not the mocked unit test in
@@ -18,11 +27,8 @@ import { startStack, stopStack, type TestStack } from './setup';
  * health.test.ts`) rather than `setupIntegration`, which also runs a full
  * Prisma migrate and starts Meilisearch.
  *
- * `@/lib/env` is intentionally NOT mocked: `getBoss()` reads `DATABASE_URL`
- * via `getEnv()`, and pointing it at the container requires setting
- * `process.env.DATABASE_URL` and letting the real (lazy) `getEnv()` read it.
- * The other required vars come from `.env` locally (`vitest.env.ts`
- * `dotenvFallbacks`) and from CI's job-level env (`.github/workflows/ci.yml`).
+ * `@/lib/env` is mocked to return only `DATABASE_URL` (see the `vi.mock`
+ * above), which `beforeAll` points at the container.
  */
 
 let stack: TestStack;
