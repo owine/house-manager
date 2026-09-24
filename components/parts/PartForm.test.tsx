@@ -128,4 +128,31 @@ describe('PartForm', () => {
 
     await screen.findByText(/_notes: is reserved/);
   });
+
+  // For parts the #328 leak is worse than for items: createPartSchema's
+  // superRefine runs client-side through zodResolver, so a freeform part
+  // carrying `_provenance` would not submit AT ALL. The action is never called.
+  it('submits an untouched AI-captured freeform part without its reserved keys', async () => {
+    const action = makeAction({ ok: true, data: { id: 'p9' } });
+    const user = userEvent.setup();
+
+    render(
+      <PartForm
+        defaultValues={{
+          id: 'p9',
+          name: 'Mystery fuse',
+          kind: 'OTHER',
+          metadata: { _provenance: { name: 'user', amps: 'inferred' }, amps: 15 },
+        }}
+        action={action}
+        submitLabel="Save part"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save part' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+
+    const payload = action.mock.calls[0]?.[0] as { metadata: unknown };
+    expect(payload.metadata).toEqual({ amps: 15 });
+  });
 });

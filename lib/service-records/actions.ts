@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
+import { detachEmailOwnedAttachments } from '@/lib/incoming-email/create-service-record';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import type { PartTargetInput } from '@/lib/targets/schema';
@@ -226,14 +227,25 @@ export async function deleteServiceRecord(id: string): Promise<ActionResult> {
   });
   if (!existing) return { ok: false, formError: 'Service record not found' };
 
-  await prisma.serviceRecord.delete({ where: { id } });
+  // Email-owned attachments are unlinked, not cascaded — see
+  // detachEmailOwnedAttachments. Same transaction, so a failed delete leaves
+  // the links intact.
+  const detached = await prisma.$transaction(async (tx) => {
+    const rows = await detachEmailOwnedAttachments(tx, id);
+    await tx.serviceRecord.delete({ where: { id } });
+    return rows;
+  });
   await enqueueSearchIndex('service', id, 'delete');
   await enqueueEmbed('SERVICE_RECORD', id);
+  for (const a of detached) await enqueueSearchIndex('attachment', a.id, 'upsert');
 
   revalidatePath('/service');
   revalidatePath('/dashboard');
   if (existing.vendorId) revalidatePath(`/vendors/${existing.vendorId}`);
   revalidateForTargets(existing.targets);
+  for (const emailId of new Set(detached.map((a) => a.incomingEmailId))) {
+    revalidatePath(`/inbox/${emailId}`);
+  }
 
   return { ok: true, data: undefined };
 }

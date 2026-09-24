@@ -4,12 +4,16 @@
 // through a form, must never leak into embedded/canonical text, and must
 // never be rendered.
 //
-// Three enforcement points, and this list is a CHECKLIST TO EXTEND, not a
+// Four enforcement points, and this list is a CHECKLIST TO EXTEND, not a
 // description of a finished job:
 //   - write path      — `lib/categories.ts` rejects them
 //   - embedding path  — `lib/embedding/canonicalize.ts` drops them
 //   - read path       — `visibleMetadataEntries` below, used by every view
 //                       that enumerates a metadata blob
+//   - edit path       — `ItemForm` / `PartForm` strip them from their default
+//                       values (`stripReservedMetadata`), and `updateItem` /
+//                       `updatePart` re-attach the STORED ones on save
+//                       (`withStoredReservedMetadata`). They are server-owned.
 //
 // The read path was missing until #328, which is how `_provenance` came to
 // render as a raw JSON row on the item detail page and — worse — to pre-fill
@@ -40,4 +44,38 @@ export function visibleMetadataEntries(metadata: unknown): [string, unknown][] {
   return Object.entries(metadata as Record<string, unknown>).filter(
     ([key]) => !isReservedMetadataKey(key),
   );
+}
+
+/**
+ * A metadata blob with reserved keys removed, as an object — the shape a
+ * form's default values need.
+ *
+ * Hiding them only in the rendered textarea is not enough: the textarea is
+ * uncontrolled, so a hidden key still rides along in the form's field value
+ * and an untouched save submits it.
+ */
+export function stripReservedMetadata(metadata: unknown): Record<string, unknown> {
+  return Object.fromEntries(visibleMetadataEntries(metadata));
+}
+
+/**
+ * Re-attach the reserved keys of the STORED blob to a validated incoming one.
+ *
+ * Reserved keys are server-owned. Forms never carry them, freeform validation
+ * rejects them, and every structured schema is a plain `z.object` that strips
+ * them, so an update action that wrote the validated blob verbatim dropped
+ * `_provenance` on every edit. The stored keys always win, and any reserved
+ * key the client sent is discarded — a client can never set one.
+ */
+export function withStoredReservedMetadata(
+  next: unknown,
+  stored: unknown,
+): Record<string, unknown> {
+  const reserved =
+    stored && typeof stored === 'object' && !Array.isArray(stored)
+      ? Object.entries(stored as Record<string, unknown>).filter(([key]) =>
+          isReservedMetadataKey(key),
+        )
+      : [];
+  return { ...stripReservedMetadata(next), ...Object.fromEntries(reserved) };
 }

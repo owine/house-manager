@@ -67,12 +67,45 @@ export async function createServiceRecordForEmail(
 
   // Multi-parent attachments: the same PDF/photo now shows on both the inbox
   // detail (via incomingEmailId) and the service record. Single copy on disk.
-  // `serviceRecordId: null` guards against stealing a file the user already
-  // attached somewhere else.
+  // The EMAIL owns the row; serviceRecordId is only a link — see
+  // detachEmailOwnedAttachments below, which every service-record delete runs
+  // first. `serviceRecordId: null` guards against stealing a file the user
+  // already attached somewhere else, and is also what lets a re-draft (after
+  // the first draft was deleted) pick the same files back up.
   const linked = await tx.attachment.updateMany({
     where: { incomingEmailId: input.incomingEmailId, serviceRecordId: null },
     data: { serviceRecordId: sr.id },
   });
 
   return { serviceRecordId: sr.id, attachmentsLinked: linked.count };
+}
+
+/**
+ * The inverse of the hand-off in `createServiceRecordForEmail`, run before a
+ * service record is deleted.
+ *
+ * Ownership rule: an attachment with `incomingEmailId` set belongs to the
+ * email, and its `serviceRecordId` is only a link. Both FKs are
+ * `onDelete: Cascade` (prisma/schema.prisma, model Attachment), so without
+ * this, deleting a drafted record cascade-deleted the email's original
+ * invoice — auto-stub drafts, the user bins the draft, the source PDF is gone.
+ *
+ * Must run in the same transaction as the delete. Returns the detached rows so
+ * the caller can re-index them after commit: their search parent moves from
+ * the record back to the email.
+ */
+export async function detachEmailOwnedAttachments(
+  tx: TransactionClient,
+  serviceRecordId: string,
+): Promise<Array<{ id: string; incomingEmailId: string }>> {
+  const owned = await tx.attachment.findMany({
+    where: { serviceRecordId, incomingEmailId: { not: null } },
+    select: { id: true, incomingEmailId: true },
+  });
+  if (owned.length === 0) return [];
+  await tx.attachment.updateMany({
+    where: { id: { in: owned.map((a) => a.id) } },
+    data: { serviceRecordId: null },
+  });
+  return owned.map((a) => ({ id: a.id, incomingEmailId: a.incomingEmailId as string }));
 }

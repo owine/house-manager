@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   isReservedMetadataKey,
   RESERVED_METADATA_PREFIX,
+  stripReservedMetadata,
   visibleMetadataEntries,
+  withStoredReservedMetadata,
 } from './reserved-keys';
 
 describe('isReservedMetadataKey', () => {
@@ -44,5 +46,46 @@ describe('visibleMetadataEntries', () => {
     expect(visibleMetadataEntries(undefined)).toEqual([]);
     expect(visibleMetadataEntries('a string')).toEqual([]);
     expect(visibleMetadataEntries(['an', 'array'])).toEqual([]);
+  });
+});
+
+const PROVENANCE = { name: 'user', amps: 'inferred' };
+
+describe('stripReservedMetadata', () => {
+  it('returns the visible keys as an object', () => {
+    expect(stripReservedMetadata({ _provenance: PROVENANCE, amps: 15 })).toEqual({ amps: 15 });
+  });
+
+  it('returns an empty object for the non-object shapes a Json column can hold', () => {
+    for (const v of [null, undefined, 'a string', ['an', 'array']]) {
+      expect(stripReservedMetadata(v)).toEqual({});
+    }
+  });
+});
+
+describe('withStoredReservedMetadata', () => {
+  it('re-attaches the stored reserved keys to the incoming spec', () => {
+    expect(withStoredReservedMetadata({ amps: 20 }, { _provenance: PROVENANCE, amps: 15 })).toEqual(
+      { amps: 20, _provenance: PROVENANCE },
+    );
+  });
+
+  it('discards a reserved key the client sent in favour of the stored one', () => {
+    expect(
+      withStoredReservedMetadata(
+        { amps: 20, _provenance: { name: 'forged' } },
+        { _provenance: PROVENANCE },
+      ),
+    ).toEqual({ amps: 20, _provenance: PROVENANCE });
+  });
+
+  it('drops a client-sent reserved key when nothing is stored', () => {
+    expect(withStoredReservedMetadata({ amps: 20, _provenance: {} }, { amps: 15 })).toEqual({
+      amps: 20,
+    });
+  });
+
+  it('tolerates a null stored blob', () => {
+    expect(withStoredReservedMetadata({ amps: 20 }, null)).toEqual({ amps: 20 });
   });
 });

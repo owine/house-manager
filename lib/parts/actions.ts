@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { freeformMetadataSchema } from '@/lib/metadata/freeform';
+import { withStoredReservedMetadata } from '@/lib/metadata/reserved-keys';
 import { enqueuePartRenameCascade } from '@/lib/rename-cascade';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
@@ -86,14 +87,14 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
   const data: Prisma.PartUpdateInput = { ...rest };
   if (purchaseLinks !== undefined) data.purchaseLinks = purchaseLinks as Prisma.InputJsonValue;
   if (metadata !== undefined) {
-    // The schema validated metadata only when `kind` travelled with it; when it
-    // did not, resolve the stored kind here.
-    let kind = rest.kind;
-    if (kind === undefined) {
-      const existing = await prisma.part.findUnique({ where: { id }, select: { kind: true } });
-      if (!existing) return { ok: false, formError: 'Part not found' };
-      kind = existing.kind;
-    }
+    // One read for both: the stored kind (the schema validated metadata only
+    // when `kind` travelled with it) and the stored reserved keys to carry over.
+    const existing = await prisma.part.findUnique({
+      where: { id },
+      select: { kind: true, metadata: true },
+    });
+    if (!existing) return { ok: false, formError: 'Part not found' };
+    const kind = rest.kind ?? existing.kind;
     const result = partKindSchemaFor(kind).safeParse(metadata ?? {});
     if (!result.success) {
       return {
@@ -104,7 +105,11 @@ export async function updatePart(input: unknown): Promise<ActionResult<{ id: str
         fieldErrors: metadataFieldErrors(kind, result.error.issues),
       };
     }
-    data.metadata = result.data as Prisma.InputJsonValue;
+    // Reserved keys (`_provenance`) are server-owned — see withStoredReservedMetadata.
+    data.metadata = withStoredReservedMetadata(
+      result.data,
+      existing.metadata,
+    ) as Prisma.InputJsonValue;
   }
 
   await prisma.part.update({ where: { id }, data });

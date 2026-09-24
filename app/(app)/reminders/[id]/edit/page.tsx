@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { updateReminder } from '@/lib/reminders/actions';
@@ -10,6 +11,7 @@ import { getReminder } from '@/lib/reminders/queries';
 import { parseRecurrence } from '@/lib/reminders/schema';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
 import { toTargetInputs } from '@/lib/targets/schema';
+import { startOfDayUtc } from '@/lib/time/tz';
 
 type Params = Promise<{ id: string }>;
 
@@ -33,6 +35,11 @@ export default async function EditReminderPage({ params }: { params: Params }) {
   const initialTargets = toTargetInputs(r.targets);
 
   const isChore = r.kind === 'CHORE';
+  // No targets → no derived due date. The fallback is a CALENDAR DATE (today's
+  // house day), never `new Date()`: that instant is submitted untouched and the
+  // calendar-date write guard rejects it (see CLAUDE.md, "Calendar dates are
+  // not instants").
+  const nextDueOn = r.nextDueOn ?? startOfDayUtc(new Date(), await getHouseTimezone());
   return (
     <FormPageShell header={<PageHeader title={isChore ? 'Edit chore' : 'Edit reminder'} />}>
       <ReminderForm
@@ -45,7 +52,7 @@ export default async function EditReminderPage({ params }: { params: Params }) {
           title: r.title,
           description: r.description ?? '',
           recurrence: parseRecurrence(r.recurrence),
-          nextDueOn: r.nextDueOn ?? new Date(),
+          nextDueOn,
           leadTimeDays: r.leadTimeDays,
           autoCreateServiceRecord: r.autoCreateServiceRecord,
           autoComplete: r.autoComplete,

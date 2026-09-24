@@ -1194,9 +1194,12 @@ async function applyCreatePart(
 
   const provenance = extractProvenance(payload);
   // The spec and `_provenance` share the `metadata` column, so this merges
-  // rather than overwrites. Safe to write provenance here because
-  // PartKindFields and the part Overview tab both strip reserved keys — the
-  // #328 leak/unsaveable-form pair cannot recur.
+  // rather than overwrites. Safe to write provenance here because every
+  // boundary treats reserved keys as server-owned: the Overview tabs hide
+  // them, PartForm strips them from its defaults, and updatePart re-attaches
+  // the stored ones on save (withStoredReservedMetadata,
+  // lib/metadata/reserved-keys.ts). Hiding them in the textarea alone was NOT
+  // enough — see Q-H3.
   const metadata = mergeProvenanceMetadata(spec.value as Prisma.JsonValue, provenance);
 
   const parent = payload.itemId

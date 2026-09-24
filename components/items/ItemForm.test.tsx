@@ -159,6 +159,35 @@ describe('ItemForm silent-failure regression (#304)', () => {
     expect(textarea.value).toContain('E26');
   });
 
+  // Hiding `_provenance` from the textarea (#328) was not enough: the textarea
+  // is uncontrolled, so the key still rode along in the RHF field value and an
+  // UNTOUCHED save submitted it into freeformMetadataSchema's reserved-key
+  // rejection. Assert on the payload, not the textarea.
+  it('submits an untouched AI-captured item without its reserved keys', async () => {
+    const action = makeAction({ ok: true, data: { id: 'i1' } });
+    const user = userEvent.setup();
+
+    render(
+      <ItemForm
+        categories={categories}
+        defaultValues={{
+          id: 'i1',
+          name: 'Backyard String Lights',
+          categorySlug: 'other',
+          metadata: { _provenance: { name: 'user', location: 'inferred' }, bulbBase: 'E26' },
+        }}
+        action={action}
+        submitLabel="Save item"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save item' }));
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+
+    const payload = action.mock.calls[0]?.[0] as { metadata: unknown };
+    expect(payload.metadata).toEqual({ bulbBase: 'E26' });
+  });
+
   it('surfaces the server-side reserved-key rejection on the metadata field', async () => {
     const action = makeAction(makeReservedKeyRejection());
     const user = userEvent.setup();
