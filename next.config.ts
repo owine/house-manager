@@ -6,13 +6,11 @@ import type { NextConfig } from 'next';
 const SECURITY_HEADERS = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  // Prod is only reached over TLS (behind the reverse proxy; Authelia OIDC
-  // requires it). Browsers ignore HSTS on plain-http responses, so `pnpm dev`
-  // on http://localhost is unaffected. Deliberately short: on a self-hosted
-  // site, HSTS turns a lapsed cert into a lockout with no click-through. One
-  // day, no includeSubDomains, no preload. Raise it (e.g. to a year) once TLS
-  // has been confirmed stable.
-  { key: 'Strict-Transport-Security', value: 'max-age=86400' },
+  // No Strict-Transport-Security here, deliberately: prod sits behind
+  // Cloudflare, which already sends `max-age=63072000` on every response
+  // (checked 2026-09-24). A second HSTS header from the origin would hand the
+  // browser two conflicting max-age values. HSTS belongs to whoever terminates
+  // TLS; change it at the edge.
 ];
 
 // Anti-framing for pages. Scoped AWAY from /api/files/: Next applies these

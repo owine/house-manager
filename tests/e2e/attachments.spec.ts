@@ -72,7 +72,9 @@ test('pages and files carry their security headers @critical', async ({ page, co
   expect(pageHeaders['content-security-policy']).toBe("frame-ancestors 'none'");
   expect(pageHeaders['x-content-type-options']).toBe('nosniff');
   expect(pageHeaders['referrer-policy']).toBe('strict-origin-when-cross-origin');
-  expect(pageHeaders['strict-transport-security']).toBe('max-age=86400');
+  // HSTS is Cloudflare's job (it already sends max-age=63072000); the app must
+  // not add a second, conflicting value. See next.config.ts.
+  expect(pageHeaders['strict-transport-security']).toBeUndefined();
   expect(pageHeaders['x-powered-by']).toBeUndefined();
 
   // A real PDF, uploaded the normal way, then fetched as the browser would.
