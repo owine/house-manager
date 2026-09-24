@@ -35,3 +35,14 @@ export async function verifyMagicBytes(buf: Buffer, claimedMime: string): Promis
 
 /** The type for bytes we will not let a browser interpret. */
 export const OCTET_STREAM = 'application/octet-stream';
+
+/**
+ * The type to STORE for bytes from someone we don't trust: what the magic
+ * bytes say, if that is one of ALLOWED_MIME, else `application/octet-stream`.
+ * A declared Content-Type is deliberately not a parameter. For inbound email
+ * it is the sender's claim, and that claim is the whole S-H1 attack.
+ */
+export async function sniffAllowedMime(buf: Buffer): Promise<string> {
+  const detected = await fileTypeFromBuffer(buf);
+  return detected && ALLOWED_MIME.has(detected.mime) ? detected.mime : OCTET_STREAM;
+}
