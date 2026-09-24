@@ -288,6 +288,10 @@ async function autoStub(input: {
     );
     await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
     await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
+    // The linked attachments now read "Linked to serviceRecord: …".
+    for (const attachmentId of created.linkedAttachmentIds) {
+      await enqueueEmbed('ATTACHMENT', attachmentId);
+    }
     log.info(
       {
         id: input.rowId,

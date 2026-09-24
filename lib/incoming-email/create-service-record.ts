@@ -33,6 +33,13 @@ export type CreateServiceRecordFromEmailInput = {
 export type CreateServiceRecordFromEmailResult = {
   serviceRecordId: string;
   attachmentsLinked: number;
+  /**
+   * Attachments this call re-parented onto the new record. Their embedded text
+   * names the parent, so callers must enqueue an ATTACHMENT re-embed for each
+   * after the transaction commits (not inside it, where the job could read the
+   * pre-commit row).
+   */
+  linkedAttachmentIds: string[];
 };
 
 /**
@@ -72,12 +79,17 @@ export async function createServiceRecordForEmail(
   // first. `serviceRecordId: null` guards against stealing a file the user
   // already attached somewhere else, and is also what lets a re-draft (after
   // the first draft was deleted) pick the same files back up.
-  const linked = await tx.attachment.updateMany({
+  const linked = await tx.attachment.updateManyAndReturn({
     where: { incomingEmailId: input.incomingEmailId, serviceRecordId: null },
     data: { serviceRecordId: sr.id },
+    select: { id: true },
   });
 
-  return { serviceRecordId: sr.id, attachmentsLinked: linked.count };
+  return {
+    serviceRecordId: sr.id,
+    attachmentsLinked: linked.length,
+    linkedAttachmentIds: linked.map((a) => a.id),
+  };
 }
 
 /**

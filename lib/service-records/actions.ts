@@ -223,6 +223,9 @@ export async function deleteServiceRecord(id: string): Promise<ActionResult> {
     select: {
       vendorId: true,
       targets: { select: { itemId: true, systemId: true, partId: true } },
+      // Only the rows the FK cascade will remove. Email-owned ones survive the
+      // delete (detachEmailOwnedAttachments) and come back from the transaction.
+      attachments: { where: { incomingEmailId: null }, select: { id: true } },
     },
   });
   if (!existing) return { ok: false, formError: 'Service record not found' };
@@ -238,6 +241,12 @@ export async function deleteServiceRecord(id: string): Promise<ActionResult> {
   await enqueueSearchIndex('service', id, 'delete');
   await enqueueEmbed('SERVICE_RECORD', id);
   for (const a of detached) await enqueueSearchIndex('attachment', a.id, 'upsert');
+  // Cascaded attachments need a tombstone (nothing cascades into `embeddings`);
+  // detached ones survive without this parent, and their canonical text names
+  // it ("Linked to serviceRecord: …"), so they need a re-embed. The same job
+  // handles both: it finds the row gone, or re-canonicalizes the survivor.
+  for (const a of existing.attachments) await enqueueEmbed('ATTACHMENT', a.id);
+  for (const a of detached) await enqueueEmbed('ATTACHMENT', a.id);
 
   revalidatePath('/service');
   revalidatePath('/dashboard');

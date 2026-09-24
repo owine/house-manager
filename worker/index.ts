@@ -186,18 +186,21 @@ async function main() {
     handleExtractAttachmentText,
   );
 
-  // Embedding backfill (Plan 4c). Scans each entity table for rows missing
-  // embeddings and enqueues per-entity embed-content jobs. Idempotent.
-  // Fired by both the admin Rebuild button and the worker startup recovery
-  // below.
+  // Embedding reconciliation (Plan 4c; sweep + stale scan added 2026-09):
+  // deletes embeddings of deleted sources, enqueues missing ones, and
+  // re-enqueues any whose text changed since they were stored. Idempotent.
+  // Fired nightly, by the admin Rebuild button, and by the startup send below.
+  // 03:30, clear of the 03:00 pg-dump + search.reindex pair.
+  await boss.schedule(Queue.EmbedBackfill, '30 3 * * *');
   await boss.work(Queue.EmbedBackfill, { batchSize: 1 }, async () => {
     await handleEmbedBackfill();
   });
 
   // Startup backfill — fire-and-forget a one-shot embed-backfill at every
-  // boot. The handler itself is a no-op when ASK_ENABLED=false, so this is
-  // safe to run unconditionally. Failure is non-fatal: the admin Rebuild
-  // button is the manual recovery path.
+  // boot (and nightly, via the schedule above). With ASK_ENABLED=false it only
+  // sweeps orphan embeddings (pure SQL, no Voyage call); gap-fill and the
+  // stale-hash pass are gated on Ask. Safe to run unconditionally. Failure is
+  // non-fatal: the nightly run and the admin Rebuild button both recover.
   try {
     await boss.send(Queue.EmbedBackfill, {});
     logger.info({ event: 'startup.embed-backfill.kicked' }, 'embed-backfill enqueued');

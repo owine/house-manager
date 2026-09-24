@@ -13,13 +13,14 @@ export type EmbedOptions = {
   inputType?: 'query' | 'document';
 };
 
-/** Thrown for transient errors (5xx, 429, network) — caller can retry. */
+/** Thrown for transient errors (5xx, 429, network, timeout) — caller can retry. */
 export class VoyageRetryableError extends Error {
   constructor(
     message: string,
     public status?: number,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = 'VoyageRetryableError';
   }
 }
@@ -48,6 +49,14 @@ const MAX_429_RETRIES = 5;
 const DEFAULT_RETRY_SLEEP_MS = 25_000;
 const MAX_RETRY_SLEEP_MS = 60_000;
 
+// Per-attempt ceiling on one HTTP request, body read included (the signal stays
+// attached to the response stream). Voyage answers a 128-input batch in a few
+// seconds; 30s means "the connection is wedged", not "the model is slow".
+// Without it a half-open socket parks an embed job until pg-boss's 15-minute
+// expiry, and parks a chat turn with no bound at all, since chat calls this
+// inside the request.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -68,10 +77,27 @@ function retryAfterMs(res: Response): number {
 }
 
 /**
+ * A request that produced no usable response: undici's `TypeError('fetch
+ * failed')` (DNS, refused, reset; the errno is on `.cause.code`), our own
+ * timeout (a `DOMException` named `TimeoutError`), a body that died mid-read,
+ * or a 200 whose body is complete but not valid JSON (`SyntaxError` from
+ * `res.json()`). All are treated as transient. The last one is deliberate: a
+ * malformed 200 is an upstream glitch, and pg-boss bounds the retries. These used to escape as a bare TypeError, which
+ * embed-content treats as permanent, so the job completed and the embedding
+ * stayed stale (P-H2). Not retried inline: pg-boss owns the worker's backoff
+ * (lib/queue.ts), and a chat turn should fail fast rather than stall.
+ */
+function transportFailure(err: unknown, attempt: number): VoyageRetryableError {
+  const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  log.warn({ err, attempt }, 'voyage: transport failure');
+  return new VoyageRetryableError(`Voyage request failed: ${detail}`, undefined, { cause: err });
+}
+
+/**
  * Embed an array of texts via Voyage's REST API. Batches across multiple
  * requests when input length exceeds {@link VOYAGE_MAX_BATCH}. Throws
- * {@link VoyageRetryableError} on 429/5xx/network so a pg-boss retry will
- * trigger; throws {@link VoyageFatalError} on permanent 4xx so a retry
+ * {@link VoyageRetryableError} on 429/5xx/network/timeout so a pg-boss retry
+ * will trigger; throws {@link VoyageFatalError} on permanent 4xx so a retry
  * loop doesn't waste tokens on a guaranteed failure.
  *
  * Returns embeddings as `Float32Array[]` in the same order as the input.
@@ -126,10 +152,15 @@ async function postBatch(
         model: VOYAGE_MODEL,
         input_type: inputType,
       }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    }).catch((err: unknown): never => {
+      throw transportFailure(err, attempt);
     });
 
     if (res.ok) {
-      return (await res.json()) as VoyageResponse;
+      return (await res.json().catch((err: unknown): never => {
+        throw transportFailure(err, attempt);
+      })) as VoyageResponse;
     }
 
     const body = await res.text().catch(() => '');
