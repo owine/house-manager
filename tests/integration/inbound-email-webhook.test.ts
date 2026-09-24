@@ -109,6 +109,12 @@ describe('POST /api/inbound-email/[token]', () => {
     expect(attachments).toHaveLength(2);
     expect(attachments.map((a) => a.filename).sort()).toEqual(['estimate-4831.pdf', 'scope.pdf']);
     expect(attachments[0].uploadedById).toBe('u1');
+    // The fixture's "PDFs" are the bytes of "hello world" / "ABCDE": not PDFs.
+    // Ingest stores what the bytes are, not what the sender claimed.
+    expect(attachments.map((a) => a.mimeType)).toEqual([
+      'application/octet-stream',
+      'application/octet-stream',
+    ]);
   });
 
   it('rejects with 401 on token mismatch', async () => {

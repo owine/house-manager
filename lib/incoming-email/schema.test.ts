@@ -99,4 +99,18 @@ describe('ForwardEmailWebhookSchema', () => {
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.subject).toBe('');
   });
+
+  // An explicit null Content-Type used to be a Zod 400, which means the email
+  // was dropped. Ingest never reads the declared type now (it sniffs the
+  // bytes), so there is nothing to reject.
+  it('accepts an attachment whose filename and contentType are null', () => {
+    const r = ForwardEmailWebhookSchema.safeParse({
+      messageId: '<a@example.com>',
+      from: { value: [{ address: 'a@b.example' }] },
+      attachments: [
+        { filename: null, contentType: null, content: { type: 'Buffer', data: [1, 2, 3] } },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
 });

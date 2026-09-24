@@ -30,7 +30,9 @@ export const ForwardEmailWebhookSchema = z
       .array(
         z.object({
           filename: z.string().nullable().optional(),
-          contentType: z.string().optional(),
+          // Accepted but never trusted: ingest sniffs the bytes instead
+          // (normalize-attachment.ts). Nullable so a null doesn't 400 the email.
+          contentType: z.string().nullable().optional(),
           size: z.number().int().nonnegative().optional(),
           content: z.object({
             type: z.literal('Buffer'),
