@@ -10,7 +10,7 @@ import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
 import { addAttachmentLinkSchema, type ParentType, uploadAttachmentSchema } from './schema';
-import { atomicWrite, removeDir } from './storage';
+import { atomicWrite, attachmentStorageDirs, removeDir } from './storage';
 
 const logger = getLogger('attachments.actions');
 
@@ -151,15 +151,22 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
       serviceRecordId: true,
       noteId: true,
       partId: true,
+      storagePath: true,
+      thumbnailPath: true,
     },
   });
   if (!row) return { ok: false, formError: 'Not found' };
 
   await prisma.attachment.delete({ where: { id } });
   await enqueueSearchIndex('attachment', id, 'delete');
-  await removeDir(env.FILES_DIR, id).catch((e) => {
-    logger.error({ err: e }, 'failed to remove storage dir');
-  });
+  // Directories come from the stored paths, not the id — inbound files live
+  // under `inbound/<xx>/<cuid>/`, so `removeDir(FILES_DIR, id)` left them on
+  // disk. removeDir re-checks each one against FILES_DIR.
+  for (const dir of attachmentStorageDirs(row)) {
+    await removeDir(env.FILES_DIR, dir).catch((e) => {
+      logger.error({ err: e, dir }, 'failed to remove storage dir');
+    });
+  }
 
   if (row.itemId) revalidatePath(`/items/${row.itemId}`);
   if (row.warrantyId) revalidatePath(`/warranties/${row.warrantyId}`);

@@ -37,10 +37,46 @@ export async function atomicWrite(
   return path.relative(filesDir, finalAbs);
 }
 
-/** Recursive remove of FILES_DIR/<dir>. Idempotent. */
+/**
+ * Recursive remove of FILES_DIR/<dir>. Idempotent.
+ *
+ * Refuses FILES_DIR itself: `resolveStoragePath` accepts '' and '.' (they do
+ * not escape the root, they ARE the root), and a recursive remove of the root
+ * would take every stored file with it.
+ */
 export async function removeDir(filesDir: string, dir: string): Promise<void> {
   const abs = resolveStoragePath(filesDir, dir);
+  if (path.relative(filesDir, abs) === '') {
+    throw new Error(`refusing to remove FILES_DIR itself (dir: ${JSON.stringify(dir)})`);
+  }
   await rm(abs, { recursive: true, force: true });
+}
+
+/**
+ * The directories an attachment's files live in, relative to FILES_DIR.
+ *
+ * Derived from the STORED paths, never recomputed from the attachment id,
+ * because the writers disagree on layout:
+ *   - upload:    `<attachmentId>/original.<ext>`         (lib/attachments/actions.ts)
+ *   - thumbnail: `<attachmentId>/thumb.webp`              (worker/jobs/thumbnail.ts)
+ *   - inbound:   `inbound/<xx>/<cuid>/original.<ext>`     (lib/incoming-email/ingest.ts)
+ *                with a cuid unrelated to the row id
+ * Each of those directories holds exactly one attachment's files, which is
+ * what makes removing the whole directory safe. A path with no directory
+ * component yields nothing: its dirname is FILES_DIR itself.
+ */
+export function attachmentStorageDirs(paths: {
+  storagePath: string | null;
+  thumbnailPath: string | null;
+}): string[] {
+  const dirs = new Set<string>();
+  for (const p of [paths.storagePath, paths.thumbnailPath]) {
+    if (!p) continue;
+    const dir = path.dirname(p);
+    if (dir === '.' || dir === '' || path.isAbsolute(dir)) continue;
+    dirs.add(dir);
+  }
+  return [...dirs];
 }
 
 /** Open a read stream for downloads. Caller resolves the path first. */
