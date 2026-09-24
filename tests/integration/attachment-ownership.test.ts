@@ -144,4 +144,46 @@ describe('deleteAttachment removes the directory the file actually lives in', ()
     expect(r.ok).toBe(true);
     expect(await exists(join(filesDir, id))).toBe(false);
   });
+
+  it("never touches a sibling's file when two rows share a malformed ancestor directory", async () => {
+    const email = await makeEmail();
+    // Malformed on purpose: both files live directly under `inbound/xx`, the
+    // shared bucket dir ingest.ts never itself writes into. This is the shape
+    // attachmentStorageDirs must report as unrecognized rather than delete.
+    const dirRel = 'inbound/xx';
+    const pathA = await atomicWrite(filesDir, dirRel, 'a.pdf', Buffer.from('a'));
+    const pathB = await atomicWrite(filesDir, dirRel, 'b.pdf', Buffer.from('b'));
+
+    const [attA, attB] = await Promise.all([
+      ctx.prisma.attachment.create({
+        data: {
+          incomingEmailId: email.id,
+          filename: 'a.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1,
+          storagePath: pathA,
+          uploadedById: 'u1',
+        },
+      }),
+      ctx.prisma.attachment.create({
+        data: {
+          incomingEmailId: email.id,
+          filename: 'b.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1,
+          storagePath: pathB,
+          uploadedById: 'u1',
+        },
+      }),
+    ]);
+
+    const r = await attachments.deleteAttachment(attA.id);
+
+    expect(r).toEqual({ ok: true, data: undefined });
+    expect(await ctx.prisma.attachment.findUnique({ where: { id: attA.id } })).toBeNull();
+    // The sibling row and its file must survive: the shared `inbound/xx`
+    // directory was never removed.
+    expect(await ctx.prisma.attachment.findUnique({ where: { id: attB.id } })).not.toBeNull();
+    expect(await exists(join(filesDir, pathB))).toBe(true);
+  });
 });

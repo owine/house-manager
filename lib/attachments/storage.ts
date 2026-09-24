@@ -52,6 +52,12 @@ export async function removeDir(filesDir: string, dir: string): Promise<void> {
   await rm(abs, { recursive: true, force: true });
 }
 
+// Matches ingest.ts's `inbound/${id.slice(0, 2)}/${id}` layout: exactly three
+// segments, cuid2's lowercase alnum charset (rejects '.'/'..' segments, which
+// the looser `[^/]+` would accept — `inbound/ab/..` resolves to the shared
+// `inbound/ab`), and the bucket equal to the cuid's own first two characters.
+const INBOUND_DIR = /^inbound\/([a-z0-9]{2})\/(\1[a-z0-9]+)$/;
+
 /**
  * The directories an attachment's files live in, relative to FILES_DIR.
  *
@@ -61,22 +67,32 @@ export async function removeDir(filesDir: string, dir: string): Promise<void> {
  *   - thumbnail: `<attachmentId>/thumb.webp`              (worker/jobs/thumbnail.ts)
  *   - inbound:   `inbound/<xx>/<cuid>/original.<ext>`     (lib/incoming-email/ingest.ts)
  *                with a cuid unrelated to the row id
- * Each of those directories holds exactly one attachment's files, which is
- * what makes removing the whole directory safe. A path with no directory
- * component yields nothing: its dirname is FILES_DIR itself.
+ *
+ * A directory is only ever returned when it is recognizably THIS row's own —
+ * either `<row.id>` or the inbound `inbound/<xx>/<cuid>` shape. Every other
+ * dirname (including a bare `inbound` or `inbound/<xx>`, which are shared
+ * ancestors holding other rows' files) is reported as `unrecognized` and left
+ * on disk rather than deleted: this function only ever returns this row's own
+ * directory; unknown shapes are left on disk.
  */
-export function attachmentStorageDirs(paths: {
+export function attachmentStorageDirs(row: {
+  id: string;
   storagePath: string | null;
   thumbnailPath: string | null;
-}): string[] {
+}): { dirs: string[]; unrecognized: string[] } {
   const dirs = new Set<string>();
-  for (const p of [paths.storagePath, paths.thumbnailPath]) {
+  const unrecognized = new Set<string>();
+  for (const p of [row.storagePath, row.thumbnailPath]) {
     if (!p) continue;
     const dir = path.dirname(p);
     if (dir === '.' || dir === '' || path.isAbsolute(dir)) continue;
-    dirs.add(dir);
+    if (dir === row.id || INBOUND_DIR.test(dir)) {
+      dirs.add(dir);
+    } else {
+      unrecognized.add(dir);
+    }
   }
-  return [...dirs];
+  return { dirs: [...dirs], unrecognized: [...unrecognized] };
 }
 
 /** Open a read stream for downloads. Caller resolves the path first. */

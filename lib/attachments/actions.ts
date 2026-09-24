@@ -161,8 +161,14 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   await enqueueSearchIndex('attachment', id, 'delete');
   // Directories come from the stored paths, not the id — inbound files live
   // under `inbound/<xx>/<cuid>/`, so `removeDir(FILES_DIR, id)` left them on
-  // disk. removeDir re-checks each one against FILES_DIR.
-  for (const dir of attachmentStorageDirs(row)) {
+  // disk. removeDir re-checks each one against FILES_DIR. Only dirs
+  // recognizable as this row's own are removed; anything else is left on
+  // disk rather than risk deleting a shared ancestor's siblings.
+  const { dirs, unrecognized } = attachmentStorageDirs({ id, ...row });
+  for (const dir of unrecognized) {
+    logger.warn({ dir }, 'attachment storage path in an unrecognized shape — left on disk');
+  }
+  for (const dir of dirs) {
     await removeDir(env.FILES_DIR, dir).catch((e) => {
       logger.error({ err: e, dir }, 'failed to remove storage dir');
     });
