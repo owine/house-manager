@@ -1,6 +1,35 @@
 import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
+// Headers for every response. None clashes with a route's own header except
+// X-Content-Type-Options on /api/files, where both values are `nosniff`.
+const SECURITY_HEADERS = [
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  // Prod is only reached over TLS (behind the reverse proxy; Authelia OIDC
+  // requires it). Browsers ignore HSTS on plain-http responses, so `pnpm dev`
+  // on http://localhost is unaffected. Deliberately short: on a self-hosted
+  // site, HSTS turns a lapsed cert into a lockout with no click-through. One
+  // day, no includeSubDomains, no preload. Raise it (e.g. to a year) once TLS
+  // has been confirmed stable.
+  { key: 'Strict-Transport-Security', value: 'max-age=86400' },
+];
+
+// Anti-framing for pages. Scoped AWAY from /api/files/: Next applies these
+// before a route handler runs and then DROPS any handler header with the same
+// name (node_modules/next/dist/server/send-response.js), so a global
+// Content-Security-Policy here would replace the file route's sandbox CSP
+// (lib/attachments/serve.ts) outright. Files need no framing protection: a
+// sandboxed download or image has nothing to clickjack.
+//
+// No script-src CSP, deliberately: with RSC it needs per-request nonces from
+// a proxy.ts, and a proxy.ts truncates request bodies over 10 MB
+// (proxyClientMaxBodySize), which would break HMAC on large inbound emails.
+const FRAME_HEADERS = [
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+];
+
 const nextConfig: NextConfig = {
   // Emits .next/standalone: a self-contained server.js plus a file-traced
   // node_modules holding only what the app actually imports. The Dockerfile
@@ -25,6 +54,16 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: process.env.NEXT_ALLOWED_DEV_ORIGIN
     ? [process.env.NEXT_ALLOWED_DEV_ORIGIN]
     : undefined,
+  // Don't advertise the framework on every response.
+  poweredByHeader: false,
+  async headers() {
+    return [
+      { source: '/:path*', headers: SECURITY_HEADERS },
+      // Everything except /api/files/<id>. Pattern checked with Next's own
+      // matcher: matches /, /items/x, /api/health, /_next/...; not /api/files/x.
+      { source: '/((?!api/files/).*)', headers: FRAME_HEADERS },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
