@@ -12,13 +12,16 @@ import { describe, expect, it } from 'vitest';
 
 // Prisma model name → EmbeddingEntityType string used in enqueueEmbed calls.
 // Note: vendor + reminder + (system) are intentionally absent — not embedded.
-// Checklist embeds under CHECKLIST_ITEM (whole-tree, keyed by checklistId).
+// CHECKLIST_ITEM is keyed by ChecklistItem.id, one embedding set per row. A
+// checklist write still maps to it (a rename changes every item's text, and a
+// delete cascades the items away), but the id passed must be the item's.
 const KIND_BY_MODEL: Record<string, string> = {
   item: 'ITEM',
   note: 'NOTE',
   serviceRecord: 'SERVICE_RECORD',
   warranty: 'WARRANTY',
   checklist: 'CHECKLIST_ITEM',
+  checklistItem: 'CHECKLIST_ITEM',
   attachment: 'ATTACHMENT',
 };
 
@@ -133,6 +136,19 @@ describe('embed drift guard', () => {
       );
     }
     expect(violations).toEqual([]);
+  });
+
+  it('CHECKLIST_ITEM is enqueued with a ChecklistItem id, never a checklist id', () => {
+    // The loader looks up a ChecklistItem by this id. A checklist id finds
+    // nothing, so the job tombstones zero rows and reports success. Every
+    // checklist enqueue was a silent no-op until 2026-09 (Q-H1). This catches
+    // the shape that bug took; tests/integration/checklist-embedding.test.ts
+    // covers the rest.
+    const pattern = /enqueueEmbed\(\s*['"`]CHECKLIST_ITEM['"`]\s*,\s*[\w.]*checklistId\b/;
+    const offenders = files
+      .filter((f) => pattern.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(repoRoot, f));
+    expect(offenders).toEqual([]);
   });
 
   it('ALLOWED entries still correspond to real files and real writes', () => {

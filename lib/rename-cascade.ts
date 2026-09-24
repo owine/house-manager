@@ -56,8 +56,8 @@ import { enqueueSearchIndex } from '@/lib/search/client';
  * system names. A **vendor** rename reaches no search document at all — a
  * service record's body is its notes, not its vendor.
  *
- *   - Not covered yet (smaller surface): Checklist.name → CHECKLIST_ITEM,
- *     ServiceRecord.summary → ATTACHMENT (via serviceRecordId),
+ *   - Not covered yet (smaller surface): ServiceRecord.summary → ATTACHMENT
+ *     (via serviceRecordId),
  *     Warranty.provider → ATTACHMENT (via warrantyId),
  *     Note.title → ATTACHMENT (via noteId). Add helpers here when those
  *     rename paths become user-facing. Those three now leave a stale *search*
@@ -65,6 +65,9 @@ import { enqueueSearchIndex } from '@/lib/search/client';
  *     `itemName` reads whichever parent is set, so renaming a note, warranty
  *     or service record leaves its attached files findable only by the old
  *     name until the nightly search.reindex rebuilds the index.
+ *     (Checklist.name → CHECKLIST_ITEM is handled in updateChecklist itself,
+ *     and the nightly embed.backfill stale scan repairs the embedding half
+ *     of the rest.)
  */
 
 /**

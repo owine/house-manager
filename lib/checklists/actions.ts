@@ -19,6 +19,23 @@ async function requireUser() {
   return s.user;
 }
 
+// CHECKLIST_ITEM embeddings are keyed by ChecklistItem.id, because the loader
+// in lib/embedding/index.ts looks up a *ChecklistItem* by it. A checklist id
+// finds nothing, and the job tombstones zero rows and reports success (Q-H1).
+// Sequential, not Promise.all: concurrent first calls to getBoss() each start
+// their own pg-boss instance (A-M1).
+async function enqueueChecklistItemEmbeds(itemIds: string[]): Promise<void> {
+  for (const itemId of itemIds) await enqueueEmbed('CHECKLIST_ITEM', itemId);
+}
+
+async function itemIdsOf(checklistId: string): Promise<string[]> {
+  const rows = await prisma.checklistItem.findMany({
+    where: { checklistId },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
 export async function createChecklist(input: unknown): Promise<ActionResult<{ id: string }>> {
   const u = await requireUser();
   if (!u) return { ok: false, formError: 'Unauthorized' };
@@ -31,7 +48,6 @@ export async function createChecklist(input: unknown): Promise<ActionResult<{ id
   }
   const created = await prisma.checklist.create({ data: parsed.data });
   await enqueueSearchIndex('checklist', created.id, 'upsert');
-  await enqueueEmbed('CHECKLIST_ITEM', created.id);
   revalidatePath('/checklists');
   return { ok: true, data: { id: created.id } };
 }
@@ -49,7 +65,8 @@ export async function updateChecklist(input: unknown): Promise<ActionResult<{ id
   const { id, ...data } = parsed.data;
   await prisma.checklist.update({ where: { id }, data });
   await enqueueSearchIndex('checklist', id, 'upsert');
-  await enqueueEmbed('CHECKLIST_ITEM', id);
+  // The checklist name is part of every item's embedded text.
+  await enqueueChecklistItemEmbeds(await itemIdsOf(id));
   revalidatePath('/checklists');
   revalidatePath(`/checklists/${id}`);
   return { ok: true, data: { id } };
@@ -58,9 +75,13 @@ export async function updateChecklist(input: unknown): Promise<ActionResult<{ id
 export async function deleteChecklist(id: string): Promise<ActionResult> {
   const u = await requireUser();
   if (!u) return { ok: false, formError: 'Unauthorized' };
+  // Capture BEFORE the delete: the FK cascade removes the items, and no cascade
+  // reaches the polymorphic embeddings table. Each job then finds its row gone
+  // and tombstones it.
+  const itemIds = await itemIdsOf(id);
   await prisma.checklist.delete({ where: { id } });
   await enqueueSearchIndex('checklist', id, 'delete');
-  await enqueueEmbed('CHECKLIST_ITEM', id);
+  await enqueueChecklistItemEmbeds(itemIds);
   revalidatePath('/checklists');
   return { ok: true, data: undefined };
 }
@@ -86,7 +107,7 @@ export async function addChecklistItem(input: unknown): Promise<ActionResult<{ i
     data: { checklistId, title, itemId: itemId ?? null, position: (last?.position ?? -1) + 1 },
   });
   await enqueueSearchIndex('checklist', checklistId, 'upsert');
-  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
+  await enqueueEmbed('CHECKLIST_ITEM', created.id);
   revalidatePath(`/checklists/${checklistId}`);
   return { ok: true, data: { id: created.id } };
 }
@@ -99,7 +120,8 @@ export async function deleteChecklistItem(input: { id: string }): Promise<Action
     select: { checklistId: true },
   });
   await enqueueSearchIndex('checklist', row.checklistId, 'upsert');
-  await enqueueEmbed('CHECKLIST_ITEM', row.checklistId);
+  // The job finds the row gone and tombstones its embeddings.
+  await enqueueEmbed('CHECKLIST_ITEM', input.id);
   revalidatePath(`/checklists/${row.checklistId}`);
   return { ok: true, data: undefined };
 }
@@ -120,7 +142,9 @@ export async function toggleChecklistItem(input: unknown): Promise<ActionResult>
     data: { completedAt: done ? new Date() : null },
     select: { checklistId: true },
   });
-  // Don't reindex search — completion status isn't a search field.
+  // Don't reindex search — completion status isn't a search field. It IS part
+  // of the embedded text ("Status: completed"), so re-embed.
+  await enqueueEmbed('CHECKLIST_ITEM', id);
   revalidatePath(`/checklists/${row.checklistId}`);
   return { ok: true, data: undefined };
 }
@@ -128,10 +152,13 @@ export async function toggleChecklistItem(input: unknown): Promise<ActionResult>
 export async function resetChecklist(input: { id: string }): Promise<ActionResult> {
   const u = await requireUser();
   if (!u) return { ok: false, formError: 'Unauthorized' };
-  await prisma.checklistItem.updateMany({
+  const reset = await prisma.checklistItem.updateManyAndReturn({
     where: { checklistId: input.id, completedAt: { not: null } },
     data: { completedAt: null },
+    select: { id: true },
   });
+  // Status is embedded; only the rows this call actually flipped changed.
+  await enqueueChecklistItemEmbeds(reset.map((r) => r.id));
   revalidatePath(`/checklists/${input.id}`);
   revalidatePath('/checklists');
   return { ok: true, data: undefined };
@@ -172,7 +199,6 @@ export async function reorderChecklistItems(input: unknown): Promise<ActionResul
     ),
   );
   await enqueueSearchIndex('checklist', checklistId, 'upsert');
-  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
   revalidatePath(`/checklists/${checklistId}`);
   return { ok: true, data: undefined };
 }

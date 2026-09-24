@@ -226,6 +226,7 @@ export async function saveAcceptedChecklist(input: {
     return { ok: false, formError: 'Checklist name is required.' };
   }
 
+  const createdItemIds: string[] = [];
   let checklistId: string;
   try {
     checklistId = await prisma.$transaction(async (tx) => {
@@ -250,14 +251,16 @@ export async function saveAcceptedChecklist(input: {
 
       for (let i = 0; i < input.items.length; i++) {
         const row = input.items[i];
-        await tx.checklistItem.create({
+        const ci = await tx.checklistItem.create({
           data: {
             checklistId: target.id,
             position: target.nextPosition + i,
             title: row.title,
             itemId: row.itemId,
           },
+          select: { id: true },
         });
+        createdItemIds.push(ci.id);
       }
 
       return target.id;
@@ -283,7 +286,9 @@ export async function saveAcceptedChecklist(input: {
       'enqueueSearchIndex failed',
     );
   }
-  await enqueueEmbed('CHECKLIST_ITEM', checklistId);
+  // One job per new ChecklistItem, not the checklist id (Q-H1). On the append
+  // path the existing items' text is unchanged, so they need nothing.
+  for (const itemId of createdItemIds) await enqueueEmbed('CHECKLIST_ITEM', itemId);
 
   try {
     await markAccepted(input.logId, [checklistId]);
