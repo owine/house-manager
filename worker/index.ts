@@ -186,10 +186,12 @@ async function main() {
     handleExtractAttachmentText,
   );
 
-  // Embedding backfill (Plan 4c). Scans each entity table for rows missing
-  // embeddings and enqueues per-entity embed-content jobs. Idempotent.
-  // Fired by both the admin Rebuild button and the worker startup recovery
-  // below.
+  // Embedding reconciliation (Plan 4c; sweep + stale scan added 2026-09):
+  // deletes embeddings of deleted sources, enqueues missing ones, and
+  // re-enqueues any whose text changed since they were stored. Idempotent.
+  // Fired nightly, by the admin Rebuild button, and by the startup send below.
+  // 03:30, clear of the 03:00 pg-dump + search.reindex pair.
+  await boss.schedule(Queue.EmbedBackfill, '30 3 * * *');
   await boss.work(Queue.EmbedBackfill, { batchSize: 1 }, async () => {
     await handleEmbedBackfill();
   });

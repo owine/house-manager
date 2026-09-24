@@ -114,6 +114,20 @@ export async function embedEntity(
   return { status: 'embedded', chunkCount: chunks.length };
 }
 
+/**
+ * The hash `embedEntity` would store for this entity right now, or null when it
+ * would store nothing (gone, archived, opted out, or blank text). DB reads only,
+ * no Voyage call, which is what lets embed.backfill find stale rows cheaply.
+ */
+export async function currentContentHash(
+  entityType: EmbeddingEntityType,
+  entityId: string,
+): Promise<string | null> {
+  const canonical = await buildCanonical(entityType, entityId);
+  if (canonical === null || canonical.trim().length === 0) return null;
+  return sha256(canonical);
+}
+
 function sha256(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }

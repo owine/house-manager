@@ -1,4 +1,5 @@
 import { type EmbeddingEntityType, Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
 /**
  * Is the source of an `embeddings` row still something Ask may answer from?
@@ -21,6 +22,13 @@ import { type EmbeddingEntityType, Prisma } from '@prisma/client';
  *
  * Callers must alias the embeddings row as `e`. ChecklistItem has no @@map, so
  * its table keeps Prisma's quoted PascalCase name.
+ *
+ * One known gap: for an ATTACHMENT with `aiIndexable = true` but empty
+ * `extractedText`, this predicate calls the row live, while `buildCanonical`
+ * returns `''` for it and `embedEntity` skips storing anything — so a stale
+ * chunk from before the text was cleared could survive the sweep. This never
+ * deletes a live row; it only makes the sweep more lenient than the writer
+ * for that one case.
  */
 const SOURCE_IS_LIVE: Record<EmbeddingEntityType, Prisma.Sql> = {
   ITEM: Prisma.sql`EXISTS (SELECT 1 FROM items s WHERE s.id = e."entityId" AND s."archivedAt" IS NULL)`,
@@ -38,3 +46,21 @@ export const LIVE_SOURCE_SQL: Prisma.Sql = Prisma.sql`(CASE e."entityType" ${Pri
   ),
   ' ',
 )} ELSE true END)`;
+
+/**
+ * Delete every embedding whose source is not live (see LIVE_SOURCE_SQL). This
+ * is the reconciliation backstop for Q-H2. The tombstones enqueued at delete
+ * sites are best-effort, and this is the guarantee. Returns rows removed per
+ * entity type (types with none are absent).
+ */
+export async function sweepOrphanEmbeddings(): Promise<Record<string, number>> {
+  const rows = await prisma.$queryRaw<{ entityType: EmbeddingEntityType; count: number }[]>`
+    WITH swept AS (
+      DELETE FROM embeddings e
+      WHERE NOT ${LIVE_SOURCE_SQL}
+      RETURNING e."entityType"
+    )
+    SELECT "entityType", count(*)::int AS count FROM swept GROUP BY "entityType"
+  `;
+  return Object.fromEntries(rows.map((r) => [r.entityType, r.count]));
+}

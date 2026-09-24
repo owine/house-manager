@@ -1,10 +1,37 @@
 import { randomUUID } from 'node:crypto';
 import type { EmbeddingEntityType } from '@prisma/client';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
+
+vi.mock('@/lib/env', () => ({
+  getEnv: () => ({ ASK_ENABLED: process.env.ASK_ENABLED === 'true' }),
+}));
+
+// Capture what reaches pg-boss (the backfill's only side channel).
+const enqueued: Array<{ queue: string; data: unknown }> = [];
+vi.mock('@/lib/queue', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/lib/queue')>();
+  return {
+    ...orig,
+    getBoss: vi.fn(async () => ({
+      send: vi.fn(async (queue: string, data: unknown) => {
+        enqueued.push({ queue, data });
+        return 'fake-job-id';
+      }),
+    })),
+  };
+});
+
+type EmbedJob = { entityType: EmbeddingEntityType; entityId: string };
+
+function embedJobs(): EmbedJob[] {
+  return enqueued.filter((e) => e.queue === 'embed.content').map((e) => e.data as EmbedJob);
+}
 
 let ctx: IntegrationContext;
 let retrieve: typeof import('@/lib/ask/retrieve');
+let backfill: typeof import('@/worker/jobs/embed-backfill');
+let embedding: typeof import('@/lib/embedding');
 let categoryId: string;
 
 // Every seeded chunk and the query share one direction, so the result does not
@@ -45,6 +72,8 @@ async function seedAttachment(parent: { noteId?: string; itemId?: string }, aiIn
 beforeAll(async () => {
   ctx = await setupIntegration();
   retrieve = await import('@/lib/ask/retrieve');
+  backfill = await import('@/worker/jobs/embed-backfill');
+  embedding = await import('@/lib/embedding');
   const cat = await ctx.prisma.category.upsert({
     where: { slug: 'liveness' },
     create: { slug: 'liveness', name: 'Liveness', sortOrder: 41 },
@@ -55,9 +84,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await teardownIntegration(ctx);
+  delete process.env.ASK_ENABLED;
 });
 
 beforeEach(async () => {
+  enqueued.length = 0;
+  process.env.ASK_ENABLED = 'true';
   await ctx.prisma.$executeRaw`DELETE FROM embeddings`;
   await ctx.prisma.attachment.deleteMany();
   await ctx.prisma.checklistItem.deleteMany();
@@ -147,7 +179,7 @@ describe('retrieveTopK only returns chunks whose source is live (Q-H2)', () => {
         endsOn: todayUtcMidnight(),
       },
     });
-    const partCategoryPlaceholder = await ctx.prisma.part.create({
+    const livePart = await ctx.prisma.part.create({
       data: { name: 'Live part' },
     });
     const archivedPart = await ctx.prisma.part.create({
@@ -161,7 +193,7 @@ describe('retrieveTopK only returns chunks whose source is live (Q-H2)', () => {
     await seedEmbedding('CHECKLIST_ITEM', liveCi.id);
     await seedEmbedding('WARRANTY', liveWarranty.id);
     await seedEmbedding('ATTACHMENT', liveAttachment.id);
-    await seedEmbedding('PART', partCategoryPlaceholder.id);
+    await seedEmbedding('PART', livePart.id);
 
     // Dead variant of every type: deleted row for NOTE/SERVICE_RECORD/WARRANTY/CHECKLIST_ITEM,
     // archived for ITEM/PART, aiIndexable=false for ATTACHMENT.
@@ -182,9 +214,56 @@ describe('retrieveTopK only returns chunks whose source is live (Q-H2)', () => {
         liveCi.id,
         liveWarranty.id,
         liveAttachment.id,
-        partCategoryPlaceholder.id,
+        livePart.id,
       ].sort(),
     );
+  });
+});
+
+describe('embed.backfill reconciles the embeddings table', () => {
+  it('sweeps embeddings of sources removed by DB cascade, even with Ask off', async () => {
+    process.env.ASK_ENABLED = 'false';
+    const keep = await ctx.prisma.note.create({ data: { title: 'Keep', body: 'k' } });
+    const doomed = await ctx.prisma.note.create({ data: { title: 'Doomed', body: 'd' } });
+    const att = await seedAttachment({ noteId: doomed.id });
+    const checklist = await ctx.prisma.checklist.create({
+      data: { name: 'Spring', items: { create: [{ title: 'Gutters', position: 0 }] } },
+      include: { items: true },
+    });
+    const [ci] = checklist.items;
+    if (!ci) throw new Error('fixture');
+    await seedEmbedding('NOTE', keep.id);
+    await seedEmbedding('ATTACHMENT', att.id);
+    await seedEmbedding('CHECKLIST_ITEM', ci.id);
+
+    // Both removals are FK-level cascades. No app code sees these rows go.
+    await ctx.prisma.note.delete({ where: { id: doomed.id } });
+    await ctx.prisma.checklist.delete({ where: { id: checklist.id } });
+
+    await backfill.handleEmbedBackfill();
+
+    const left = await ctx.prisma.embedding.findMany({
+      select: { entityType: true, entityId: true },
+    });
+    expect(left).toEqual([{ entityType: 'NOTE', entityId: keep.id }]);
+    expect(embedJobs()).toEqual([]); // Ask off: the sweep ran, nothing was enqueued
+  });
+
+  it('re-enqueues an entity whose stored hash no longer matches its text (P-H2)', async () => {
+    const stale = await ctx.prisma.note.create({ data: { title: 'Edited', body: 'new body' } });
+    const fresh = await ctx.prisma.note.create({ data: { title: 'Untouched', body: 'same' } });
+    await seedEmbedding('NOTE', stale.id, 'hash-of-the-text-before-a-failed-re-embed');
+    const freshHash = await embedding.currentContentHash('NOTE', fresh.id);
+    if (!freshHash) throw new Error('fixture');
+    await seedEmbedding('NOTE', fresh.id, freshHash);
+
+    await backfill.handleEmbedBackfill();
+
+    const noteJobs = embedJobs()
+      .filter((j) => j.entityType === 'NOTE')
+      .map((j) => j.entityId);
+    expect(noteJobs).toContain(stale.id);
+    expect(noteJobs).not.toContain(fresh.id);
   });
 });
 
