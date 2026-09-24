@@ -32,3 +32,6 @@ export async function verifyMagicBytes(buf: Buffer, claimedMime: string): Promis
   if (!detected) return false;
   return detected.mime === claimedMime;
 }
+
+/** The type for bytes we will not let a browser interpret. */
+export const OCTET_STREAM = 'application/octet-stream';
