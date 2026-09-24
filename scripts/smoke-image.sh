@@ -208,4 +208,22 @@ docker run -d --name "$WORKER" --network "$NET" --pull=never -p 13001:3000 "${en
 wait_for_health "$WORKER" 13001
 echo "  ✓ worker /api/health"
 
+# The backup job, run for real inside the real image against the smoke DB
+# (web has migrated and seeded it, so it holds table data). Proves the apk
+# client exists and is major-compatible with PG_IMAGE -- pg_dump refuses a
+# newer server -- and that dump -> pg_restore --list -> rename works end to
+# end. The tsx command is also the manual smoke command in docs/backups.md.
+# The worker has no /backups mount here, so create it first (the image runs as
+# root).
+echo "→ backup job"
+docker exec "$WORKER" pg_dump --version
+docker exec "$WORKER" mkdir -p /backups
+dump_out="$(docker exec "$WORKER" node_modules/.bin/tsx -e \
+  "import('./worker/jobs/pg-dump').then((m) => m.handlePgDump()).then((r) => console.log('SMOKE-DUMP ' + r.file))" \
+  2>&1)" || { printf '%s\n' "$dump_out" >&2; fail "handlePgDump failed inside the image"; }
+case "$dump_out" in
+  *"SMOKE-DUMP housemanager-"*) echo "  ✓ backup job wrote a validated dump" ;;
+  *) printf '%s\n' "$dump_out" >&2; fail "handlePgDump did not report a dump" ;;
+esac
+
 echo "SMOKE PASS: $IMAGE"
