@@ -58,7 +58,13 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
   {
     file: 'lib/incoming-email/create-service-record.ts',
     kind: 'ATTACHMENT',
-    reason: 'updateMany only sets serviceRecordId; embedded content (extractedText) is unchanged',
+    reason:
+      'shared transactional link (createServiceRecordForEmail) / unlink ' +
+      '(detachEmailOwnedAttachments) of inbox attachments. The embedded text names the ' +
+      'parent, so it DOES change — but enqueueing inside the transaction could embed the ' +
+      'pre-commit row. Both link callers enqueue ATTACHMENT for linkedAttachmentIds after ' +
+      'commit; deleteServiceRecord enqueues ATTACHMENT for the rows ' +
+      'detachEmailOwnedAttachments returns, after commit',
   },
   {
     file: 'lib/incoming-email/create-service-record.ts',

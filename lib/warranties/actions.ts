@@ -111,12 +111,18 @@ export async function deleteWarranty(id: string): Promise<ActionResult> {
 
   const existing = await prisma.warranty.findUnique({
     where: { id },
-    select: { targets: { select: { itemId: true, systemId: true } } },
+    select: {
+      targets: { select: { itemId: true, systemId: true } },
+      attachments: { select: { id: true } },
+    },
   });
   if (!existing) return { ok: false, formError: 'Warranty not found' };
 
   await prisma.warranty.delete({ where: { id } });
   await enqueueEmbed('WARRANTY', id);
+  // The FK cascade removed these attachment rows. Their embeddings need an
+  // explicit tombstone, because nothing cascades into `embeddings`.
+  for (const a of existing.attachments) await enqueueEmbed('ATTACHMENT', a.id);
 
   revalidatePath('/dashboard');
   for (const t of existing.targets) {

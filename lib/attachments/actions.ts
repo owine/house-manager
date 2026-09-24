@@ -3,6 +3,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
@@ -165,6 +166,10 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   if (row.incomingEmailId && row.serviceRecordId) {
     await prisma.attachment.update({ where: { id }, data: { serviceRecordId: null } });
     await enqueueSearchIndex('attachment', id, 'upsert');
+    // Re-embed: the canonical text names the parent ("Linked to serviceRecord:
+    // …"), and it just lost that parent. The nightly stale scan would catch
+    // it, but only after up to a day of stale retrieval.
+    await enqueueEmbed('ATTACHMENT', id);
     revalidatePath(`/service/${row.serviceRecordId}`);
     revalidatePath(`/inbox/${row.incomingEmailId}`);
     revalidatePath('/dashboard');
@@ -173,6 +178,10 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
 
   await prisma.attachment.delete({ where: { id } });
   await enqueueSearchIndex('attachment', id, 'delete');
+  // Tombstone its chunks: `embeddings` has no FK to attachments, so the row
+  // delete above does not reach them. The job finds the row gone and deletes
+  // them. The embed.backfill sweep is the backstop if this enqueue is lost.
+  await enqueueEmbed('ATTACHMENT', id);
   // Directories come from the stored paths, not the id — inbound files live
   // under `inbound/<xx>/<cuid>/`, so `removeDir(FILES_DIR, id)` left them on
   // disk. removeDir re-checks each one against FILES_DIR. Only dirs

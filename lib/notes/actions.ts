@@ -94,12 +94,18 @@ export async function deleteNote(id: string): Promise<ActionResult> {
   const session = await auth();
   if (!session?.user) return { ok: false, formError: 'Unauthorized' };
 
-  const existing = await prisma.note.findUnique({ where: { id }, select: { itemId: true } });
+  const existing = await prisma.note.findUnique({
+    where: { id },
+    select: { itemId: true, attachments: { select: { id: true } } },
+  });
   if (!existing) return { ok: false, formError: 'Note not found' };
 
   await prisma.note.delete({ where: { id } });
   await enqueueSearchIndex('note', id, 'delete');
   await enqueueEmbed('NOTE', id);
+  // The FK cascade removed these attachment rows. Their embeddings need an
+  // explicit tombstone, because nothing cascades into `embeddings`.
+  for (const a of existing.attachments) await enqueueEmbed('ATTACHMENT', a.id);
 
   revalidatePath('/notes');
   revalidatePath('/dashboard');
