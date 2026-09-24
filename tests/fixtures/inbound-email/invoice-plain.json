@@ -15,8 +15,38 @@
     "from": "Acme HVAC Billing <billing@acme.example>"
   },
   "attachments": [],
-  "dkim": { "result": "pass" },
-  "spf": { "result": "pass" },
-  "dmarc": { "result": "pass" },
+  "dkim": {
+    "headerFrom": ["billing@acme.example"],
+    "envelopeFrom": "billing@acme.example",
+    "results": [
+      {
+        "signingDomain": "acme.example",
+        "selector": "s1",
+        "status": { "result": "pass", "header": { "i": "@acme.example", "s": "s1" } },
+        "info": "dkim=pass header.i=@acme.example header.s=s1"
+      }
+    ]
+  },
+  "spf": {
+    "domain": "acme.example",
+    "status": {
+      "result": "pass",
+      "comment": "domain of billing@acme.example designates 192.0.2.10 as permitted sender"
+    },
+    "info": "spf=pass smtp.mailfrom=billing@acme.example"
+  },
+  "dmarc": {
+    "status": {
+      "result": "pass",
+      "comment": "p=REJECT",
+      "header": { "from": "acme.example", "d": "acme.example" }
+    },
+    "domain": "acme.example",
+    "policy": "reject",
+    "p": "reject",
+    "sp": "reject",
+    "rr": "v=DMARC1; p=reject",
+    "info": "dmarc=pass (p=REJECT) header.from=acme.example"
+  },
   "session": { "recipient": "inbox@housemanager.owine.net" }
 }
