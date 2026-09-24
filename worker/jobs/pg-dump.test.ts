@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDumpInvocation,
   handlePgDump,
+  PG_DUMP_TIMEOUT_MS,
+  PG_RESTORE_LIST_TIMEOUT_MS,
   RETENTION_COUNT,
   type RunCommand,
   STALE_PARTIAL_MS,
@@ -39,6 +41,9 @@ describe('buildDumpInvocation', () => {
     );
     expect(args).toContain('--format=custom');
     expect(args).toContain('--file=/backups/x.dump');
+    // Fails fast against a table lock instead of queueing behind it, well under
+    // the process-level timeout below (60s << 10min).
+    expect(args).toContain('--lock-wait-timeout=60s');
   });
 
   it('does not throw on malformed percent-encoding in the password', () => {
@@ -104,6 +109,10 @@ type FakeOpts = {
   dumpBytes?: number;
   listFails?: boolean;
   listOutput?: string;
+  // execFile's actual shape when `timeout` fires and the child is killed
+  // (observed locally: `{ killed: true, signal: 'SIGKILL', code: null }`,
+  // message "Command failed: …" — see worker/jobs/pg-dump.ts `defaultRun`).
+  dumpTimesOut?: boolean;
 };
 
 const GOOD_LISTING =
@@ -111,14 +120,27 @@ const GOOD_LISTING =
   '3391; 0 16415 TABLE DATA public items housemanager\n';
 
 function fakeRun(opts: FakeOpts = {}) {
-  const calls: Array<{ file: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
+  const calls: Array<{
+    file: string;
+    args: string[];
+    env: NodeJS.ProcessEnv;
+    timeoutMs: number | undefined;
+  }> = [];
   const run: RunCommand = async (file, args, options) => {
-    calls.push({ file, args, env: options.env });
+    calls.push({ file, args, env: options.env, timeoutMs: options.timeoutMs });
     if (file === 'pg_dump') {
       const fileArg = args.find((a) => a.startsWith('--file='));
       if (!fileArg) throw new Error('fake pg_dump: no --file');
       const target = fileArg.slice('--file='.length);
-      await fs.writeFile(target, Buffer.alloc(opts.dumpFails ? 0 : (opts.dumpBytes ?? 64), 1));
+      const empty = opts.dumpFails || opts.dumpTimesOut;
+      await fs.writeFile(target, Buffer.alloc(empty ? 0 : (opts.dumpBytes ?? 64), 1));
+      if (opts.dumpTimesOut) {
+        throw Object.assign(new Error('Command failed: pg_dump'), {
+          killed: true,
+          signal: 'SIGKILL',
+          code: null,
+        });
+      }
       if (opts.dumpFails) {
         throw Object.assign(new Error('Command failed: pg_dump'), {
           code: 1,
@@ -186,6 +208,18 @@ describe('handlePgDump', () => {
     expect(calls[0].args).toContain(`--file=${partial}`);
     expect(calls[0].env.PGPASSWORD).toBe('pw');
     expect(calls[1].args).toEqual(['--list', partial]);
+    // Bounded so a wedged pg_dump/pg_restore fails clean instead of hanging
+    // forever: pg-boss expires the attempt at 15min (no policy for `pg-dump`
+    // in lib/queue.ts QUEUE_POLICY, so it gets the default expireInSeconds
+    // 900), and these stay comfortably under that.
+    // Hardcoded literals, not just `toBe(PG_DUMP_TIMEOUT_MS)`: the exported
+    // constant and the value defaultRun actually forwards to execFile must
+    // both be right, or this assertion would pass trivially on two matching
+    // `undefined`s.
+    expect(calls[0].timeoutMs).toBe(600_000);
+    expect(calls[1].timeoutMs).toBe(120_000);
+    expect(PG_DUMP_TIMEOUT_MS).toBe(600_000);
+    expect(PG_RESTORE_LIST_TIMEOUT_MS).toBe(120_000);
   });
 
   it('on pg_dump failure: leaves no file, does not prune, reports, and rethrows', async () => {
@@ -196,6 +230,24 @@ describe('handlePgDump', () => {
 
     await expect(
       handlePgDump({ backupDir: dir, run: fakeRun({ dumpFails: true }).run, fetch }),
+    ).rejects.toThrow('Command failed: pg_dump');
+
+    expect(await listDir()).toEqual([...survivors, 'housemanager-old-8.dump'].sort());
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // A timeout-killed child looks like `{ killed: true, signal: 'SIGKILL', code:
+  // null }` (verified against real execFile), not `{ code: 1, stderr }`. The
+  // generic catch in handlePgDump must treat it exactly like any other failure.
+  it('on pg_dump timeout: leaves no file, does not prune, reports, and rethrows', async () => {
+    const survivors = await seedSevenGoodDumps();
+    await seedFile('housemanager-old-8.dump', 8 * 86_400_000);
+    const fetch = okFetch();
+    env.BACKUP_HEARTBEAT_URL = 'https://kuma.example/api/push/abc';
+
+    await expect(
+      handlePgDump({ backupDir: dir, run: fakeRun({ dumpTimesOut: true }).run, fetch }),
     ).rejects.toThrow('Command failed: pg_dump');
 
     expect(await listDir()).toEqual([...survivors, 'housemanager-old-8.dump'].sort());
@@ -286,6 +338,44 @@ describe('handlePgDump', () => {
     const names = await listDir();
     expect(names).not.toContain('.housemanager-killed.dump.partial');
     expect(names).toContain('.housemanager-recent.dump.partial');
+  });
+
+  // A dangling symlink named like a dump makes fs.stat throw ENOENT. That
+  // must not abort pruning of the real entries around it (a single outer
+  // try/catch would silently stop the whole prune here and leave the disk
+  // growing unbounded every subsequent run).
+  it('skips a dangling symlink instead of aborting the whole prune', async () => {
+    const oldNames = Array.from({ length: 8 }, (_, i) => `housemanager-old-${i + 1}.dump`);
+    for (const [i, name] of oldNames.entries()) await seedFile(name, (i + 1) * 86_400_000);
+    await fs.symlink(
+      path.join(dir, 'housemanager-ghost-target.dump'),
+      path.join(dir, 'housemanager-ghost.dump'),
+    );
+
+    const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    expect(result.pruned).toBe(2); // 8 old -> keep newest 6 + current = 7 real dumps
+    const names = await listDir();
+    expect(names).toContain('housemanager-ghost.dump'); // dangling symlink untouched, never a candidate
+    const realDumps = names.filter((n) => n !== 'housemanager-ghost.dump');
+    expect(realDumps).toEqual([result.file, ...oldNames.slice(0, RETENTION_COUNT - 1)].sort());
+  });
+
+  // A directory named like a stale `.partial` makes fs.rm throw EISDIR (no
+  // `recursive: true` is ever added). That must not abort cleanup of the
+  // real stale partials around it.
+  it('leaves a directory named like a stale .partial alone, and still removes real stale partials', async () => {
+    await seedFile('.housemanager-killed.dump.partial', STALE_PARTIAL_MS + 3_600_000);
+    const staleDir = path.join(dir, '.housemanager-dir.dump.partial');
+    await fs.mkdir(staleDir);
+    const staleTime = new Date(Date.now() - (STALE_PARTIAL_MS + 3_600_000));
+    await fs.utimes(staleDir, staleTime, staleTime);
+
+    await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    const names = await listDir();
+    expect(names).not.toContain('.housemanager-killed.dump.partial');
+    expect(names).toContain('.housemanager-dir.dump.partial');
   });
 
   describe('heartbeat', () => {

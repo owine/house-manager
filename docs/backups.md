@@ -12,8 +12,8 @@ The worker writes a Postgres logical dump to `/backups` (in-container) every day
 
 `worker/jobs/pg-dump.ts`, in order:
 
-1. `pg_dump` writes to a hidden temp file, `/backups/.housemanager-<ISO>.dump.partial`.
-2. The temp file must be non-empty, and `pg_restore --list` must read it and find table data in it.
+1. `pg_dump` writes to a hidden temp file, `/backups/.housemanager-<ISO>.dump.partial`. It's given `--lock-wait-timeout=60s`, so a held table lock fails the run promptly instead of queueing silently behind it, and the process itself is killed (`SIGKILL`) if it runs past 10 minutes — comfortably under pg-boss's 15-minute attempt expiry, so a wedged `pg_dump` fails clean (temp file removed) rather than hanging forever while every daily retry piles on another one.
+2. The temp file must be non-empty, and `pg_restore --list` (also bounded, 2 minutes) must read it and find table data in it.
 3. Only then is it renamed to `/backups/housemanager-<ISO>.dump`. The rename is atomic, so **a file with that name is always a complete, validated archive**.
 4. Retention: the newest 7 `housemanager-*.dump` files are kept, older ones deleted. This step runs **only after a successful dump**, so failing nights never delete a good one.
 5. If `BACKUP_HEARTBEAT_URL` is set, the job GETs it (see [Monitoring](#monitoring)).

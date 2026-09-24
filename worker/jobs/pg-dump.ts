@@ -25,6 +25,35 @@ export const RETENTION_COUNT = 7;
  */
 export const STALE_PARTIAL_MS = 24 * 60 * 60 * 1000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
+/**
+ * pg-boss has no per-queue policy for `pg-dump` (see `lib/queue.ts`
+ * QUEUE_POLICY), so an attempt expires after the default `expireInSeconds`
+ * 900 (15 min) — but that only marks the *job* failed, it does not kill the
+ * child process. Without a process-level timeout a `pg_dump` stuck on a lock
+ * (or a wedged connection) runs forever, and every daily retry piles on
+ * another one. 10 minutes leaves comfortable margin under the 15-minute
+ * expiry so the job still fails cleanly (temp file removed, error logged)
+ * instead of the queue expiring first and leaving an orphaned process.
+ */
+export const PG_DUMP_TIMEOUT_MS = 10 * 60_000;
+/**
+ * `pg_restore --list` only reads the archive header and table of contents
+ * (never the data blocks), so even a very large dump should return in
+ * seconds; 2 minutes is generous headroom for a slow/contended disk while
+ * still leaving most of the 15-minute expiry for the dump itself.
+ */
+export const PG_RESTORE_LIST_TIMEOUT_MS = 2 * 60_000;
+/**
+ * Passed to `pg_dump --lock-wait-timeout`. Without it, a concurrent DDL
+ * statement holding an AccessExclusiveLock makes pg_dump queue silently
+ * behind the lock for as long as the process is allowed to run — i.e. up to
+ * PG_DUMP_TIMEOUT_MS, burning the whole budget waiting instead of failing
+ * fast. 60s is well under PG_DUMP_TIMEOUT_MS (10min), so a lock conflict
+ * reports promptly and the job still has most of its window to retry via
+ * pg-boss the same night's other attempts, or clearly fail with a specific
+ * "could not obtain lock" error rather than a generic timeout kill.
+ */
+const LOCK_WAIT_TIMEOUT = '60s';
 
 export type FileEntry = { name: string; mtimeMs: number };
 
@@ -32,7 +61,7 @@ export type FileEntry = { name: string; mtimeMs: number };
 export type RunCommand = (
   file: string,
   args: string[],
-  options: { env: NodeJS.ProcessEnv },
+  options: { env: NodeJS.ProcessEnv; timeoutMs?: number },
 ) => Promise<{ stdout: string; stderr: string }>;
 
 type PgDumpDeps = {
@@ -43,9 +72,22 @@ type PgDumpDeps = {
 };
 
 const defaultRun: RunCommand = (file, args, options) =>
-  // 16 MiB: `pg_restore --list` prints one line per archive object, and
-  // execFile's 1 MiB default would kill it on a large schema.
-  execFileAsync(file, args, { env: options.env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  execFileAsync(file, args, {
+    env: options.env,
+    encoding: 'utf8',
+    // 16 MiB: `pg_restore --list` prints one line per archive object, and
+    // execFile's 1 MiB default would kill it on a large schema.
+    maxBuffer: 16 * 1024 * 1024,
+    // `timeout: undefined` is the same as omitting it (no timeout) — Node
+    // treats a falsy value as "no limit" — so it's safe to always pass this.
+    timeout: options.timeoutMs,
+    // SIGTERM relies on the child noticing it at a safe point; a pg_dump
+    // blocked inside libpq waiting on the server isn't guaranteed to. SIGKILL
+    // guarantees the process (and its temp file's writer) actually dies so
+    // cleanup can proceed — there is no second chance to ask nicely once the
+    // budget above is spent, and pg_dump has no state worth flushing on exit.
+    killSignal: 'SIGKILL',
+  });
 
 export type PgDumpResult = {
   file: string;
@@ -80,7 +122,14 @@ export function buildDumpInvocation(
   }
   u.password = '';
   return {
-    args: ['--format=custom', `--dbname=${u.toString()}`, `--file=${filepath}`],
+    args: [
+      '--format=custom',
+      `--dbname=${u.toString()}`,
+      `--file=${filepath}`,
+      // Fail fast on a held lock instead of queueing behind it for however
+      // long the process is allowed to run (see PG_DUMP_TIMEOUT_MS above).
+      `--lock-wait-timeout=${LOCK_WAIT_TIMEOUT}`,
+    ],
     password,
   };
 }
@@ -111,6 +160,7 @@ async function dumpAndValidate(
   const { args, password } = buildDumpInvocation(databaseUrl, partialPath);
   await deps.run('pg_dump', args, {
     env: password ? { ...process.env, PGPASSWORD: password } : process.env,
+    timeoutMs: PG_DUMP_TIMEOUT_MS,
   });
 
   // pg_dump creates its output file before it connects, so an early failure
@@ -122,7 +172,10 @@ async function dumpAndValidate(
   // Reads the archive header and table of contents. That catches a truncated
   // or foreign file, and a dump with no table data (e.g. DATABASE_URL pointing
   // at an empty database) is not a backup either.
-  const { stdout } = await deps.run('pg_restore', ['--list', partialPath], { env: process.env });
+  const { stdout } = await deps.run('pg_restore', ['--list', partialPath], {
+    env: process.env,
+    timeoutMs: PG_RESTORE_LIST_TIMEOUT_MS,
+  });
   if (!stdout.includes(' TABLE DATA ')) {
     throw new Error('pg_restore --list found no TABLE DATA entries in the dump');
   }
@@ -146,14 +199,31 @@ async function dumpAndValidate(
  * takes one of the RETENTION_COUNT slots. Ordering is by mtime, so without
  * this a clock that stepped backwards (NTP correction, a host restored from a
  * snapshot) would make tonight's dump look like the oldest and delete it.
+ *
+ * Each directory entry is handled in its own try/catch. A single outer
+ * try/catch around the whole scan would let one bad entry — a dangling
+ * symlink named like a dump (`fs.stat` throws ENOENT), a directory named
+ * like a stale `.partial` (`fs.rm` without `recursive: true` throws EISDIR)
+ * — abort pruning of every *other* entry for this run, and every run after
+ * it while that entry exists. The disk then grows unbounded while the
+ * heartbeat stays green, since pruning failure is deliberately non-fatal to
+ * the backup itself.
  */
 async function pruneBackupDir(backupDir: string, current: string): Promise<number> {
   let pruned = 0;
+  let entries: string[];
   try {
-    const now = Date.now();
-    const candidates: FileEntry[] = [];
-    for (const name of await fs.readdir(backupDir)) {
-      const full = path.join(backupDir, name);
+    entries = await fs.readdir(backupDir);
+  } catch (e) {
+    logger.warn({ err: e }, 'pruning failed (non-fatal)');
+    return pruned;
+  }
+
+  const now = Date.now();
+  const candidates: FileEntry[] = [];
+  for (const name of entries) {
+    const full = path.join(backupDir, name);
+    try {
       if (name.startsWith(PARTIAL_PREFIX) && name.endsWith(PARTIAL_SUFFIX)) {
         const s = await fs.stat(full);
         if (now - s.mtimeMs > STALE_PARTIAL_MS) {
@@ -175,15 +245,28 @@ async function pruneBackupDir(backupDir: string, current: string): Promise<numbe
         continue;
       }
       candidates.push({ name, mtimeMs: s.mtimeMs });
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      logger.warn(
+        { event: 'pg-dump.prune-entry.failed', file: name, code: err.code },
+        'skipping directory entry during prune (non-fatal)',
+      );
     }
-    for (const f of selectFilesToPrune(candidates, RETENTION_COUNT - 1)) {
+  }
+
+  for (const f of selectFilesToPrune(candidates, RETENTION_COUNT - 1)) {
+    try {
       await fs.unlink(path.join(backupDir, f.name));
       pruned += 1;
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      logger.warn(
+        { event: 'pg-dump.prune-entry.failed', file: f.name, code: err.code },
+        'skipping directory entry during prune (non-fatal)',
+      );
     }
-    if (pruned > 0) logger.info({ event: 'pg-dump.pruned', pruned }, 'pruned old dumps');
-  } catch (e) {
-    logger.warn({ err: e }, 'pruning failed (non-fatal)');
   }
+  if (pruned > 0) logger.info({ event: 'pg-dump.pruned', pruned }, 'pruned old dumps');
   return pruned;
 }
 
