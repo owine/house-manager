@@ -110,6 +110,42 @@ describe('embedTexts', () => {
     await expect(embedTexts(['hello'])).rejects.toBeInstanceOf(VoyageFatalError);
   });
 
+  it('classifies a fetch network failure (TypeError) as retryable and keeps the cause', async () => {
+    const cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.voyageai.com'), {
+      code: 'ENOTFOUND',
+    });
+    const netErr = new TypeError('fetch failed', { cause });
+    fetchMock.mockRejectedValueOnce(netErr);
+
+    const err = await embedTexts(['hello']).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(VoyageRetryableError);
+    expect((err as VoyageRetryableError).cause).toBe(netErr);
+    // Not retried inline: pg-boss owns the backoff, and a chat turn fails fast.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a request timeout as retryable', async () => {
+    fetchMock.mockRejectedValueOnce(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+    );
+    await expect(embedTexts(['hello'])).rejects.toBeInstanceOf(VoyageRetryableError);
+  });
+
+  // Covers both a body cut off mid-stream and a complete-but-malformed 200
+  // (res.json() throws SyntaxError either way). Treating a malformed 200 as
+  // retryable is deliberate: it is an upstream glitch, and retries are bounded.
+  it('classifies a 200 whose body is malformed or dies mid-read as retryable', async () => {
+    fetchMock.mockReturnValueOnce(Promise.resolve(new Response('{"data": [', { status: 200 })));
+    await expect(embedTexts(['hello'])).rejects.toBeInstanceOf(VoyageRetryableError);
+  });
+
+  it('bounds every request with an abort signal', async () => {
+    fetchMock.mockReturnValueOnce(mockOkResponse([[0.1]]));
+    await embedTexts(['hello']);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it('exports the expected constants', () => {
     expect(VOYAGE_DIMENSIONS).toBe(1024);
     expect(VOYAGE_MAX_BATCH).toBe(128);
