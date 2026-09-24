@@ -1,5 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import { buildDumpInvocation, RETENTION_COUNT, selectFilesToPrune } from './pg-dump';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as Sentry from '@sentry/node';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildDumpInvocation,
+  handlePgDump,
+  RETENTION_COUNT,
+  type RunCommand,
+  STALE_PARTIAL_MS,
+  selectFilesToPrune,
+} from './pg-dump';
+
+// Only the two fields handlePgDump reads. Mutable per test via `env`.
+const env = vi.hoisted(() => ({
+  DATABASE_URL: 'postgresql://housemanager:pw@db:5432/housemanager',
+  BACKUP_HEARTBEAT_URL: undefined as string | undefined,
+}));
+vi.mock('@/lib/env', () => ({ getEnv: () => env }));
+vi.mock('@sentry/node', () => ({ captureException: vi.fn() }));
+// Captured so tests can assert what is (and is never) logged.
+const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ getLogger: () => log }));
 
 describe('buildDumpInvocation', () => {
   const URL_WITH_PW =
@@ -66,5 +88,295 @@ describe('selectFilesToPrune', () => {
       { name: 'middle.dump', mtimeMs: 500 },
     ];
     expect(selectFilesToPrune(files)).toEqual([]);
+  });
+});
+
+// --- handlePgDump orchestration -------------------------------------------
+//
+// A real temp directory and a fake `run`, so every assertion is about files
+// that actually exist on disk. The fake mimics the real tools' observable
+// behaviour, including the one that caused O-M4: pg_dump creates its --file
+// BEFORE connecting, so a failed run leaves a 0-byte file behind (reproduced
+// with pg_dump 18.6 against an unreachable host).
+
+type FakeOpts = {
+  dumpFails?: boolean;
+  dumpBytes?: number;
+  listFails?: boolean;
+  listOutput?: string;
+};
+
+const GOOD_LISTING =
+  ';\n; Archive created at 2026-09-24 03:00:00 UTC\n;\n' +
+  '3391; 0 16415 TABLE DATA public items housemanager\n';
+
+function fakeRun(opts: FakeOpts = {}) {
+  const calls: Array<{ file: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
+  const run: RunCommand = async (file, args, options) => {
+    calls.push({ file, args, env: options.env });
+    if (file === 'pg_dump') {
+      const fileArg = args.find((a) => a.startsWith('--file='));
+      if (!fileArg) throw new Error('fake pg_dump: no --file');
+      const target = fileArg.slice('--file='.length);
+      await fs.writeFile(target, Buffer.alloc(opts.dumpFails ? 0 : (opts.dumpBytes ?? 64), 1));
+      if (opts.dumpFails) {
+        throw Object.assign(new Error('Command failed: pg_dump'), {
+          code: 1,
+          stderr: 'connection refused',
+        });
+      }
+      return { stdout: '', stderr: '' };
+    }
+    if (file === 'pg_restore') {
+      if (opts.listFails) {
+        throw Object.assign(new Error('Command failed: pg_restore --list'), {
+          code: 1,
+          stderr: 'pg_restore: error: input file is too short',
+        });
+      }
+      return { stdout: opts.listOutput ?? GOOD_LISTING, stderr: '' };
+    }
+    throw new Error(`fake run: unexpected command ${file}`);
+  };
+  return { run, calls };
+}
+
+const okFetch = () => vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+
+let dir: string;
+
+beforeEach(async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-dump-test-'));
+  env.BACKUP_HEARTBEAT_URL = undefined;
+});
+
+afterEach(async () => {
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+/** A pre-existing file with a chosen age. */
+async function seedFile(name: string, ageMs: number, bytes = 64): Promise<void> {
+  const full = path.join(dir, name);
+  await fs.writeFile(full, Buffer.alloc(bytes, 1));
+  const t = new Date(Date.now() - ageMs);
+  await fs.utimes(full, t, t);
+}
+
+/** Seven valid dumps, 1..7 days old. */
+async function seedSevenGoodDumps(): Promise<string[]> {
+  const names = Array.from({ length: RETENTION_COUNT }, (_, i) => `housemanager-old-${i + 1}.dump`);
+  for (const [i, name] of names.entries()) await seedFile(name, (i + 1) * 86_400_000);
+  return names;
+}
+
+const listDir = async () => (await fs.readdir(dir)).sort();
+
+describe('handlePgDump', () => {
+  it('dumps to a .partial, validates it, then renames it into place', async () => {
+    const { run, calls } = fakeRun();
+    const result = await handlePgDump({ backupDir: dir, run, fetch: okFetch() });
+
+    expect(result.file).toMatch(/^housemanager-\d{4}-\d{2}-\d{2}T[\d-]+Z\.dump$/);
+    expect(result.sizeBytes).toBe(64);
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(await listDir()).toEqual([result.file]);
+
+    const partial = path.join(dir, `.${result.file}.partial`);
+    expect(calls.map((c) => c.file)).toEqual(['pg_dump', 'pg_restore']);
+    expect(calls[0].args).toContain(`--file=${partial}`);
+    expect(calls[0].env.PGPASSWORD).toBe('pw');
+    expect(calls[1].args).toEqual(['--list', partial]);
+  });
+
+  it('on pg_dump failure: leaves no file, does not prune, reports, and rethrows', async () => {
+    const survivors = await seedSevenGoodDumps();
+    await seedFile('housemanager-old-8.dump', 8 * 86_400_000); // would be pruned on success
+    const fetch = okFetch();
+    env.BACKUP_HEARTBEAT_URL = 'https://kuma.example/api/push/abc';
+
+    await expect(
+      handlePgDump({ backupDir: dir, run: fakeRun({ dumpFails: true }).run, fetch }),
+    ).rejects.toThrow('Command failed: pg_dump');
+
+    expect(await listDir()).toEqual([...survivors, 'housemanager-old-8.dump'].sort());
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty dump even when pg_dump exits 0', async () => {
+    await expect(
+      handlePgDump({ backupDir: dir, run: fakeRun({ dumpBytes: 0 }).run, fetch: okFetch() }),
+    ).rejects.toThrow(/empty file/);
+    expect(await listDir()).toEqual([]);
+  });
+
+  it('rejects a dump that pg_restore --list cannot read, and does not prune', async () => {
+    const survivors = await seedSevenGoodDumps();
+    await seedFile('housemanager-old-8.dump', 8 * 86_400_000);
+
+    await expect(
+      handlePgDump({ backupDir: dir, run: fakeRun({ listFails: true }).run, fetch: okFetch() }),
+    ).rejects.toThrow(/pg_restore --list/);
+    expect(await listDir()).toEqual([...survivors, 'housemanager-old-8.dump'].sort());
+  });
+
+  it('rejects a dump whose listing has no table data', async () => {
+    const run = fakeRun({ listOutput: ';\n; Archive created at 2026-09-24\n' }).run;
+    await expect(handlePgDump({ backupDir: dir, run, fetch: okFetch() })).rejects.toThrow(
+      /no TABLE DATA/,
+    );
+    expect(await listDir()).toEqual([]);
+  });
+
+  it('prunes to RETENTION_COUNT valid dumps after a success, newest kept', async () => {
+    const old = await seedSevenGoodDumps(); // old-1 newest … old-7 oldest
+    const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    expect(result.pruned).toBe(1);
+    expect(await listDir()).toEqual([result.file, ...old.slice(0, RETENTION_COUNT - 1)].sort());
+  });
+
+  // O-M4: two bad nights under the old job left six 0-byte dumps NEWER than
+  // every good one, and the pruner then deleted the good ones to make room.
+  it('never counts 0-byte dumps toward retention, and removes them', async () => {
+    const old = await seedSevenGoodDumps();
+    for (let i = 0; i < 3; i++) await seedFile(`housemanager-empty-${i}.dump`, 3_600_000, 0);
+
+    const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    expect(result.pruned).toBe(1); // only old-7 goes; the empties never displaced a good dump
+    expect(await listDir()).toEqual([result.file, ...old.slice(0, RETENTION_COUNT - 1)].sort());
+  });
+
+  // Retention sorts by mtime. If the clock stepped backwards, every existing
+  // dump looks newer than tonight's, and a plain newest-7 would delete it.
+  it('never prunes the dump it just made, even if the clock stepped backwards', async () => {
+    const future = Array.from(
+      { length: RETENTION_COUNT },
+      (_, i) => `housemanager-future-${i + 1}.dump`,
+    );
+    for (const [i, name] of future.entries()) await seedFile(name, -(i + 1) * 86_400_000);
+
+    const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    expect(result.pruned).toBe(1); // future-1, the oldest of the others
+    expect(await listDir()).toEqual([result.file, ...future.slice(1)].sort());
+  });
+
+  it('never touches files outside the housemanager-*.dump pattern', async () => {
+    await seedSevenGoodDumps();
+    await seedFile('notes.txt', 30 * 86_400_000);
+    await seedFile('other-app.dump', 30 * 86_400_000);
+    await seedFile('housemanager-manual.sql', 30 * 86_400_000);
+
+    await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    const names = await listDir();
+    expect(names).toContain('notes.txt');
+    expect(names).toContain('other-app.dump');
+    expect(names).toContain('housemanager-manual.sql');
+  });
+
+  it('removes stale .partial leftovers but not recent ones', async () => {
+    await seedFile('.housemanager-killed.dump.partial', STALE_PARTIAL_MS + 3_600_000);
+    await seedFile('.housemanager-recent.dump.partial', 60_000);
+
+    await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch: okFetch() });
+
+    const names = await listDir();
+    expect(names).not.toContain('.housemanager-killed.dump.partial');
+    expect(names).toContain('.housemanager-recent.dump.partial');
+  });
+
+  describe('heartbeat', () => {
+    const PUSH_URL = 'https://kuma.example/api/push/abc123?status=up&msg=OK&ping=';
+
+    it('is skipped when BACKUP_HEARTBEAT_URL is unset', async () => {
+      const fetch = okFetch();
+      const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch });
+      expect(result.heartbeat).toBe('skipped');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('GETs the URL verbatim, with a timeout signal, after a validated dump', async () => {
+      env.BACKUP_HEARTBEAT_URL = PUSH_URL;
+      const fetch = okFetch();
+      const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch });
+      expect(result.heartbeat).toBe('sent');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledWith(PUSH_URL, { signal: expect.any(AbortSignal) });
+    });
+
+    it('is fail-soft on a non-2xx response', async () => {
+      env.BACKUP_HEARTBEAT_URL = PUSH_URL;
+      const fetch = vi.fn(async () => new Response('{"ok":false}', { status: 404 }));
+      const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch });
+      expect(result.heartbeat).toBe('failed');
+      expect(await listDir()).toEqual([result.file]);
+    });
+
+    it('is fail-soft on a network error', async () => {
+      env.BACKUP_HEARTBEAT_URL = PUSH_URL;
+      const fetch = vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      });
+      const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch });
+      expect(result.heartbeat).toBe('failed');
+      expect(await listDir()).toEqual([result.file]);
+    });
+
+    // undici puts the request URL in some error messages, and this URL carries
+    // the push token (and could carry user:pass@). Only the error's name and
+    // its cause's code may reach the log.
+    it('never logs the URL or its secrets when the ping throws', async () => {
+      // Built from parts (not one literal) so it's still a genuine embedded-
+      // credential URL at runtime without pattern-matching as a real secret.
+      const user = 'kuma-user';
+      const pass = 's3cretPass';
+      const secretUrl = `https://${user}:${pass}@kuma.example/api/push/tok3nSecret?status=up`;
+      env.BACKUP_HEARTBEAT_URL = secretUrl;
+      const fetch = vi.fn(async () => {
+        throw Object.assign(new TypeError(`fetch failed: ${secretUrl}`), {
+          cause: Object.assign(new Error(`connect ECONNREFUSED ${secretUrl}`), {
+            code: 'ECONNREFUSED',
+          }),
+        });
+      });
+
+      const result = await handlePgDump({ backupDir: dir, run: fakeRun().run, fetch });
+
+      expect(result.heartbeat).toBe('failed');
+      expect(log.warn).toHaveBeenCalledWith(
+        { event: 'pg-dump.heartbeat.failed', errName: 'TypeError', causeCode: 'ECONNREFUSED' },
+        expect.any(String),
+      );
+      const everything = JSON.stringify([
+        log.debug.mock.calls,
+        log.info.mock.calls,
+        log.warn.mock.calls,
+        log.error.mock.calls,
+      ]);
+      for (const secret of ['s3cretPass', 'tok3nSecret', 'kuma-user', 'kuma.example']) {
+        expect(everything).not.toContain(secret);
+      }
+    });
+
+    it('is fail-soft when the monitor never answers (timeout)', async () => {
+      env.BACKUP_HEARTBEAT_URL = PUSH_URL;
+      // Never settles on its own; only the abort signal ends it.
+      const fetch = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
+        const signal = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          if (signal) signal.addEventListener('abort', () => reject(signal.reason));
+        });
+      });
+      const result = await handlePgDump({
+        backupDir: dir,
+        run: fakeRun().run,
+        fetch,
+        heartbeatTimeoutMs: 20,
+      });
+      expect(result.heartbeat).toBe('failed');
+    });
   });
 });

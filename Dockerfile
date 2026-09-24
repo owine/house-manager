@@ -89,9 +89,11 @@ FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c
 # release line lives in renovate.json's `registryUrls` (`branch=v3.24`) and
 # must move with the base image. That URL lists both main and community, which
 # are merged in one lookup, so no per-package index override is needed.
-# postgresql18-client provides pg_dump for the worker's nightly DB backup job
-# (worker/jobs/pg-dump.ts). pg_dump must be >= the server major; server is
-# pgvector:pg18, matched.
+# postgresql18-client provides pg_dump AND pg_restore for the worker's nightly
+# DB backup job (worker/jobs/pg-dump.ts validates every dump with
+# `pg_restore --list` before giving it its final name). pg_dump must be >= the
+# server major; server is pgvector:pg18, matched. scripts/smoke-image.sh runs
+# the job against PG_IMAGE, so a mismatch fails the image smoke test.
 #
 # Deliberately NOT installing vips/vips-heif. sharp does not use system libvips:
 # it ships a prebuilt @img/sharp-libvips-linuxmusl-arm64 and its native binary
