@@ -197,9 +197,10 @@ async function main() {
   });
 
   // Startup backfill — fire-and-forget a one-shot embed-backfill at every
-  // boot. The handler itself is a no-op when ASK_ENABLED=false, so this is
-  // safe to run unconditionally. Failure is non-fatal: the admin Rebuild
-  // button is the manual recovery path.
+  // boot (and nightly, via the schedule above). With ASK_ENABLED=false it only
+  // sweeps orphan embeddings (pure SQL, no Voyage call); gap-fill and the
+  // stale-hash pass are gated on Ask. Safe to run unconditionally. Failure is
+  // non-fatal: the nightly run and the admin Rebuild button both recover.
   try {
     await boss.send(Queue.EmbedBackfill, {});
     logger.info({ event: 'startup.embed-backfill.kicked' }, 'embed-backfill enqueued');
