@@ -77,8 +77,9 @@ const ALLOWED: { file: string; kind: string; reason: string }[] = [
     file: 'lib/incoming-email/create-service-record.ts',
     kind: 'attachment',
     reason:
-      'updateMany only sets serviceRecordId to link inbox attachments to a service record; ' +
-      'attachment search doc references the direct Item link, not serviceRecord',
+      'shared transactional link/unlink of inbox attachments (createServiceRecordForEmail, ' +
+      'detachEmailOwnedAttachments); enqueueing inside the transaction would publish state ' +
+      'Meili cannot yet read — deleteServiceRecord re-upserts the detached rows after commit',
   },
   {
     file: 'lib/incoming-email/create-service-record.ts',

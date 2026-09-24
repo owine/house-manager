@@ -31,6 +31,8 @@ vi.mock('@/lib/embedding/enqueue', () => ({ enqueueEmbed: vi.fn(async () => {}) 
 
 let ctx: IntegrationContext;
 let attachments: typeof import('@/lib/attachments/actions');
+let serviceRecords: typeof import('@/lib/service-records/actions');
+let inbox: typeof import('@/lib/incoming-email/actions');
 let filesDir: string;
 const originalFilesDir = process.env.FILES_DIR;
 
@@ -39,6 +41,8 @@ beforeAll(async () => {
   filesDir = await mkdtemp(`${tmpdir()}/attachment-ownership-`);
   process.env.FILES_DIR = filesDir;
   attachments = await import('@/lib/attachments/actions');
+  serviceRecords = await import('@/lib/service-records/actions');
+  inbox = await import('@/lib/incoming-email/actions');
 }, 180_000);
 
 afterAll(async () => {
@@ -185,5 +189,92 @@ describe('deleteAttachment removes the directory the file actually lives in', ()
     // directory was never removed.
     expect(await ctx.prisma.attachment.findUnique({ where: { id: attB.id } })).not.toBeNull();
     expect(await exists(join(filesDir, pathB))).toBe(true);
+  });
+});
+
+/**
+ * Drafts a service record through the real "Create service record" action.
+ * The worker's autoStub goes through the same createServiceRecordForEmail
+ * helper, so this covers both creation paths.
+ */
+async function draftFromEmail() {
+  const vendor = await ctx.prisma.vendor.create({ data: { name: `Acme ${createId()}` } });
+  const email = await makeEmail(vendor.id);
+  const seeded = await seedInboundAttachment(email.id);
+  const r = await inbox.createServiceRecordFromEmail({ id: email.id });
+  if (!r.ok) throw new Error(`draft failed: ${JSON.stringify(r)}`);
+  const linked = await ctx.prisma.attachment.findUniqueOrThrow({
+    where: { id: seeded.attachment.id },
+  });
+  expect(linked.serviceRecordId).toBe(r.data.serviceRecordId); // precondition
+  return { email, serviceRecordId: r.data.serviceRecordId, ...seeded };
+}
+
+describe('an inbound attachment is owned by its email, not by the drafted service record', () => {
+  it("deleting the draft keeps the email's attachment row and its file", async () => {
+    const { email, serviceRecordId, attachment, fileAbs } = await draftFromEmail();
+
+    const r = await serviceRecords.deleteServiceRecord(serviceRecordId);
+
+    expect(r).toEqual({ ok: true, data: undefined });
+    expect(
+      await ctx.prisma.serviceRecord.findUnique({ where: { id: serviceRecordId } }),
+    ).toBeNull();
+    const after = await ctx.prisma.attachment.findUnique({ where: { id: attachment.id } });
+    expect(after).not.toBeNull();
+    expect(after?.incomingEmailId).toBe(email.id);
+    expect(after?.serviceRecordId).toBeNull();
+    expect(await exists(fileAbs)).toBe(true);
+    // Its search parent moved from the record back to the email.
+    expect(searchCalls).toContainEqual({ kind: 'attachment', id: attachment.id, op: 'upsert' });
+  });
+
+  it('re-drafting after deleting the draft re-links the same attachment', async () => {
+    const { email, serviceRecordId, attachment } = await draftFromEmail();
+    await serviceRecords.deleteServiceRecord(serviceRecordId);
+
+    const again = await inbox.createServiceRecordFromEmail({ id: email.id });
+
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    const after = await ctx.prisma.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
+    expect(after.serviceRecordId).toBe(again.data.serviceRecordId);
+  });
+
+  it('an attachment uploaded straight to the record still goes with it', async () => {
+    const { serviceRecordId } = await draftFromEmail();
+    const own = await ctx.prisma.attachment.create({
+      data: {
+        serviceRecordId,
+        filename: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 1,
+        storagePath: `${createId()}/original.jpg`,
+        uploadedById: 'u1',
+      },
+    });
+
+    await serviceRecords.deleteServiceRecord(serviceRecordId);
+
+    expect(await ctx.prisma.attachment.findUnique({ where: { id: own.id } })).toBeNull();
+  });
+
+  it('"delete" on the service-record page unlinks an email-owned attachment instead of destroying it', async () => {
+    const { email, attachment, fileAbs } = await draftFromEmail();
+
+    const r = await attachments.deleteAttachment(attachment.id);
+
+    expect(r).toEqual({ ok: true, data: undefined });
+    const after = await ctx.prisma.attachment.findUnique({ where: { id: attachment.id } });
+    expect(after).not.toBeNull();
+    expect(after?.incomingEmailId).toBe(email.id);
+    expect(after?.serviceRecordId).toBeNull();
+    expect(await exists(fileAbs)).toBe(true);
+    expect(searchCalls).toContainEqual({ kind: 'attachment', id: attachment.id, op: 'upsert' });
+    expect(searchCalls).not.toContainEqual({
+      kind: 'attachment',
+      id: attachment.id,
+      op: 'delete',
+    });
   });
 });

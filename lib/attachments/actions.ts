@@ -151,11 +151,25 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
       serviceRecordId: true,
       noteId: true,
       partId: true,
+      incomingEmailId: true,
       storagePath: true,
       thumbnailPath: true,
     },
   });
   if (!row) return { ok: false, formError: 'Not found' };
+
+  // An inbound attachment linked to a service record is owned by the email
+  // (see detachEmailOwnedAttachments). The only delete button that reaches it
+  // is on the record's page, so "delete" means "remove from this record";
+  // the email keeps its original row and file.
+  if (row.incomingEmailId && row.serviceRecordId) {
+    await prisma.attachment.update({ where: { id }, data: { serviceRecordId: null } });
+    await enqueueSearchIndex('attachment', id, 'upsert');
+    revalidatePath(`/service/${row.serviceRecordId}`);
+    revalidatePath(`/inbox/${row.incomingEmailId}`);
+    revalidatePath('/dashboard');
+    return { ok: true, data: undefined };
+  }
 
   await prisma.attachment.delete({ where: { id } });
   await enqueueSearchIndex('attachment', id, 'delete');
@@ -166,7 +180,10 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   // disk rather than risk deleting a shared ancestor's siblings.
   const { dirs, unrecognized } = attachmentStorageDirs({ id, ...row });
   for (const dir of unrecognized) {
-    logger.warn({ dir }, 'attachment storage path in an unrecognized shape — left on disk');
+    logger.warn(
+      { attachmentId: id, dir },
+      'attachment storage path in an unrecognized shape — left on disk',
+    );
   }
   for (const dir of dirs) {
     await removeDir(env.FILES_DIR, dir).catch((e) => {
