@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { getAttachment } from '@/lib/attachments/queries';
+import { fileResponseHeaders } from '@/lib/attachments/serve';
 import { openReadStream, resolveStoragePath } from '@/lib/attachments/storage';
 import { auth } from '@/lib/auth';
 import { getEnv } from '@/lib/env';
@@ -38,16 +39,14 @@ export async function GET(req: Request, { params }: { params: Params }) {
 
   const stream = openReadStream(absPath);
   const body = Readable.toWeb(stream) as ReadableStream;
-  const headers = new Headers();
-  headers.set(
-    'Content-Type',
-    wantThumb ? 'image/webp' : (row.mimeType ?? 'application/octet-stream'),
-  );
-  headers.set('Content-Length', String(size));
-  // Percent-encode the user-supplied filename to prevent header injection.
-  const safeName = row.filename ? encodeURIComponent(row.filename) : 'download';
-  headers.set('Content-Disposition', `inline; filename="${safeName}"`);
-  headers.set('Cache-Control', 'private, max-age=300');
+  // Every security-relevant header comes from one audited place. The stored
+  // mimeType is sender-controlled for inbound email, so it is only a hint.
+  const headers = fileResponseHeaders({
+    mimeType: row.mimeType,
+    filename: row.filename,
+    isThumbnail: wantThumb,
+    size,
+  });
 
   return new Response(body, { status: 200, headers });
 }
