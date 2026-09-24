@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALLOWED_MIME, extensionFor, verifyMagicBytes } from './mime';
+import { ALLOWED_MIME, extensionFor, sniffAllowedMime, verifyMagicBytes } from './mime';
 
 describe('ALLOWED_MIME', () => {
   it('contains exactly the five allowed types', () => {
@@ -55,5 +55,41 @@ describe('verifyMagicBytes', () => {
       0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
     ]);
     await expect(verifyMagicBytes(buf, 'image/jpeg')).resolves.toBe(false);
+  });
+});
+
+describe('sniffAllowedMime', () => {
+  it.each([
+    ['JPEG', Buffer.from([0xff, 0xd8, 0xff, 0xe0]), 'image/jpeg'],
+    ['PDF', Buffer.from('%PDF-1.4 fake'), 'application/pdf'],
+    [
+      'PNG',
+      Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52,
+      ]),
+      'image/png',
+    ],
+  ])('returns the detected type for allow-listed %s bytes', async (_label, buf, mime) => {
+    await expect(sniffAllowedMime(buf)).resolves.toBe(mime);
+  });
+
+  // The sender's declared Content-Type is never an input. These are the
+  // payloads S-H1 was about; none of them may come back as a renderable type.
+  it.each([
+    ['bare HTML', Buffer.from('<html><script>alert(1)</script></html>')],
+    [
+      'bare SVG',
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+    ],
+    [
+      'XML-prologue SVG',
+      Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'),
+    ],
+    ['GIF (detected, but not allow-listed)', Buffer.from('GIF89a......')],
+    ['unrecognised bytes', Buffer.from('hello world')],
+    ['an empty buffer', Buffer.alloc(0)],
+  ])('returns application/octet-stream for %s', async (_label, buf) => {
+    await expect(sniffAllowedMime(buf)).resolves.toBe('application/octet-stream');
   });
 });

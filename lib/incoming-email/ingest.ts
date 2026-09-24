@@ -1,10 +1,11 @@
 import { createId } from '@paralleldrive/cuid2';
 import { Prisma } from '@prisma/client';
-import { atomicWrite } from '@/lib/attachments/storage';
+import { atomicWrite, removeDir } from '@/lib/attachments/storage';
 import { prisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 import { enqueueSearchIndex } from '@/lib/search/client';
+import { normalizeInboundAttachment } from './normalize-attachment';
 import type { ForwardEmailWebhookBody } from './schema';
 
 const log = getLogger('incoming-email.actions');
@@ -52,33 +53,6 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
   });
   if (existing) return { id: existing.id, duplicate: true };
 
-  // Decode every attachment to a Buffer up-front so we can write before the DB
-  // insert; if a write fails we'd rather fail before persisting half a row.
-  const attachmentWrites: Array<{
-    storagePath: string;
-    filename: string | null;
-    mimeType: string | null;
-    sizeBytes: number | null;
-  }> = [];
-
-  for (const att of parsed.attachments) {
-    const buffer = Buffer.from(att.content.data);
-    const id = createId();
-    const dir = `inbound/${id.slice(0, 2)}/${id}`;
-    const baseName = att.filename ?? `attachment-${id}`;
-    // Strip path separators in supplied filename — defense against an attacker
-    // (or buggy mailer) crafting `../escape.pdf`. resolveStoragePath also
-    // catches this, but failing here gives a cleaner error.
-    const safeName = baseName.replace(/[/\\]/g, '_');
-    const storagePath = await atomicWrite(env.FILES_DIR, dir, safeName, buffer);
-    attachmentWrites.push({
-      storagePath,
-      filename: att.filename ?? null,
-      mimeType: att.contentType ?? null,
-      sizeBytes: att.size ?? buffer.length,
-    });
-  }
-
   const fromAddress = parsed.from.value[0].address;
   const fromName = parsed.from.value[0].name ?? null;
   const receivedAt = parsed.date ?? new Date();
@@ -89,8 +63,46 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
     dmarc: parsed.dmarc ?? null,
   } as Prisma.InputJsonValue;
 
+  // Every attachment directory this call creates. If anything below fails they
+  // are removed before the error propagates. The webhook then answers 500 and
+  // ForwardEmail retries, and without this each retry would leave another full
+  // copy of the attachments on disk with no row pointing at it.
+  const writtenDirs: string[] = [];
+
+  let created: { email: { id: string }; attachmentIds: string[] };
   try {
-    const created = await prisma.$transaction(async (tx) => {
+    // Write every attachment before the DB insert: if a write fails we'd
+    // rather fail before persisting half a row.
+    const attachmentWrites: Array<{
+      storagePath: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+    }> = [];
+
+    for (const att of parsed.attachments) {
+      const buffer = Buffer.from(att.content.data);
+      const id = createId();
+      const dir = `inbound/${id.slice(0, 2)}/${id}`;
+      // The sender controls this part's filename and Content-Type, and neither
+      // is trusted: the stored type comes from the bytes, the on-disk name is
+      // fixed, and a missing/degenerate name gets a generated one.
+      const normalized = await normalizeInboundAttachment({
+        filename: att.filename,
+        buffer,
+        fallbackStem: `attachment-${id}`,
+      });
+      writtenDirs.push(dir);
+      const storagePath = await atomicWrite(env.FILES_DIR, dir, normalized.storageName, buffer);
+      attachmentWrites.push({
+        storagePath,
+        filename: normalized.filename,
+        mimeType: normalized.mimeType,
+        sizeBytes: att.size ?? buffer.length,
+      });
+    }
+
+    created = await prisma.$transaction(async (tx) => {
       const email = await tx.incomingEmail.create({
         data: {
           messageId: parsed.messageId,
@@ -123,16 +135,14 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
       }
       return { email, attachmentIds };
     });
-    for (const id of created.attachmentIds) {
-      await enqueueSearchIndex('attachment', id, 'upsert');
-    }
-    return { id: created.email.id, duplicate: false };
   } catch (err) {
+    // Nothing we wrote is referenced: either the transaction never ran or it
+    // rolled back.
+    await Promise.all(writtenDirs.map((dir) => removeDir(env.FILES_DIR, dir).catch(() => {})));
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       // TOCTOU: a concurrent retry of the same Message-ID committed first.
-      // Surface the existing row instead of erroring; the attachments we just
-      // wrote will end up orphaned on disk but unreferenced in DB. Acceptable
-      // tradeoff vs. a coordinated lock — in practice this race is very rare.
+      // Surface the existing row instead of erroring. Its own attachments are
+      // on disk; ours were just removed above.
       log.warn(
         { messageId: parsed.messageId },
         'inbound-email: concurrent insert race resolved via existing row',
@@ -145,4 +155,11 @@ export async function ingestIncomingEmail(parsed: ForwardEmailWebhookBody): Prom
     }
     throw err;
   }
+
+  // Outside the try on purpose: a failure here must never delete files that
+  // committed rows point at. (enqueueSearchIndex swallows its own errors anyway.)
+  for (const id of created.attachmentIds) {
+    await enqueueSearchIndex('attachment', id, 'upsert');
+  }
+  return { id: created.email.id, duplicate: false };
 }

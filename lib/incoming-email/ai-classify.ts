@@ -163,7 +163,8 @@ export function validateCandidateIds(
 /**
  * Confidence floor for auto-stubbing a ServiceRecord from an inbound email:
  * a high-confidence INVOICE or TICKET with a matched vendor AND a matched
- * target (item or system). Anything weaker stays in the triage queue.
+ * target (item or system), from a sender that passed DMARC. Anything weaker
+ * stays in the triage queue.
  */
 export function shouldAutoStub(input: {
   kind: 'ESTIMATE' | 'INVOICE' | 'TICKET' | 'UNKNOWN';
@@ -171,8 +172,16 @@ export function shouldAutoStub(input: {
   targetItemId: string | null;
   targetSystemId: string | null;
   confidence: 'low' | 'medium' | 'high';
+  /**
+   * `dmarcPassed(row.authResultsJson)` (./auth-results). Every other field is
+   * a MODEL OUTPUT that whoever wrote the email can steer. This is the one
+   * input decided outside the message. Without it, a spoofed `From:` of a
+   * real vendor writes a service record with no human in the loop.
+   */
+  dmarcPassed: boolean;
 }): boolean {
   return (
+    input.dmarcPassed &&
     (input.kind === 'TICKET' || input.kind === 'INVOICE') &&
     input.confidence === 'high' &&
     !!input.vendorId &&

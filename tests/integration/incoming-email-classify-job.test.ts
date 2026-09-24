@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type IntegrationContext,
@@ -64,12 +65,35 @@ let ctx: IntegrationContext;
 let handle: typeof import('@/worker/jobs/classify-incoming-email').handleClassifyIncomingEmail;
 let categoryId: string;
 
+// ForwardEmail's mailauth results as ingest stores them (`{ dkim, spf, dmarc }`).
+// See lib/incoming-email/auth-results.ts for the shape.
+const DMARC_PASS: Prisma.InputJsonValue = {
+  dkim: null,
+  spf: null,
+  dmarc: {
+    status: { result: 'pass', comment: 'p=REJECT' },
+    domain: 'acme.example',
+    policy: 'reject',
+  },
+};
+const DMARC_FAIL: Prisma.InputJsonValue = {
+  dkim: null,
+  spf: null,
+  dmarc: { status: { result: 'fail', comment: 'p=NONE' }, domain: 'acme.example', policy: 'none' },
+};
+
 async function makeEmail(args: {
   messageId: string;
   fromAddress?: string;
   fromName?: string;
   subject: string;
   bodyText?: string;
+  /**
+   * Stored authResultsJson. Defaults to a DMARC pass so the pre-existing
+   * auto-stub tests keep exercising the path they were written for; `null`
+   * stores no auth results at all.
+   */
+  authResults?: Prisma.InputJsonValue | null;
 }) {
   return ctx.prisma.incomingEmail.create({
     data: {
@@ -80,6 +104,7 @@ async function makeEmail(args: {
       bodyText: args.bodyText ?? null,
       receivedAt: new Date('2026-05-08T12:00:00Z'),
       headersJson: {},
+      ...(args.authResults === null ? {} : { authResultsJson: args.authResults ?? DMARC_PASS }),
     },
   });
 }
@@ -525,5 +550,118 @@ describe('handleClassifyIncomingEmail — PDF attachments', () => {
     const sent = sentMessages[0] as { messages: Array<{ content: unknown }> };
     const content = sent.messages[0].content as Array<{ type: string }>;
     expect(content.filter((c) => c.type === 'document')).toHaveLength(0);
+  });
+});
+
+// S-H2: a stranger's email must not write a service record with no human in
+// the loop. Every other auto-stub input is steerable by the email body.
+describe('handleClassifyIncomingEmail — DMARC gate on auto-stub', () => {
+  async function arrangeHighConfidenceInvoice(
+    messageId: string,
+    authResults: Prisma.InputJsonValue | null,
+  ) {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 'Heat pump spring tune-up',
+        cost: 185.0,
+        performedOn: '2026-04-15',
+        scope: 'Replaced air filter; cleaned coils.',
+        rationale: 'Clear invoice from known vendor.',
+      },
+      usage: {},
+    };
+    const e = await makeEmail({
+      messageId,
+      subject: 'Invoice #5512 for Heat Pump service',
+      bodyText: 'Amount due $185.',
+      authResults,
+    });
+    return { e, v, item };
+  }
+
+  async function expectClassifiedButNotStubbed(emailId: string, vendorId: string, itemId: string) {
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: emailId },
+      include: { targets: true },
+    });
+    // Classification still lands, so the user sees the suggestion in triage...
+    expect(after?.kind).toBe('INVOICE');
+    expect(after?.vendorId).toBe(vendorId);
+    expect(after?.targets[0].itemId).toBe(itemId);
+    expect(after?.state).toBe('AUTO_LINKED');
+    // ...but nothing was written on the sender's say-so.
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  }
+
+  it('DMARC pass -> auto-stubs (control)', async () => {
+    const { e } = await arrangeHighConfidenceInvoice('<dmarc-pass@a>', DMARC_PASS);
+    await handle([{ data: { id: e.id } }]);
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.createdServiceRecordId).not.toBeNull();
+    expect(after?.state).toBe('LINKED');
+  });
+
+  it('DMARC fail -> classifies but does NOT auto-stub', async () => {
+    const { e, v, item } = await arrangeHighConfidenceInvoice('<dmarc-fail@a>', DMARC_FAIL);
+    await handle([{ data: { id: e.id } }]);
+    await expectClassifiedButNotStubbed(e.id, v.id, item.id);
+  });
+
+  it('no stored auth results -> does NOT auto-stub (fail-closed)', async () => {
+    const { e, v, item } = await arrangeHighConfidenceInvoice('<dmarc-missing@a>', null);
+    await handle([{ data: { id: e.id } }]);
+    await expectClassifiedButNotStubbed(e.id, v.id, item.id);
+  });
+
+  it('the old fixture shape { result: "pass" } -> does NOT auto-stub (fail-closed)', async () => {
+    const { e, v, item } = await arrangeHighConfidenceInvoice('<dmarc-legacy@a>', {
+      dkim: null,
+      spf: null,
+      dmarc: { result: 'pass' },
+    });
+    await handle([{ data: { id: e.id } }]);
+    await expectClassifiedButNotStubbed(e.id, v.id, item.id);
+  });
+
+  it('the heuristic fallback honours the gate too', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'dispatch@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    // Force the fallback, which an attacker can also do (e.g. a PDF that
+    // blows the token ceiling).
+    mockResponse = () => {
+      throw Object.assign(new Error('rate limited'), { status: 429 });
+    };
+    const e = await makeEmail({
+      messageId: '<dmarc-fail-heuristic@a>',
+      fromAddress: 'dispatch@acme.example', // exact Vendor.email match: what spoofing buys
+      subject: 'Service ticket — visit complete',
+      bodyText: 'Performed maintenance on the Heat Pump today.',
+      authResults: DMARC_FAIL,
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
+    expect(after?.kind).toBe('TICKET');
+    expect(after?.vendorId).toBe(v.id);
+    expect(after?.targets[0].itemId).toBe(item.id);
+    expect(after?.state).toBe('AUTO_LINKED');
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
   });
 });

@@ -37,6 +37,7 @@ describe('shouldAutoStub', () => {
     targetItemId: 'i1',
     targetSystemId: null,
     confidence: 'high' as const,
+    dmarcPassed: true,
   };
   it('stubs for TICKET and INVOICE at high confidence with vendor+target', () => {
     expect(shouldAutoStub({ ...base, kind: 'TICKET' })).toBe(true);
@@ -54,5 +55,11 @@ describe('shouldAutoStub', () => {
     expect(
       shouldAutoStub({ ...base, kind: 'TICKET', targetItemId: null, targetSystemId: null }),
     ).toBe(false);
+  });
+  // Every other input is a model output that the email body can steer; this
+  // is the one a sender can't forge.
+  it('does not stub when the sender did not pass DMARC, however sure the model is', () => {
+    expect(shouldAutoStub({ ...base, kind: 'TICKET', dmarcPassed: false })).toBe(false);
+    expect(shouldAutoStub({ ...base, kind: 'INVOICE', dmarcPassed: false })).toBe(false);
   });
 });

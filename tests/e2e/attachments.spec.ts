@@ -55,3 +55,53 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('text=No files yet')).toBeVisible();
 });
+
+// The only test that sees the headers a BROWSER gets. next.config.ts
+// `headers()` are applied before a route handler runs and WIN on a name clash
+// (Next drops the handler's value), so a global CSP would silently replace
+// the file route's sandbox. Integration tests call handlers directly and
+// can't see that. @critical because nothing else would notice the regression.
+test('pages and files carry their security headers @critical', async ({ page, context }) => {
+  await context.clearCookies();
+  await signIn(page);
+
+  const pageResponse = await page.goto('/items/new');
+  expect(pageResponse).not.toBeNull();
+  const pageHeaders = (await pageResponse?.allHeaders()) ?? {};
+  expect(pageHeaders['x-frame-options']).toBe('DENY');
+  expect(pageHeaders['content-security-policy']).toBe("frame-ancestors 'none'");
+  expect(pageHeaders['x-content-type-options']).toBe('nosniff');
+  expect(pageHeaders['referrer-policy']).toBe('strict-origin-when-cross-origin');
+  // HSTS is Cloudflare's job (it already sends max-age=63072000); the app must
+  // not add a second, conflicting value. See next.config.ts.
+  expect(pageHeaders['strict-transport-security']).toBeUndefined();
+  expect(pageHeaders['x-powered-by']).toBeUndefined();
+
+  // A real PDF, uploaded the normal way, then fetched as the browser would.
+  await page.getByLabel('Name').fill('Water Heater');
+  await page.getByRole('combobox', { name: 'Category' }).click();
+  await page.getByRole('option', { name: /HVAC/i }).click();
+  await page.getByRole('button', { name: 'Create item' }).click();
+  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+\/suggest-after-create$/);
+  await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
+  await page.getByRole('link', { name: 'Files' }).click();
+  await page.setInputFiles('input[type=file]', 'tests/fixtures/sample.pdf');
+  const fileLink = page.locator('a[href^="/api/files/"]').first();
+  await expect(fileLink).toBeVisible({ timeout: 10_000 });
+  const href = await fileLink.getAttribute('href');
+  expect(href).toBeTruthy();
+
+  const fileResponse = await page.request.get(href as string);
+  expect(fileResponse.status()).toBe(200);
+  const fileHeaders = fileResponse.headers();
+  expect(fileHeaders['content-type']).toBe('application/pdf');
+  expect(fileHeaders['content-disposition']).toMatch(/^inline;/);
+  expect(fileHeaders['x-content-type-options']).toBe('nosniff');
+  // The route's own policy, NOT the global frame-ancestors one.
+  expect(fileHeaders['content-security-policy']).toBe(
+    "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  );
+  expect(fileHeaders['x-frame-options']).toBeUndefined();
+  expect(fileHeaders['x-powered-by']).toBeUndefined();
+});
