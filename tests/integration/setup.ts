@@ -28,12 +28,21 @@ export type TestStack = {
   meiliUrl: string;
 };
 
-export async function startStack(): Promise<TestStack> {
-  const postgres = await new PostgreSqlContainer(POSTGRES_IMAGE)
+/**
+ * A bare Postgres from the stack's image, credentials and database name. The
+ * stack uses it, and so does any test that needs a second, empty server --
+ * e.g. restoring a dump somewhere other than where it was taken.
+ */
+export function startPostgres(): Promise<StartedPostgreSqlContainer> {
+  return new PostgreSqlContainer(POSTGRES_IMAGE)
     .withDatabase('housemanager')
     .withUsername('housemanager')
     .withPassword('test')
     .start();
+}
+
+export async function startStack(): Promise<TestStack> {
+  const postgres = await startPostgres();
   const meili = await new GenericContainer(MEILI_IMAGE)
     .withEnvironment({ MEILI_MASTER_KEY: 'test', MEILI_ENV: 'development' })
     .withExposedPorts(7700)
