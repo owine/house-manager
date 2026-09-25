@@ -28,8 +28,8 @@ import { handleNotifyLogSweep } from './jobs/notify-log-sweep';
 import { handlePgDump } from './jobs/pg-dump';
 import { handleRemindersTick } from './jobs/reminders-tick';
 import { handleSearchIndex, type SearchIndexJob } from './jobs/search-index';
-import { handleSearchReindex } from './jobs/search-reindex';
 import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
+import { runRemindersTick, runSearchReindex } from './monitored-jobs';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -74,8 +74,9 @@ async function main() {
   });
 
   await boss.schedule(Queue.RemindersTick, '*/5 * * * *');
+  // Pings REMINDERS_TICK_HEARTBEAT_URL after each tick that completes.
   await boss.work(Queue.RemindersTick, { batchSize: 1 }, async () => {
-    await handleRemindersTick({
+    await runRemindersTick({
       enqueue: async (job) => {
         await boss.send(Queue.Notify, job);
       },
@@ -133,8 +134,9 @@ async function main() {
   });
 
   await boss.schedule(Queue.SearchReindex, '0 3 * * *');
+  // Pings SEARCH_REINDEX_HEARTBEAT_URL after each rebuild that completes.
   await boss.work(Queue.SearchReindex, { batchSize: 1 }, async () => {
-    await handleSearchReindex();
+    await runSearchReindex();
   });
 
   // Chore auto-complete — runs hourly; completes overdue CHOREs with autoComplete=true.
