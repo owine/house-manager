@@ -81,4 +81,14 @@ describe('deepScrubStrings', () => {
     expect(out.name).toBe('a');
     expect(out.self).toBe('[Circular]');
   });
+
+  // Only object cycles were guarded; a self-referencing array recursed
+  // forever. Affects the Pino path too (an array field can hold itself).
+  it('is cycle-safe for a self-referencing array', () => {
+    const a: unknown[] = ['x'];
+    a.push(a);
+    const out = deepScrubStrings(a) as unknown[];
+    expect(out[0]).toBe('x');
+    expect(out[1]).toBe('[Circular]');
+  });
 });

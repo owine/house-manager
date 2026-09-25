@@ -9,9 +9,11 @@
 //   - GIT_SHA: the runtime-stage ENV. The worker runs source under tsx, so it
 //     reads process.env at runtime, where only GIT_SHA exists. Without this
 //     fallback every worker event was released as 'dev'.
-// Local `pnpm dev` sets neither, so the value is 'dev'.
+// Local `pnpm dev` sets neither, so the value is 'dev'. `||`, not `??`: an
+// empty-string env var (a build-arg passed but not populated) must also fall
+// through to the next source rather than being reported as the release.
 export const APP_GIT_SHA: string = (
-  process.env.NEXT_PUBLIC_GIT_SHA ??
-  process.env.GIT_SHA ??
+  process.env.NEXT_PUBLIC_GIT_SHA ||
+  process.env.GIT_SHA ||
   'dev'
 ).slice(0, 7);

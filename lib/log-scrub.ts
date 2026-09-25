@@ -37,7 +37,11 @@ export function scrubSecrets(input: string): string {
  */
 export function deepScrubStrings(value: unknown, seen = new WeakSet<object>()): unknown {
   if (typeof value === 'string') return scrubSecrets(value);
-  if (Array.isArray(value)) return value.map((v) => deepScrubStrings(v, seen));
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return '[Circular]';
+    seen.add(value);
+    return value.map((v) => deepScrubStrings(v, seen));
+  }
   if (value instanceof Error) {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);

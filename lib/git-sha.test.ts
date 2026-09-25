@@ -28,4 +28,14 @@ describe('APP_GIT_SHA', () => {
   it('is dev when neither is set', async () => {
     expect(await load({})).toBe('dev');
   });
+
+  // `||`, not `??`: a build-arg passed but left empty must not "win" over the
+  // runtime fallback (or over 'dev') the way `??` would.
+  it('falls through an empty-string NEXT_PUBLIC_GIT_SHA to GIT_SHA', async () => {
+    expect(await load({ NEXT_PUBLIC_GIT_SHA: '', GIT_SHA: '1234567890abc' })).toBe('1234567');
+  });
+
+  it('falls through an empty-string NEXT_PUBLIC_GIT_SHA and empty GIT_SHA to dev', async () => {
+    expect(await load({ NEXT_PUBLIC_GIT_SHA: '', GIT_SHA: '' })).toBe('dev');
+  });
 });

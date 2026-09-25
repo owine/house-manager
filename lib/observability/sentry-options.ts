@@ -17,12 +17,15 @@ import { deepScrubStrings } from '@/lib/log-scrub';
  * names each request's scope `${method} ${raw path}` (server-subscription.js
  * in @sentry/core 10.75), so any event captured inside a request, such as a
  * bridged log line from app/api/inbound-email/[token]/route.ts, carries the
- * real token there.
+ * real token there. `threads` gets the same treatment as `exception`: it is
+ * the same `{ values: [{ stacktrace: { frames } }] }` shape, used instead of
+ * `exception` for some non-Error captures.
  */
 const SCRUBBED_SECTIONS = [
   'message',
   'logentry',
   'exception',
+  'threads',
   'extra',
   'contexts',
   'breadcrumbs',
@@ -39,25 +42,35 @@ function stripQuery(url: string): string {
 /**
  * Browser stack frames name their script by full URL (`abs_path`, `filename`),
  * which is the page URL for inline code, query included. Strip it. Server and
- * worker frames are file paths and pass through unchanged.
+ * worker frames are file paths and pass through unchanged. Shared by
+ * `exception` and `threads`, which have the same `{ values: [...] }` shape.
+ *
+ * Frames and values are guarded against `null`/non-object entries: a
+ * malformed event must never make this throw (see the try/catch in
+ * `scrubEvent` — this is the inner defense, the outer one is the backstop).
  */
-function stripFrameQueries(exception: unknown): unknown {
-  const values = (exception as { values?: unknown } | null)?.values;
-  if (!Array.isArray(values)) return exception;
+function stripFrameQueries(exceptionOrThreads: unknown): unknown {
+  const values = (exceptionOrThreads as { values?: unknown } | null)?.values;
+  if (!Array.isArray(values)) return exceptionOrThreads;
   return {
-    ...(exception as object),
+    ...(exceptionOrThreads as object),
     values: values.map((value) => {
-      const frames = (value as { stacktrace?: { frames?: unknown } })?.stacktrace?.frames;
+      if (!value || typeof value !== 'object') return value;
+      const frames = (value as { stacktrace?: { frames?: unknown } }).stacktrace?.frames;
       if (!Array.isArray(frames)) return value;
       return {
         ...value,
         stacktrace: {
-          ...value.stacktrace,
-          frames: frames.map((frame: Record<string, unknown>) => ({
-            ...frame,
-            ...(typeof frame.abs_path === 'string' && { abs_path: stripQuery(frame.abs_path) }),
-            ...(typeof frame.filename === 'string' && { filename: stripQuery(frame.filename) }),
-          })),
+          ...(value as { stacktrace: object }).stacktrace,
+          frames: frames.map((frame: unknown) => {
+            if (!frame || typeof frame !== 'object') return frame;
+            const f = frame as Record<string, unknown>;
+            return {
+              ...f,
+              ...(typeof f.abs_path === 'string' && { abs_path: stripQuery(f.abs_path) }),
+              ...(typeof f.filename === 'string' && { filename: stripQuery(f.filename) }),
+            };
+          }),
         },
       };
     }),
@@ -88,30 +101,10 @@ function scrubRequest(request: unknown): unknown {
   return out;
 }
 
-/**
- * beforeSend: reduce `request` to an allowlist, strip query strings from the
- * two other places a request URL lands, then apply lib/log-scrub.ts's patterns
- * to every string in the sections above. That is the same scrubbing the logs
- * get, so a DB password in an Error's message, a Bearer token in a breadcrumb
- * or a calendar token in a URL is masked in Sentry exactly as it is in
- * `docker logs`.
- */
-export function scrubEvent<T extends object>(event: T): T {
-  const out: Record<string, unknown> = { ...(event as Record<string, unknown>) };
-  if (out.request !== undefined) out.request = scrubRequest(out.request);
-  if (typeof out.transaction === 'string') out.transaction = stripQuery(out.transaction);
-  if (out.exception !== undefined) out.exception = stripFrameQueries(out.exception);
-  const nextjs = (out.contexts as { nextjs?: Record<string, unknown> } | undefined)?.nextjs;
-  if (typeof nextjs?.request_path === 'string') {
-    out.contexts = {
-      ...(out.contexts as object),
-      nextjs: { ...nextjs, request_path: stripQuery(nextjs.request_path) },
-    };
-  }
-  for (const key of SCRUBBED_SECTIONS) {
-    if (out[key] !== undefined) out[key] = deepScrubStrings(out[key]);
-  }
-  return out as T;
+/** Keep only `user.id`; drop everything else (email, IP, username). */
+function reduceUser(user: unknown): unknown {
+  const id = (user as { id?: unknown } | null)?.id;
+  return typeof id === 'string' || typeof id === 'number' ? { id } : undefined;
 }
 
 const NETWORK_CATEGORIES = new Set(['http', 'fetch', 'xhr']);
@@ -127,6 +120,11 @@ const NETWORK_CATEGORIES = new Set(['http', 'fetch', 'xhr']);
  * `data.from`/`data.to` (@sentry/browser breadcrumbs.js), and search terms
  * travel in the query (`?q=`, lib/url-params.ts). What remains (console, the
  * query-less navigation trail, UI clicks) is enough context for an error.
+ *
+ * Also reused inside `scrubEvent` on `event.breadcrumbs`: `beforeBreadcrumb`
+ * only runs for breadcrumbs the SDK records live via `addBreadcrumb`. A
+ * manually-built or replayed event can arrive with `breadcrumbs` already
+ * attached, which skips it entirely.
  */
 export function dropNetworkBreadcrumb<T extends { category?: string; data?: unknown }>(
   breadcrumb: T,
@@ -149,6 +147,124 @@ export function dropNetworkBreadcrumb<T extends { category?: string; data?: unkn
 }
 
 /**
+ * lib/log-scrub.ts's PATTERNS mask named secret *shapes* (a Bearer token, a DB
+ * password, the two capability-token routes) but say nothing about an
+ * ordinary query string: a search term (`?q=my+medication`), a HetrixTools
+ * dead-man token (`?s=…`), a Web Push subscription id. Those only look like
+ * secrets by position, not by shape, so a second pass strips the query and
+ * fragment from every http(s) URL found in free text, wherever `scrubEvent`
+ * walks. Inside a breadcrumb specifically (`stripRelative`), it does the same
+ * for a bare relative path with a query — the shape Next's own console
+ * messages use ("Failed to fetch RSC payload for /search?q=…").
+ */
+const ABS_URL_RE = /\bhttps?:\/\/[^\s"'<>)]+/g;
+const REL_PATH_WITH_QUERY_RE = /(?<![\w:/])\/[\w][\w./-]*\?[^\s"'<>)]*/g;
+
+function stripUrlsInText(text: string, stripRelative: boolean): string {
+  let out = text.replace(ABS_URL_RE, (m) => stripQuery(m));
+  if (stripRelative) out = out.replace(REL_PATH_WITH_QUERY_RE, (m) => stripQuery(m));
+  return out;
+}
+
+/**
+ * Recursively applies `stripUrlsInText` to every string in a value. A
+ * separate walk from `lib/log-scrub.ts`'s `deepScrubStrings` (run first, in
+ * `scrubEvent`) rather than folded into it: log-scrub's patterns are shared
+ * with the Pino path, and an embedded-URL query is a Sentry-event-shape
+ * concern, not a log-line one.
+ */
+function deepStripUrls(
+  value: unknown,
+  stripRelative: boolean,
+  seen = new WeakSet<object>(),
+): unknown {
+  if (typeof value === 'string') return stripUrlsInText(value, stripRelative);
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return '[Circular]';
+    seen.add(value);
+    return value.map((v) => deepStripUrls(v, stripRelative, seen));
+  }
+  if (value !== null && typeof value === 'object') {
+    if (seen.has(value)) return '[Circular]';
+    seen.add(value);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = deepStripUrls(v, stripRelative, seen);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * scrubEvent must never throw: a scrubber that crashes drops the event (and,
+ * worse, could crash the request it was reporting on). On any failure, this
+ * is what goes instead — enough to know an error happened and what kind,
+ * nothing that risks carrying a secret through an unanticipated shape.
+ */
+function scrubFailureFallback(event: unknown): object {
+  const values = (event as { exception?: { values?: unknown } } | null)?.exception?.values;
+  const types =
+    Array.isArray(values) && values.length > 0
+      ? values.map((v) =>
+          v && typeof v === 'object' && typeof (v as { type?: unknown }).type === 'string'
+            ? (v as { type: string }).type
+            : 'Error',
+        )
+      : ['Error'];
+  return { exception: { values: types.map((type) => ({ type, value: '[scrub failed]' })) } };
+}
+
+function doScrubEvent(event: object): object {
+  const out: Record<string, unknown> = { ...(event as Record<string, unknown>) };
+  if (out.request !== undefined) out.request = scrubRequest(out.request);
+  if (typeof out.transaction === 'string') out.transaction = stripQuery(out.transaction);
+  if (out.exception !== undefined) out.exception = stripFrameQueries(out.exception);
+  if (out.threads !== undefined) out.threads = stripFrameQueries(out.threads);
+  if (out.user !== undefined) {
+    const reduced = reduceUser(out.user);
+    if (reduced === undefined) delete out.user;
+    else out.user = reduced;
+  }
+  const nextjs = (out.contexts as { nextjs?: Record<string, unknown> } | undefined)?.nextjs;
+  if (typeof nextjs?.request_path === 'string') {
+    out.contexts = {
+      ...(out.contexts as object),
+      nextjs: { ...nextjs, request_path: stripQuery(nextjs.request_path) },
+    };
+  }
+  if (Array.isArray(out.breadcrumbs)) {
+    out.breadcrumbs = out.breadcrumbs
+      .map((b) => dropNetworkBreadcrumb(b as { category?: string; data?: unknown }))
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+  }
+  for (const key of SCRUBBED_SECTIONS) {
+    if (out[key] === undefined) continue;
+    const patternScrubbed = deepScrubStrings(out[key]);
+    out[key] = deepStripUrls(patternScrubbed, key === 'breadcrumbs');
+  }
+  return out;
+}
+
+/**
+ * beforeSend: reduce `request` and `user` to an allowlist, strip query
+ * strings from every other place a URL lands (transaction name, nextjs
+ * request_path, browser stack frames, free text), drop or de-query embedded
+ * breadcrumbs, then apply lib/log-scrub.ts's patterns to every string in the
+ * sections above. That is the same scrubbing the logs get, so a DB password
+ * in an Error's message, a Bearer token in a breadcrumb or a calendar token
+ * in a URL is masked in Sentry exactly as it is in `docker logs`. Never
+ * throws: see scrubFailureFallback.
+ */
+export function scrubEvent<T extends object>(event: T): T {
+  try {
+    return doScrubEvent(event) as T;
+  } catch {
+    return scrubFailureFallback(event) as T;
+  }
+}
+
+/**
  * Collect nothing about the user or the request beyond what an error needs.
  *
  * Set explicitly rather than relying on `sendDefaultPii: false`: that option
@@ -158,6 +274,9 @@ export function dropNetworkBreadcrumb<T extends { category?: string; data?: unkn
  * the Renovate major bump cannot quietly start shipping session cookies.
  * In 10.75 a set `dataCollection` already takes precedence over sendDefaultPii.
  * A fresh object per call: the SDK keeps a reference.
+ *
+ * `frameContextLines` is left at the SDK's own default (5) but stated
+ * explicitly, so nothing here is "whatever the SDK currently defaults to".
  */
 function dataCollection() {
   return {
@@ -170,6 +289,7 @@ function dataCollection() {
     genAI: { inputs: false, outputs: false },
     databaseQueryData: false,
     stackFrameVariables: false,
+    frameContextLines: 5,
   };
 }
 
@@ -180,6 +300,23 @@ export function sentryOptions(dsn: string) {
     environment: process.env.NODE_ENV,
     // Errors only. No performance tracing.
     tracesSampleRate: 0,
+    // Belt and suspenders with beforeSendTransaction below: tracesSampleRate:
+    // 0 alone does NOT stop a transaction. The HTTP server instrumentation's
+    // sampler honours a remote `sentry-trace: <trace>-<span>-1` parent (an
+    // inbound request whose sampled flag is already 1) and creates + sends a
+    // transaction regardless of our rate. Reproduced with the real SDK: a
+    // request carrying that header produced a transaction envelope with the
+    // calendar token in `transaction` and the query in `contexts.trace.data`
+    // ("url.full", "http.target", "http.query") — and beforeSend was never
+    // called, because it only runs for error events. tracesSampler always
+    // returning 0 closes this: it takes precedence over tracesSampleRate
+    // (@sentry/core 10.75 options.d.ts) for every span, remote-parent or not.
+    tracesSampler: (_samplingContext: unknown) => 0,
+    // Backstop in case some future SDK path still forms a transaction despite
+    // tracesSampler: transaction events carry the same request/url shape as
+    // errors but never reach beforeSend, so drop them outright instead of
+    // trying to scrub a shape this module doesn't otherwise handle.
+    beforeSendTransaction: (_event: unknown, _hint: unknown) => null,
     // Never attach sentry-trace / baggage headers to outgoing requests. The
     // HTTP integration propagates them even at tracesSampleRate 0, and baggage
     // carries the DSN's public key to every API this app calls (Voyage,
