@@ -55,9 +55,9 @@ const EnvSchema = z.object({
   APP_URL: optionalEnv(z.string().url()),
   // Dead-man switch for the nightly backup (worker/jobs/pg-dump.ts). The job
   // GETs this after every VALIDATED dump and never after a failure, so the
-  // monitor behind it (an uptime-kuma Push monitor) goes red by silence rather
+  // monitor behind it (a HetrixTools Cron Job monitor) goes down by silence rather
   // than by anything this process has to remember to send. Unset means no
-  // ping. The URL carries the monitor's push token: never log it.
+  // ping. The URL's `?s=` token is the secret: never log it.
   BACKUP_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
   // Same contract for two more scheduled jobs (worker/monitored-jobs.ts): a GET
   // after each run that completes, never after one that throws. For

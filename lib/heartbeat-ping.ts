@@ -1,7 +1,7 @@
 import { getLogger } from '@/lib/logger';
 
 // Dead-man pings for scheduled jobs: after a successful run, GET a push URL
-// (an uptime-kuma Push monitor, healthchecks.io, ...). The monitor alerts when
+// (a HetrixTools Cron Job monitor, healthchecks.io, ...). The monitor alerts when
 // the pings STOP, so a job that fails, hangs, or is never scheduled goes red
 // by silence rather than by anything this process has to remember to send.
 //

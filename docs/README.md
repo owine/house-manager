@@ -128,7 +128,7 @@ Validated at startup by `lib/env.ts` (Zod). The app fails fast on first `getEnv(
 |---|---|---|
 | `NODE_ENV` | `development` (Zod) / `production` (set by Dockerfile in built image) | |
 | `APP_URL` | unset | Used for absolute links in emails / push payloads |
-| `BACKUP_HEARTBEAT_URL` | unset | Worker. http(s) URL the nightly backup GETs after each validated dump, never after a failure, e.g. an uptime-kuma Push monitor. See [backups.md § Monitoring](backups.md#monitoring) |
+| `BACKUP_HEARTBEAT_URL` | unset | Worker. http(s) URL the nightly backup GETs after each validated dump, never after a failure, e.g. a HetrixTools Cron Job monitor. See [backups.md § Monitoring](backups.md#monitoring) |
 | `REMINDERS_TICK_HEARTBEAT_URL` | unset | Worker. http(s) URL GETed after each `reminders.tick` run (every 5 min) that completes, never after a failure. See [observability.md § Dead-man monitors](observability.md#dead-man-monitors) |
 | `SEARCH_REINDEX_HEARTBEAT_URL` | unset | Worker. GETed after each nightly `search.reindex` run that submits the rebuild to Meilisearch without throwing. It does not wait for Meilisearch to finish indexing, so it proves the job ran, not that the index is populated |
 | `SENTRY_DSN` | unset | Web server + worker error reporting. See [observability.md](observability.md) |
