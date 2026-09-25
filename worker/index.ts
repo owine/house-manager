@@ -205,8 +205,8 @@ async function main() {
 
   // Memory watchdog (Plan 4c) — Tesseract.js + Voyage batching can push the
   // worker container above its implicit memory budget on a Pi. The watchdog
-  // logs a structured warning when RSS crosses 800 MB; Sentry picks it up
-  // through the Plan 5a integration.
+  // logs a structured warning when RSS crosses 800 MB. Log-only: the Pino ->
+  // Sentry bridge forwards error/fatal calls that carry an Error, not warns.
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
   // First beat now so the container can go healthy without waiting a full

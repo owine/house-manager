@@ -6,6 +6,10 @@ vi.mock('@/lib/env', () => ({
   getEnv: () => ({ ASK_ENABLED: true, VOYAGE_API_KEY: 'voyage-test-key' }),
 }));
 
+// Captured: the level decides whether the Pino -> Sentry bridge reports it.
+const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ getLogger: () => log }));
+
 // Stand-in for embedEntity that reaches Voyage the way the real one does, so the
 // error the handler sees comes from the REAL embedTexts classification. Mocking
 // embedEntity to throw a hand-picked error class would only test the mock.
@@ -52,5 +56,33 @@ describe('handleEmbedContent error contract', () => {
   it('swallows a permanent 4xx so a guaranteed failure does not loop', async () => {
     fetchMock.mockResolvedValueOnce(new Response('bad request', { status: 400 }));
     await expect(handleEmbedContent(JOBS)).resolves.toBeUndefined();
+  });
+});
+
+// Only error-level lines with an `err` reach Sentry (lib/observability/
+// error-reporter.ts). Mutation-checked: logging the retryable case at error
+// again fails the first test.
+describe('handleEmbedContent log levels', () => {
+  it('logs a retryable failure at warn only (a blip is not an incident)', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    await expect(handleEmbedContent(JOBS)).rejects.toBeInstanceOf(VoyageRetryableError);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(VoyageRetryableError), entityId: 'note-1' }),
+      expect.any(String),
+    );
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('logs a swallowed permanent failure at error, with the err', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('bad request', { status: 400 }));
+    await handleEmbedContent(JOBS);
+    // voyage.ts logs its own error line too, without an `err` (not bridged).
+    // Exactly one error line carries the Error, so exactly one Sentry event.
+    const withErr = log.error.mock.calls.filter(([fields]) => 'err' in fields);
+    expect(withErr).toHaveLength(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error), entityType: 'NOTE', entityId: 'note-1' }),
+      'embed-content: failed',
+    );
   });
 });
