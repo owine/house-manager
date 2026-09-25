@@ -37,6 +37,16 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets('sk-proj-ABCDEFGHIJKL')).toBe('sk-***');
   });
 
+  it('masks the capability token in the calendar and inbound-email routes', () => {
+    expect(scrubSecrets('GET /api/calendar/9f8e7d6c5b4a.ics')).toBe('GET /api/calendar/***');
+    expect(scrubSecrets('https://hm.example/api/inbound-email/abcDEF123456?x=1')).toBe(
+      'https://hm.example/api/inbound-email/***?x=1',
+    );
+    // Other routes, and the bare prefix, are left alone.
+    expect(scrubSecrets('/api/files/abc123')).toBe('/api/files/abc123');
+    expect(scrubSecrets('/api/calendar/')).toBe('/api/calendar/');
+  });
+
   it('leaves ordinary text untouched (no false positives)', () => {
     const text = 'pg_dump completed: 12 rows, 3.4 MB written to /backups/x.dump';
     expect(scrubSecrets(text)).toBe(text);
