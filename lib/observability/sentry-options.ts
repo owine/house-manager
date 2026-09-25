@@ -34,6 +34,25 @@ const SCRUBBED_SECTIONS = [
   'transaction',
 ] as const;
 
+/**
+ * Sections where a bare relative path with a query (`/search?q=…`, no host)
+ * is also worth stripping, not just an absolute URL: a console breadcrumb
+ * ("Failed to fetch RSC payload for /search?q=…"), an exception's own
+ * `.value` text, a logged message, and `contexts.nextjs`'s own path fields
+ * (`request_path` is already handled explicitly above; `router_path` and any
+ * sibling only reach this generic pass). Left off `extra`/`tags`: those carry
+ * more varied, less path-shaped content where the pattern is more likely to
+ * misfire on something that only looks like a relative path.
+ */
+const RELATIVE_STRIP_SECTIONS = new Set<(typeof SCRUBBED_SECTIONS)[number]>([
+  'message',
+  'logentry',
+  'exception',
+  'threads',
+  'contexts',
+  'breadcrumbs',
+]);
+
 /** Drop a URL's query string and fragment. Query strings carry search terms. */
 function stripQuery(url: string): string {
   return url.replace(/[?#].*$/s, '');
@@ -153,12 +172,32 @@ export function dropNetworkBreadcrumb<T extends { category?: string; data?: unkn
  * dead-man token (`?s=…`), a Web Push subscription id. Those only look like
  * secrets by position, not by shape, so a second pass strips the query and
  * fragment from every http(s) URL found in free text, wherever `scrubEvent`
- * walks. Inside a breadcrumb specifically (`stripRelative`), it does the same
- * for a bare relative path with a query — the shape Next's own console
- * messages use ("Failed to fetch RSC payload for /search?q=…").
+ * walks. In several sections (`stripRelative`), it does the same for a bare
+ * relative path with a query — the shape Next's own console messages use
+ * ("Failed to fetch RSC payload for /search?q=…").
+ *
+ * Both patterns are hand-checked for linear-time behaviour (see
+ * `scripts`-adjacent probes in the PR that added this comment): a naive
+ * `[^\s"'<>)]+`-style class combined with a negative lookbehind of `\w` alone
+ * is quadratic on adversarial input (`'a.'.repeat(50_000)` took ~8s against
+ * the equivalent shape in lib/log-scrub.ts's userinfo pattern) because the
+ * engine retries the lookbehind at every position inside a long run of
+ * lookbehind-excluded characters. Widening the lookbehind to also exclude
+ * `.`/`-` (the characters that actually appear in the adversarial runs) cuts
+ * that retry chain to O(n). ABS_URL_RE separately avoids the same trap by
+ * keeping the "does this look like a query" decision unambiguous: the base
+ * class excludes `?`/`#` so it can never itself be re-tried as part of the
+ * optional query group.
+ *
+ * ABS_URL_RE once excluded `)'"<>` from the ENTIRE match, which stopped the
+ * match (and therefore the query strip) at the first such character even
+ * inside the query — `?q=(my)medication` left `)medication` after the `(my`
+ * prefix was stripped. It now only excludes those from the pre-query part;
+ * once a `?`/`#` is seen, the match (and the strip) runs to the next
+ * whitespace, matching how a URL is actually delimited in free text.
  */
-const ABS_URL_RE = /\bhttps?:\/\/[^\s"'<>)]+/g;
-const REL_PATH_WITH_QUERY_RE = /(?<![\w:/])\/[\w][\w./-]*\?[^\s"'<>)]*/g;
+const ABS_URL_RE = /\bhttps?:\/\/[^\s"'<>()?#]*(?:[?#]\S*)?/gi;
+const REL_PATH_WITH_QUERY_RE = /(?<![\w:/.-])\/[\w][\w./-]*\?[^\s"'<>)]*/g;
 
 function stripUrlsInText(text: string, stripRelative: boolean): string {
   let out = text.replace(ABS_URL_RE, (m) => stripQuery(m));
@@ -172,6 +211,13 @@ function stripUrlsInText(text: string, stripRelative: boolean): string {
  * `scrubEvent`) rather than folded into it: log-scrub's patterns are shared
  * with the Pino path, and an embedded-URL query is a Sentry-event-shape
  * concern, not a log-line one.
+ *
+ * `seen` tracks the current recursion ANCESTRY, not "every object visited
+ * ever": a value is added right before recursing into its children and
+ * removed right after, so a true cycle (a value that is its own ancestor)
+ * still resolves to `[Circular]`, but the same array or object reachable
+ * twice from unrelated branches (`{ ids, again: ids }`) is walked twice and
+ * keeps its content both times.
  */
 function deepStripUrls(
   value: unknown,
@@ -182,37 +228,75 @@ function deepStripUrls(
   if (Array.isArray(value)) {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    return value.map((v) => deepStripUrls(v, stripRelative, seen));
+    try {
+      return value.map((v) => deepStripUrls(v, stripRelative, seen));
+    } finally {
+      seen.delete(value);
+    }
   }
   if (value !== null && typeof value === 'object') {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = deepStripUrls(v, stripRelative, seen);
+    try {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = deepStripUrls(v, stripRelative, seen);
+      }
+      return out;
+    } finally {
+      seen.delete(value);
     }
-    return out;
   }
   return value;
 }
+
+/** Scalar top-level fields worth keeping in the fallback event: none of them
+ * carry request/user content, and GlitchTip groups/sorts by several of them. */
+const FALLBACK_SCALAR_FIELDS = [
+  'event_id',
+  'timestamp',
+  'level',
+  'platform',
+  'release',
+  'environment',
+] as const;
 
 /**
  * scrubEvent must never throw: a scrubber that crashes drops the event (and,
  * worse, could crash the request it was reporting on). On any failure, this
  * is what goes instead — enough to know an error happened and what kind,
  * nothing that risks carrying a secret through an unanticipated shape.
+ *
+ * `sdk` is deliberately left out rather than validated: it's metadata about
+ * the SDK itself, never worth the extra shape-checking to preserve.
+ *
+ * Wrapped in its own try/catch: this only runs after the primary scrub
+ * already threw, so it must not be able to throw itself (a getter on one of
+ * the scalar fields, say) and take down the caller a second time.
  */
 function scrubFailureFallback(event: unknown): object {
-  const values = (event as { exception?: { values?: unknown } } | null)?.exception?.values;
-  const types =
-    Array.isArray(values) && values.length > 0
-      ? values.map((v) =>
-          v && typeof v === 'object' && typeof (v as { type?: unknown }).type === 'string'
-            ? (v as { type: string }).type
-            : 'Error',
-        )
-      : ['Error'];
-  return { exception: { values: types.map((type) => ({ type, value: '[scrub failed]' })) } };
+  try {
+    const e = event as Record<string, unknown> | null;
+    const values = (e?.exception as { values?: unknown } | undefined)?.values;
+    const types =
+      Array.isArray(values) && values.length > 0
+        ? values.map((v) =>
+            v && typeof v === 'object' && typeof (v as { type?: unknown }).type === 'string'
+              ? (v as { type: string }).type
+              : 'Error',
+          )
+        : ['Error'];
+    const out: Record<string, unknown> = {
+      exception: { values: types.map((type) => ({ type, value: '[scrub failed]' })) },
+    };
+    for (const key of FALLBACK_SCALAR_FIELDS) {
+      const v = e?.[key];
+      if (typeof v === 'string' || typeof v === 'number') out[key] = v;
+    }
+    return out;
+  } catch {
+    return { exception: { values: [{ type: 'Error', value: '[scrub failed]' }] } };
+  }
 }
 
 function doScrubEvent(event: object): object {
@@ -235,13 +319,17 @@ function doScrubEvent(event: object): object {
   }
   if (Array.isArray(out.breadcrumbs)) {
     out.breadcrumbs = out.breadcrumbs
+      // A malformed breadcrumb (null, a string, ...) has no `.category` to
+      // read; dropNetworkBreadcrumb would throw on it and send the whole
+      // event down the fallback path over one bad array entry.
+      .filter((b): b is object => b !== null && typeof b === 'object')
       .map((b) => dropNetworkBreadcrumb(b as { category?: string; data?: unknown }))
       .filter((b): b is NonNullable<typeof b> => b !== null);
   }
   for (const key of SCRUBBED_SECTIONS) {
     if (out[key] === undefined) continue;
     const patternScrubbed = deepScrubStrings(out[key]);
-    out[key] = deepStripUrls(patternScrubbed, key === 'breadcrumbs');
+    out[key] = deepStripUrls(patternScrubbed, RELATIVE_STRIP_SECTIONS.has(key));
   }
   return out;
 }

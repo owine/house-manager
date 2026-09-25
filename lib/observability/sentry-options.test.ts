@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { scrubSecrets } from '@/lib/log-scrub';
 import { browserSentryDsn } from './browser-dsn';
 import { dropNetworkBreadcrumb, scrubEvent, sentryOptions } from './sentry-options';
 
@@ -176,6 +177,63 @@ describe('scrubEvent (beforeSend)', () => {
     expect(pushOut).toContain('https://push.example.com/send');
   });
 
+  // Lows: the relative-path strip (no host) was previously breadcrumb-only.
+  // Now linear-time, it also runs over an exception's own `.value` text, a
+  // logged `message`/`logentry`, and `contexts.nextjs`'s sibling path fields
+  // (request_path already had bespoke handling; router_path only reaches
+  // this generic pass). Mutation-checked: narrowing RELATIVE_STRIP_SECTIONS
+  // back to breadcrumbs-only fails the first assertion here.
+  it('strips a relative-path query from exception.value, message/logentry and contexts.nextjs', () => {
+    const out = scrubEvent({
+      exception: { values: [{ type: 'Error', value: 'fetch failed for /search?q=RELCANARY' }] },
+      message: 'redirecting to /items?q=RELCANARY2',
+      logentry: { formatted: 'see /search?q=RELCANARY3 for details' },
+      contexts: { nextjs: { router_path: '/search?q=RELCANARY4' } },
+    });
+    const s = JSON.stringify(out);
+    expect(s).not.toContain('RELCANARY');
+  });
+
+  // Lows: ABS_URL_RE used to exclude `)'"<>` from the WHOLE match, so it
+  // stopped matching (and stripping) at the first such character even inside
+  // the query itself — "?q=(my)medication" left the match at "?q=(my" and
+  // the untouched ")medication" leaked straight through. It now strips
+  // everything from the query marker to the next whitespace instead.
+  // Mutation-checked: reverting ABS_URL_RE to the old "exclude from the whole
+  // match" shape fails this.
+  it('does not leak the tail of a query string that contains a paren, quote or angle bracket', () => {
+    const out = scrubEvent({
+      exception: {
+        values: [{ type: 'Error', value: 'GET https://h/search?q=(my)medication tail' }],
+      },
+    });
+    expect(out.exception.values[0].value).not.toContain('medication');
+    expect(out.exception.values[0].value).toContain('https://h/search');
+  });
+
+  // Nits: a negative over-strip test. None of these contain a query string
+  // that should be touched — a bare '?', a slash that isn't a path start, a
+  // file:// or absolute path with no query, or an absolute URL with no query
+  // at all. All must survive byte-for-byte.
+  it('does not over-strip text that only looks like a URL or path', () => {
+    const unchanged = [
+      'a?b',
+      'Is this ok? yes',
+      'ratio 1/2?',
+      'file:///app/x.js:1:2',
+      '/app/x.js:1:2',
+      'https://h/app.js:10:5',
+    ];
+    for (const value of unchanged) {
+      const out = scrubEvent({
+        exception: { values: [{ type: 'Error', value }] },
+        breadcrumbs: [{ category: 'console', message: value }],
+      });
+      expect(out.exception.values[0].value).toBe(value);
+      expect(out.breadcrumbs[0].message).toBe(value);
+    }
+  });
+
   // M2: frame local variables are walked the same as everything else in
   // `exception` (defense in depth — stackFrameVariables is off in
   // dataCollection, but a captured event could still carry them).
@@ -274,6 +332,89 @@ describe('scrubEvent (beforeSend)', () => {
       const out = scrubEvent(event);
       expect(out).toEqual({ exception: { values: [{ type: 'Error', value: '[scrub failed]' }] } });
     });
+
+    // Lows: the fallback keeps a handful of harmless scalar top-level fields
+    // (useful for GlitchTip grouping/sorting) alongside the redacted
+    // exception. Mutation-checked: removing the scalar-field copy loop fails
+    // this.
+    it('preserves scalar top-level fields (event_id, level, release, ...) in the fallback', () => {
+      const event = {
+        event_id: 'abc123',
+        timestamp: 1700000000,
+        level: 'error',
+        platform: 'node',
+        release: 'abcdef1',
+        environment: 'production',
+        exception: { values: [{ type: 'RangeError', value: 'x' }] },
+        extra: Object.defineProperty({}, 'boom', {
+          enumerable: true,
+          get(): never {
+            throw new Error('getter blew up');
+          },
+        }),
+      };
+      const out = scrubEvent(event);
+      expect(out).toEqual({
+        event_id: 'abc123',
+        timestamp: 1700000000,
+        level: 'error',
+        platform: 'node',
+        release: 'abcdef1',
+        environment: 'production',
+        exception: { values: [{ type: 'RangeError', value: '[scrub failed]' }] },
+      });
+    });
+
+    // Lows: scrubFailureFallback runs only after the primary scrub already
+    // threw, so it must not be able to throw itself — a throwing getter on
+    // `exception` (the very thing the fallback tries to read) must still
+    // produce the constant fallback event rather than escaping uncaught.
+    it('never throws even when the exception it tries to preserve also throws', () => {
+      const event = {
+        get exception(): never {
+          throw new Error('exception getter blew up');
+        },
+        extra: Object.defineProperty({}, 'boom', {
+          enumerable: true,
+          get(): never {
+            throw new Error('extra getter blew up');
+          },
+        }),
+      };
+      expect(() => scrubEvent(event)).not.toThrow();
+      const out = scrubEvent(event);
+      expect(out).toEqual({ exception: { values: [{ type: 'Error', value: '[scrub failed]' }] } });
+    });
+
+    // Lows: a malformed breadcrumb entry (null, or any non-object) must be
+    // dropped, not sent through dropNetworkBreadcrumb (which reads
+    // `.category` and would throw) and take the whole event down the
+    // fallback path over one bad array entry. Mutation-checked: removing the
+    // non-object filter before the map fails this.
+    it('filters out a null or non-object breadcrumb entry instead of throwing', () => {
+      expect(() =>
+        scrubEvent({
+          breadcrumbs: [null, 'not an object', { category: 'console', message: 'hi' }],
+        }),
+      ).not.toThrow();
+      const out = scrubEvent({
+        breadcrumbs: [null, 'not an object', { category: 'console', message: 'hi' }],
+      });
+      expect(out.breadcrumbs).toEqual([{ category: 'console', message: 'hi' }]);
+    });
+  });
+
+  // M1': the ancestor-only `seen` tracking in deepStripUrls (sentry-options.ts's
+  // own URL-stripping walk, separate from lib/log-scrub.ts's deepScrubStrings)
+  // needed the same fix — a shared, non-cyclic array reachable twice from
+  // unrelated branches must not collapse to "[Circular]" the second time.
+  it('walks a shared (non-cyclic) array twice in extra, keeping its content both times', () => {
+    const ids = ['a', 'b'];
+    const out = scrubEvent({ extra: { ids, again: ids } }) as {
+      extra: { ids: unknown; again: unknown };
+    };
+    expect(out.extra.again).toEqual(['a', 'b']);
+    expect(out.extra.ids).toEqual(['a', 'b']);
   });
 
   it('passes other sections through by reference (SDK internals stay live)', () => {
@@ -380,4 +521,46 @@ describe('browserSentryDsn', () => {
     const dsn = `https://${user}:${pass}@glitchtip.example/1`;
     expect(browserSentryDsn({ SENTRY_BROWSER_DSN: dsn })).toBeUndefined();
   });
+});
+
+// H1': two regexes were quadratic on adversarial input that never resolves to
+// a match: lib/log-scrub.ts's userinfo-password pattern (a long run of
+// scheme-charset characters with no "://"), and sentry-options.ts's
+// REL_PATH_WITH_QUERY_RE (a long run of relative-path-shaped characters with
+// no final "?"). Both ran on every request/log line in production. Each
+// adversarial string is run through scrubSecrets directly, and through
+// scrubEvent with the string in both an exception's `.value` and a
+// breadcrumb's `data` — the two paths the review's probe used to reproduce
+// the multi-second stalls (8s / ~5.8s at 100KB, pre-fix). 250ms (not 100ms)
+// to absorb CI variance; still three orders of magnitude below the old cost.
+// Mutation-checked: reverting either widened lookbehind fails this.
+describe('scrubSecrets and scrubEvent stay linear-time on adversarial input', () => {
+  const ADVERSARIAL: Record<string, string> = {
+    'userinfo pattern (a. repeated)': 'a.'.repeat(50_000),
+    'userinfo pattern (a+ repeated)': 'a+'.repeat(50_000),
+    'userinfo pattern (a- repeated)': 'a-'.repeat(50_000),
+    'relative-path pattern (/a. repeated)': '/a.'.repeat(33_000),
+    'relative-path pattern (/a- repeated)': '/a-'.repeat(33_000),
+  };
+  const BUDGET_MS = 250;
+
+  for (const [label, s] of Object.entries(ADVERSARIAL)) {
+    it(`scrubSecrets: ${label}`, () => {
+      const t0 = performance.now();
+      scrubSecrets(s);
+      expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
+    });
+
+    it(`scrubEvent exception.value: ${label}`, () => {
+      const t0 = performance.now();
+      scrubEvent({ exception: { values: [{ type: 'Error', value: s }] } });
+      expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
+    });
+
+    it(`scrubEvent breadcrumb data: ${label}`, () => {
+      const t0 = performance.now();
+      scrubEvent({ breadcrumbs: [{ category: 'console', message: 'x', data: { raw: s } }] });
+      expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
+    });
+  }
 });

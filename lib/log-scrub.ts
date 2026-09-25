@@ -9,7 +9,17 @@
 const PATTERNS: Array<readonly [RegExp, string]> = [
   // URI userinfo password — scheme://user:PASSWORD@host → keep scheme+user, mask pw.
   // Covers postgresql://, redis://, amqp://, mongodb://, https:// with basic auth, etc.
-  [/\b([a-z][a-z0-9+.-]*:\/\/[^\s:/?#@]+:)[^\s@/]+(@)/gi, '$1***$2'],
+  //
+  // The leading `(?<![a-z0-9+.-])`, not just `\b`, matters for more than
+  // correctness: without it this is QUADRATIC on adversarial input. `\b`
+  // still lets the engine attempt a match starting at every position inside
+  // a long run of scheme-charset characters that never resolves to "://"
+  // (e.g. a log line that's mostly dots or pluses), and each attempt
+  // re-scans the rest of the run before failing — O(n) attempts * O(n) scan
+  // each. Confirmed: 'a.'.repeat(50_000) took ~8s before this, <1ms after.
+  // The regex still matches every real credentialed URL the same way (see
+  // lib/log-scrub.test.ts's equivalence cases).
+  [/(?<![a-z0-9+.-])([a-z][a-z0-9+.-]*:\/\/[^\s:/?#@]+:)[^\s@/]+(@)/gi, '$1***$2'],
   // PGPASSWORD=... (and similar PG*PASSWORD) in a command/env string.
   [/\b(PG[A-Z]*PASSWORD=)\S+/g, '$1***'],
   // Authorization headers: Bearer / Basic <token>.
@@ -34,23 +44,43 @@ export function scrubSecrets(input: string): string {
  * arrays, nested). Non-strings pass through. Cycle-safe. Returns a scrubbed
  * copy — callers (the pino serializer/formatter) get a fresh object, the
  * original log payload is untouched.
+ *
+ * `seen` tracks the current recursion ANCESTRY, not "every object visited
+ * ever": a value is added right before recursing into its children and
+ * removed right after (try/finally), so a true cycle (a value that is its
+ * own ancestor) still resolves to `[Circular]`, but the same array or object
+ * reachable twice from unrelated branches — `{ ids, again: ids }`, or two log
+ * fields sharing one array — is walked twice and keeps its content both
+ * times instead of the second occurrence collapsing to `[Circular]`.
  */
 export function deepScrubStrings(value: unknown, seen = new WeakSet<object>()): unknown {
   if (typeof value === 'string') return scrubSecrets(value);
   if (Array.isArray(value)) {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    return value.map((v) => deepScrubStrings(v, seen));
+    try {
+      return value.map((v) => deepScrubStrings(v, seen));
+    } finally {
+      seen.delete(value);
+    }
   }
   if (value instanceof Error) {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    return scrubObject(errorFields(value), seen);
+    try {
+      return scrubObject(errorFields(value), seen);
+    } finally {
+      seen.delete(value);
+    }
   }
   if (value !== null && typeof value === 'object') {
     if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    return scrubObject(value, seen);
+    try {
+      return scrubObject(value, seen);
+    } finally {
+      seen.delete(value);
+    }
   }
   return value;
 }
