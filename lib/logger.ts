@@ -1,5 +1,6 @@
 import pino, { type Logger, type LoggerOptions } from 'pino';
 import { deepScrubStrings, scrubSecrets } from './log-scrub';
+import { PINO_ERROR_LEVEL, reportLoggedError } from './observability/error-reporter';
 
 // Singleton Pino logger for the entire app.
 //
@@ -99,13 +100,20 @@ export const loggerOptions: LoggerOptions = {
   hooks: {
     // Scrub string arguments (the message + any %s interpolation values) before
     // pino formats them — formatters.log only sees the merge object, not the msg.
-    logMethod(args, method) {
+    // Then hand error/fatal calls to the Sentry bridge (a no-op unless an SDK
+    // registered a reporter; see lib/observability/error-reporter.ts). It gets
+    // the RAW args because it needs the Error object itself; scrubbing what
+    // reaches Sentry is the SDK's beforeSend.
+    logMethod(args, method, level) {
       const scrubbed = args.map((a) => (typeof a === 'string' ? scrubSecrets(a) : a));
       // No message given: supply the scrubbed err.message so pino doesn't
       // derive an unscrubbed one (see derivedErrorMessage).
       const derived = derivedErrorMessage(args);
       if (derived !== undefined) scrubbed.push(scrubSecrets(derived));
-      return method.apply(this, scrubbed as typeof args);
+      method.apply(this, scrubbed as typeof args);
+      // Level check first: bindings() re-parses the child's bindings, and
+      // this hook runs on every enabled log call.
+      if (level >= PINO_ERROR_LEVEL) reportLoggedError(args, level, this.bindings());
     },
   },
   // Don't add transports here — Next.js bundling fights worker_threads.
