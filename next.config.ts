@@ -1,4 +1,4 @@
-import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 
 // Headers for every response. None clashes with a route's own header except
@@ -64,23 +64,43 @@ const nextConfig: NextConfig = {
   },
 };
 
+// Source-map upload only. Every option here is build-time; runtime init lives
+// in instrumentation.ts / instrumentation-client.ts / worker/sentry.ts.
+//
+// Imported from '@sentry/nextjs/config': the bare '@sentry/nextjs' import is
+// deprecated in 10.x and removed in 11.
+//
+// Upload runs only when SENTRY_AUTH_TOKEN is present (CI passes it as a
+// buildkit secret on main, see Dockerfile). Without it the plugin skips the
+// upload and the build is unaffected. Under Turbopack the SDK turns on
+// productionBrowserSourceMaps itself and deletes the maps after the upload
+// step, token or not, so no .map file ships in the image either way.
+//
+// CI passes the identifiers as build-args from repo variables, which arrive
+// as EMPTY strings when a variable is not configured. Delete those here, in
+// the process that later spawns sentry-cli: an empty SENTRY_URL is not
+// "unset" to it.
+for (const key of ['SENTRY_AUTH_TOKEN', 'SENTRY_ORG', 'SENTRY_PROJECT', 'SENTRY_URL']) {
+  if (process.env[key] === '') delete process.env[key];
+}
+
 export default withSentryConfig(nextConfig, {
-  // Sentry build-time options — used only for source-map upload.
-  // Skipped automatically when SENTRY_AUTH_TOKEN is unset.
   silent: true,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  // Don't serve source maps to clients — Sentry only needs them uploaded.
+  // GlitchTip / self-hosted Sentry base URL. Unset means sentry.io.
+  sentryUrl: process.env.SENTRY_URL,
+  // The same 7-char release the runtime SDKs report (lib/version.ts), so
+  // uploaded maps and events line up. NEXT_PUBLIC_GIT_SHA is the Docker
+  // build-arg; there is no .git in the build context to derive it from.
+  release: { name: (process.env.NEXT_PUBLIC_GIT_SHA ?? 'dev').slice(0, 7) },
   sourcemaps: {
     deleteSourcemapsAfterUpload: true,
   },
-  // Tree-shake the SDK's debug logger out of the bundle. Replaces the
-  // deprecated top-level `disableLogger: true` (the old key still works
-  // but warns on every build).
-  webpack: {
-    treeshake: {
-      removeDebugLogging: true,
-    },
-  },
+  // Don't send the bundler plugin's own usage telemetry to sentry.io.
+  telemetry: false,
+  // `webpack.treeshake.removeDebugLogging` was here. It is webpack-only and a
+  // no-op under Turbopack (`next build`'s default), so it was dropped rather
+  // than carried as dead config.
 });
