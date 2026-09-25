@@ -59,6 +59,15 @@ const EnvSchema = z.object({
   // than by anything this process has to remember to send. Unset means no
   // ping. The URL carries the monitor's push token: never log it.
   BACKUP_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
+  // Same contract for two more scheduled jobs (worker/monitored-jobs.ts): a GET
+  // after each run that completes, never after one that throws. For
+  // search.reindex "completes" means the rebuild was submitted to Meilisearch
+  // without throwing, not that the index is populated (its tasks are not
+  // awaited). One var per job, not a generic prefix scheme, so each is
+  // validated here and listed in docs/README.md. Carry push tokens: never log
+  // them.
+  REMINDERS_TICK_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
+  SEARCH_REINDEX_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
   // Empty string is tolerated alongside undefined: the Dockerfile's
   // `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN` pattern produces an
