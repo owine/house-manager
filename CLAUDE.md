@@ -22,7 +22,7 @@ pnpm lint                 # biome check . && lint:tokens && lint:knip
 pnpm lint:fix             # biome autofix
 pnpm typecheck            # tsc --noEmit (TS 7)
 
-pnpm test:unit            # tests/unit + lib + worker/jobs + components (mocked)
+pnpm test:unit            # tests/unit + lib + worker + components + app (mocked)
 pnpm test:integration     # tests/integration — real Postgres via Testcontainers
 pnpm test:e2e:local       # full Playwright suite w/ env wrapper + mock OIDC
 pnpm test:local           # umbrella pre-merge: unit → integration → e2e → coverage floor
