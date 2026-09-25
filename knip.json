@@ -5,6 +5,7 @@
     "app/api/**/route.{ts,tsx}",
     "middleware.ts",
     "instrumentation.ts",
+    "instrumentation-client.ts",
     "next.config.{js,ts,mjs}",
     "worker/index.ts",
     "prisma/seed.ts",

@@ -338,7 +338,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-test-placeholder-not-used-in-ci' }}
       LOG_LEVEL: info
       # SENTRY_DSN intentionally unset in CI; SDK no-ops gracefully.
-      # NEXT_PUBLIC_SENTRY_DSN intentionally unset; browser SDK no-ops gracefully.
+      # SENTRY_BROWSER_DSN intentionally unset; no meta tag, browser SDK stays off.
       # SENTRY_AUTH_TOKEN intentionally unset; source-map upload skipped.
       # Ask/RAG (Plan 4c): feature gated off in CI to keep e2e cheap and
       # to avoid needing a real Voyage key. OCR backend off prevents the

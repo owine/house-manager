@@ -69,16 +69,19 @@ const EnvSchema = z.object({
   REMINDERS_TICK_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
   SEARCH_REINDEX_HEARTBEAT_URL: optionalEnv(httpUrlSchema),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
-  // Empty string is tolerated alongside undefined: the Dockerfile's
-  // `ARG SENTRY_DSN` + `ENV SENTRY_DSN=$SENTRY_DSN` pattern produces an
-  // empty-string ENV when no --build-arg is passed, which a bare
-  // `.url().optional()` would reject. Consumer code already truthy-checks
-  // (`if (process.env.SENTRY_DSN)`), so empty string degrades cleanly. These
-  // two keep `''` as a value rather than using `optionalEnv` — the observable
-  // behaviour is identical for a truthy check, and rewriting them would churn
-  // the schema that shipped the original fix.
+  // Empty string is tolerated alongside undefined: compose's
+  // `SENTRY_DSN: ${SENTRY_DSN:-}` hands the containers an empty string when
+  // the host leaves it unset (the Dockerfile's old `ARG SENTRY_DSN` did the
+  // same at build time), which a bare `.url().optional()` would reject.
+  // Consumer code already truthy-checks (`if (!dsn) return`), so empty string
+  // degrades cleanly. This keeps `''` as a value rather than using
+  // `optionalEnv`: the observable behaviour is identical for a truthy check,
+  // and rewriting it would churn the schema that shipped the original fix.
   SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
-  NEXT_PUBLIC_SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
+  // SENTRY_BROWSER_DSN is deliberately NOT here. Only the root layout reads it
+  // (lib/observability/browser-dsn.ts), which validates it softly: a malformed
+  // browser DSN turns browser reporting off rather than failing getEnv() in
+  // every server action and in the worker, which shares the compose env.
   SENTRY_AUTH_TOKEN: z.string().optional(),
   // Plan 4c — Ask / RAG. Opt-in per deployment via ASK_ENABLED; when the
   // flag is false the indexing jobs no-op and the Ask UI is hidden. The
