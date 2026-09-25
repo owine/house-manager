@@ -169,12 +169,14 @@ export function dropNetworkBreadcrumb<T extends { category?: string; data?: unkn
  * lib/log-scrub.ts's PATTERNS mask named secret *shapes* (a Bearer token, a DB
  * password, the two capability-token routes) but say nothing about an
  * ordinary query string: a search term (`?q=my+medication`), a HetrixTools
- * dead-man token (`?s=…`), a Web Push subscription id. Those only look like
+ * dead-man token (`?s=…`), a Web Push subscription id, a DB password on a
+ * `postgresql://`/`wss://`/any-other-scheme URL that isn't the specific
+ * userinfo-password shape log-scrub already covers. Those only look like
  * secrets by position, not by shape, so a second pass strips the query and
- * fragment from every http(s) URL found in free text, wherever `scrubEvent`
- * walks. In several sections (`stripRelative`), it does the same for a bare
- * relative path with a query — the shape Next's own console messages use
- * ("Failed to fetch RSC payload for /search?q=…").
+ * fragment from every URL found in free text, wherever `scrubEvent` walks. In
+ * several sections (`stripRelative`), it does the same for a bare relative
+ * path with a query — the shape Next's own console messages use ("Failed to
+ * fetch RSC payload for /search?q=…").
  *
  * Both patterns are hand-checked for linear-time behaviour (see
  * `scripts`-adjacent probes in the PR that added this comment): a naive
@@ -189,14 +191,34 @@ export function dropNetworkBreadcrumb<T extends { category?: string; data?: unkn
  * class excludes `?`/`#` so it can never itself be re-tried as part of the
  * optional query group.
  *
- * ABS_URL_RE once excluded `)'"<>` from the ENTIRE match, which stopped the
- * match (and therefore the query strip) at the first such character even
- * inside the query — `?q=(my)medication` left `)medication` after the `(my`
- * prefix was stripped. It now only excludes those from the pre-query part;
- * once a `?`/`#` is seen, the match (and the strip) runs to the next
- * whitespace, matching how a URL is actually delimited in free text.
+ * ABS_URL_RE's history, in the order these bugs were found and fixed:
+ *
+ * 1. It once excluded `)'"<>` from the ENTIRE match, which stopped the match
+ *    (and therefore the query strip) at the first such character even inside
+ *    the query — `?q=(my)medication` left `)medication` after the `(my`
+ *    prefix was stripped.
+ * 2. Excluding those only from the pre-query part (running the strip to the
+ *    next whitespace once a `?`/`#` is seen) fixed that, but went too far the
+ *    other way: `\S*` for the query also swallows quotes and brackets that
+ *    are structural, not part of the URL — `{"url":"https://h/p?t=SECRET",
+ *    "other":"keep"}` lost everything from the `?` to the end of the string,
+ *    taking `"other":"keep"}` with it.
+ * 3. It also only matched `https?://`, so a `postgresql://`, `ws://`/`wss://`
+ *    or any other scheme's query (a password, a token) passed straight
+ *    through un-stripped, and a URL inside a wiki-style path with a `(`/`)`
+ *    (`https://h/wiki/Foo_(bar)?token=SECRET`) matched nothing at all: the
+ *    base class excluded `(` too, so the match stopped short of the `?`.
+ *
+ * The current shape fixes all three without reopening the quadratic hole:
+ * any scheme (`[a-z][a-z0-9+.-]*:\/\/`, guarded by the same widened
+ * lookbehind as the userinfo pattern), a base path that excludes only
+ * whitespace/`?`/`#` (so parens and quotes in the PATH survive and don't
+ * shield a later query), and a query part that excludes whitespace AND
+ * `"'<>` (so the query strip stops at the first character that structurally
+ * can't be part of a bare URL — closing a quoted JSON string, say — instead
+ * of running to the next whitespace regardless).
  */
-const ABS_URL_RE = /\bhttps?:\/\/[^\s"'<>()?#]*(?:[?#]\S*)?/gi;
+const ABS_URL_RE = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s?#]*(?:[?#][^\s"'<>]*)?/gi;
 const REL_PATH_WITH_QUERY_RE = /(?<![\w:/.-])\/[\w][\w./-]*\?[^\s"'<>)]*/g;
 
 function stripUrlsInText(text: string, stripRelative: boolean): string {

@@ -211,6 +211,65 @@ describe('scrubEvent (beforeSend)', () => {
     expect(out.exception.values[0].value).toContain('https://h/search');
   });
 
+  // H1' round 3 (a): a path segment containing `(`, `)` or `'` before the `?`
+  // used to shield the query entirely — the base class excluded those
+  // characters, so the match stopped short of the `?` and nothing was
+  // stripped. A wiki-style path is a real shape this hits. Mutation-checked:
+  // reverting ABS_URL_RE to the round-2 shape fails this (it leaves the
+  // token in place instead of stripping it).
+  it('strips the query from a URL whose path contains parens (wiki-style paths)', () => {
+    const secretToken = ['tok', 'SECRET', '123'].join('');
+    const out = scrubEvent({
+      exception: {
+        values: [{ type: 'Error', value: `GET https://h/wiki/Foo_(bar)?token=${secretToken}` }],
+      },
+    });
+    expect(out.exception.values[0].value).not.toContain(secretToken);
+    expect(out.exception.values[0].value).toBe('GET https://h/wiki/Foo_(bar)');
+  });
+
+  // H1' round 3 (b): the round-2 query group (`\S*`) swallowed everything up
+  // to the next whitespace, which is right for free text but wrong for a URL
+  // embedded in JSON — it ate the closing quote and every sibling field after
+  // it. The query group now stops at a quote/angle-bracket too, so only the
+  // query itself is removed. Mutation-checked: reverting ABS_URL_RE to the
+  // round-2 shape fails this (it drops `,"other":"keep"}` entirely).
+  it('strips a URL query embedded in JSON without eating the rest of the JSON', () => {
+    const secretToken = ['t', 'SECRET', 'val'].join('');
+    const json = `{"url":"https://h/p?t=${secretToken}","other":"keep"}`;
+    const out = scrubEvent({ extra: { raw: json } }) as { extra: { raw: string } };
+    expect(out.extra.raw).not.toContain(secretToken);
+    expect(out.extra.raw).toBe('{"url":"https://h/p","other":"keep"}');
+  });
+
+  // H1' round 3 (c): ABS_URL_RE only matched `https?://`, so a password or
+  // token on any OTHER scheme's URL (a raw DB connection string that isn't
+  // shaped like log-scrub's userinfo pattern, a WebSocket URL) passed
+  // straight through. It now matches any scheme. Mutation-checked: reverting
+  // ABS_URL_RE to the round-2 (https-only) shape fails this.
+  it('strips the query from a non-http(s) scheme URL (postgresql, wss)', () => {
+    const dbSecret = ['db', 'SECRET', '456'].join('');
+    const dbQueryUrl = `postgresql://db-host/housemanager?auth=${dbSecret}`;
+    const wsToken = ['ws', 'SECRET', 'tok'].join('');
+    const wsUrl = `wss://h/p?t=${wsToken}`;
+
+    const out = scrubEvent({ extra: { db: dbQueryUrl, ws: wsUrl } }) as {
+      extra: { db: string; ws: string };
+    };
+    expect(out.extra.db).not.toContain(dbSecret);
+    expect(out.extra.db).toBe('postgresql://db-host/housemanager');
+    expect(out.extra.ws).not.toContain(wsToken);
+    expect(out.extra.ws).toBe('wss://h/p');
+  });
+
+  // Regression guard: a file: frame (no query at all) must be completely
+  // unaffected by ABS_URL_RE now matching every scheme, not just http(s).
+  it('leaves a file: URL with no query unchanged', () => {
+    const value = 'file:///app/x.js:1:2';
+    const out = scrubEvent({ exception: { values: [{ type: 'Error', value }] } });
+    expect(out.exception.values[0].value).toBe(value);
+  });
+
   // Nits: a negative over-strip test. None of these contain a query string
   // that should be touched — a bare '?', a slash that isn't a path start, a
   // file:// or absolute path with no query, or an absolute URL with no query
