@@ -61,7 +61,9 @@ describe('scrubEvent (beforeSend)', () => {
   });
 
   // Inline browser code is attributed to the page URL, query included.
-  // Mutation-checked: skipping stripFrameQueries fails this.
+  // Mutation-checked: skipping stripFrameQueries fails this. The third frame is
+  // what pins it: the free-text URL pass also strips the first frame's query,
+  // but it needs a scheme or a leading `/`, and a bare script name has neither.
   it('strips queries from browser stack-frame paths, leaving server paths alone', () => {
     const out = scrubEvent({
       exception: {
@@ -75,6 +77,7 @@ describe('scrubEvent (beforeSend)', () => {
                   filename: 'https://hm.example/search?q=secret+term',
                 },
                 { abs_path: '/app/web/.next/server/chunks/x.js', filename: 'app:///x.js' },
+                { abs_path: 'chunk.js?v=frameCanary', filename: 'chunk.js#frameCanary' },
               ],
             },
           },
@@ -84,6 +87,7 @@ describe('scrubEvent (beforeSend)', () => {
     expect(out.exception.values[0].stacktrace.frames).toEqual([
       { abs_path: 'https://hm.example/search', filename: 'https://hm.example/search' },
       { abs_path: '/app/web/.next/server/chunks/x.js', filename: 'app:///x.js' },
+      { abs_path: 'chunk.js', filename: 'chunk.js' },
     ]);
   });
 
