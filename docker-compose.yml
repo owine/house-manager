@@ -32,9 +32,12 @@ x-app-env: &app-env
   REMINDERS_TICK_HEARTBEAT_URL: ${REMINDERS_TICK_HEARTBEAT_URL:-}
   SEARCH_REINDEX_HEARTBEAT_URL: ${SEARCH_REINDEX_HEARTBEAT_URL:-}
   # Optional observability vars. Set these once GlitchTip / Loki are running.
-  # SENTRY_DSN: ${SENTRY_DSN:-}
-  # NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-  # SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+  # Error reporting (docs/observability.md). Optional, read at runtime; empty
+  # means off. SENTRY_DSN: web server + worker. SENTRY_BROWSER_DSN: rendered
+  # into each page for the browser SDK. (SENTRY_AUTH_TOKEN is build-time only:
+  # a buildkit secret, never a runtime var.)
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_BROWSER_DSN: ${SENTRY_BROWSER_DSN:-}
   # LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:

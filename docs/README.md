@@ -131,6 +131,8 @@ Validated at startup by `lib/env.ts` (Zod). The app fails fast on first `getEnv(
 | `BACKUP_HEARTBEAT_URL` | unset | Worker. http(s) URL the nightly backup GETs after each validated dump, never after a failure, e.g. an uptime-kuma Push monitor. See [backups.md § Monitoring](backups.md#monitoring) |
 | `REMINDERS_TICK_HEARTBEAT_URL` | unset | Worker. http(s) URL GETed after each `reminders.tick` run (every 5 min) that completes, never after a failure. See [observability.md § Dead-man monitors](observability.md#dead-man-monitors) |
 | `SEARCH_REINDEX_HEARTBEAT_URL` | unset | Worker. GETed after each nightly `search.reindex` run that submits the rebuild to Meilisearch without throwing. It does not wait for Meilisearch to finish indexing, so it proves the job ran, not that the index is populated |
+| `SENTRY_DSN` | unset | Web server + worker error reporting. See [observability.md](observability.md) |
+| `SENTRY_BROWSER_DSN` | unset | Browser error reporting. Read per request and rendered into the page; not a build-time var. See [observability.md](observability.md) |
 | `AUTH_URL` | unset | Consumed by Auth.js itself (not in the Zod schema). Set when fronted by a reverse proxy that needs an explicit base URL |
 
 ### Set automatically by the Docker image
@@ -244,7 +246,7 @@ together.
 ## Further docs
 
 - [`docs/TESTING.md`](TESTING.md) — test tiers, decision matrix, per-feature checklist, `@critical` policy, coverage floor.
-- [`docs/observability.md`](observability.md) — logging (Pino) and error reporting (Sentry/GlitchTip).
+- [`docs/observability.md`](observability.md) — logging (Pino), error reporting (Sentry/GlitchTip), dead-man monitors, source maps.
 - [`docs/backups.md`](backups.md) — pg_dump backups, the dead-man monitor, and the restore runbook.
 
 ## Architecture notes
