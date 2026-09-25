@@ -222,4 +222,33 @@ describe('parseEnv', () => {
     ).toThrow();
     expect(() => parseEnv({ ...baseValid, BACKUP_HEARTBEAT_URL: 'not a url' })).toThrow();
   });
+
+  // The two job heartbeats share BACKUP_HEARTBEAT_URL's contract exactly.
+  it('REMINDERS_TICK / SEARCH_REINDEX heartbeat URLs: optional, empty is unset, http(s) only', () => {
+    const baseValid = {
+      ANTHROPIC_API_KEY: 'sk-ant-test-fixture',
+      DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+      AUTH_SECRET: 'a'.repeat(32),
+      AUTH_OIDC_ISSUER: 'https://auth.example.com',
+      AUTH_OIDC_CLIENT_ID: 'house-manager',
+      AUTH_OIDC_CLIENT_SECRET: 'secret',
+      MEILI_HOST: 'http://meilisearch:7700',
+      MEILI_KEY: 'key',
+      FILES_DIR: '/data/files',
+      NODE_ENV: 'test',
+      WEB_PUSH_VAPID_PUBLIC_KEY: 'test-vapid-public-key-fixture',
+      WEB_PUSH_VAPID_PRIVATE_KEY: 'test-vapid-private-key-fixture',
+      WEB_PUSH_CONTACT_EMAIL: 'mailto:test@example.com',
+      FORWARDEMAIL_API_KEY: 'test-api-key',
+      FORWARDEMAIL_FROM_ADDRESS: 'House Manager <reminders@example.com>',
+    };
+    const url = 'http://uptime-kuma:3001/api/push/Ab12Cd34?status=up&msg=OK&ping=';
+    for (const key of ['REMINDERS_TICK_HEARTBEAT_URL', 'SEARCH_REINDEX_HEARTBEAT_URL'] as const) {
+      expect(parseEnv(baseValid)[key]).toBeUndefined();
+      expect(parseEnv({ ...baseValid, [key]: '' })[key]).toBeUndefined();
+      expect(parseEnv({ ...baseValid, [key]: url })[key]).toBe(url);
+      expect(() => parseEnv({ ...baseValid, [key]: 'ftp://kuma.example.com/x' })).toThrow();
+      expect(() => parseEnv({ ...baseValid, [key]: 'not a url' })).toThrow();
+    }
+  });
 });

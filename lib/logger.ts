@@ -21,6 +21,29 @@ import { deepScrubStrings, scrubSecrets } from './log-scrub';
 const isDev = process.env.NODE_ENV !== 'production';
 const level = process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info');
 
+/**
+ * The message pino will derive when the call passes no message of its own:
+ * `logger.error({ err })` or `logger.error(err)`. pino fills `msg` from
+ * `err.message` in `write()` (proto.js) for ANY truthy `err`, Error or not,
+ * AFTER hooks.logMethod and outside formatters.log, so without this the one
+ * secret-bearing string that skips every scrubbing layer is the log line's
+ * `msg`. Mirrors pino's rule (an explicit `msg` in the merge object wins), and
+ * only ever returns a string: a non-string `message` is left to pino, because
+ * scrubSecrets on it would throw, and a log call must never throw.
+ */
+function derivedErrorMessage(args: readonly unknown[]): string | undefined {
+  if (args.length !== 1) return undefined;
+  const [first] = args;
+  let message: unknown;
+  if (first instanceof Error) {
+    message = first.message;
+  } else if (first !== null && typeof first === 'object') {
+    const { msg, err } = first as { msg?: unknown; err?: unknown };
+    if (msg === undefined && err) message = (err as { message?: unknown }).message;
+  }
+  return typeof message === 'string' ? message : undefined;
+}
+
 // Defense in depth, two layers:
 //  1. `redact` blanks whole fields by key (fast, exact) — known sensitive keys.
 //  2. pattern scrubbing (log-scrub) masks secrets EMBEDDED in string values —
@@ -62,9 +85,12 @@ export const loggerOptions: LoggerOptions = {
     censor: '[Redacted]',
   },
   serializers: {
-    // Serialize the Error the standard way, then scrub embedded secrets from the
-    // resulting strings (message, stack, and custom props like cmd/spawnargs).
-    err: (e: unknown) => deepScrubStrings(pino.stdSerializers.err(e as Error)),
+    // pino runs formatters.log BEFORE serializers, so by the time this sees
+    // `err` it is usually already the plain { type, message, stack, ... } that
+    // deepScrubStrings makes of an Error. Not pino.stdSerializers.err: given
+    // that plain object it would relabel `type` as 'Object'. deepScrubStrings
+    // serializes a raw Error the same way, so both paths agree.
+    err: (e: unknown) => deepScrubStrings(e),
   },
   formatters: {
     // Catch-all: scrub embedded secrets from every string in the log object.
@@ -75,6 +101,10 @@ export const loggerOptions: LoggerOptions = {
     // pino formats them — formatters.log only sees the merge object, not the msg.
     logMethod(args, method) {
       const scrubbed = args.map((a) => (typeof a === 'string' ? scrubSecrets(a) : a));
+      // No message given: supply the scrubbed err.message so pino doesn't
+      // derive an unscrubbed one (see derivedErrorMessage).
+      const derived = derivedErrorMessage(args);
+      if (derived !== undefined) scrubbed.push(scrubSecrets(derived));
       return method.apply(this, scrubbed as typeof args);
     },
   },
