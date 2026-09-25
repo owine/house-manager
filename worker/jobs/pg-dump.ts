@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import * as Sentry from '@sentry/node';
 import { getEnv } from '@/lib/env';
+import { HEARTBEAT_TIMEOUT_MS, type HeartbeatResult, pingHeartbeat } from '@/lib/heartbeat-ping';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('worker.pg-dump');
@@ -24,7 +25,6 @@ export const RETENTION_COUNT = 7;
  * pg-boss expires an attempt after 15 minutes.
  */
 export const STALE_PARTIAL_MS = 24 * 60 * 60 * 1000;
-const HEARTBEAT_TIMEOUT_MS = 10_000;
 /**
  * pg-boss has no per-queue policy for `pg-dump` (see `lib/queue.ts`
  * QUEUE_POLICY), so an attempt expires after the default `expireInSeconds`
@@ -94,7 +94,7 @@ export type PgDumpResult = {
   sizeBytes: number;
   durationMs: number;
   pruned: number;
-  heartbeat: 'sent' | 'skipped' | 'failed';
+  heartbeat: HeartbeatResult;
 };
 
 /**
@@ -271,44 +271,6 @@ async function pruneBackupDir(backupDir: string, current: string): Promise<numbe
 }
 
 /**
- * Dead-man ping. Fail-soft: a monitor outage must never fail the backup, and a
- * missed ping is exactly what the monitor alerts on.
- *
- * Never logs the URL, and never logs an error's `message`: undici puts the full
- * request URL in some of its errors, and this URL carries the push token (and
- * could carry `user:pass@` — httpUrlSchema allows credentials). Only the error's
- * name and its cause's `code` (e.g. ECONNREFUSED, ENOTFOUND) are logged.
- */
-async function pingHeartbeat(
-  url: string | undefined,
-  deps: PgDumpDeps,
-): Promise<PgDumpResult['heartbeat']> {
-  if (!url) return 'skipped';
-  try {
-    const res = await deps.fetch(url, { signal: AbortSignal.timeout(deps.heartbeatTimeoutMs) });
-    if (!res.ok) {
-      logger.warn(
-        { event: 'pg-dump.heartbeat.failed', status: res.status },
-        'backup heartbeat rejected (non-fatal)',
-      );
-      return 'failed';
-    }
-    return 'sent';
-  } catch (e) {
-    const err = e as Error;
-    logger.warn(
-      {
-        event: 'pg-dump.heartbeat.failed',
-        errName: err.name,
-        causeCode: (err.cause as { code?: string } | undefined)?.code,
-      },
-      'backup heartbeat failed (non-fatal)',
-    );
-    return 'failed';
-  }
-}
-
-/**
  * Runs `pg_dump --format=custom` against DATABASE_URL into a temp file,
  * validates it, renames it to <backupDir>/housemanager-<ISO>.dump, prunes the
  * directory to the last RETENTION_COUNT valid dumps, then pings
@@ -362,6 +324,9 @@ export async function handlePgDump(overrides: Partial<PgDumpDeps> = {}): Promise
   );
 
   const pruned = await pruneBackupDir(deps.backupDir, filename);
-  const heartbeat = await pingHeartbeat(BACKUP_HEARTBEAT_URL, deps);
+  const heartbeat = await pingHeartbeat('pg-dump', BACKUP_HEARTBEAT_URL, {
+    fetch: deps.fetch,
+    timeoutMs: deps.heartbeatTimeoutMs,
+  });
   return { file: filename, sizeBytes, durationMs, pruned, heartbeat };
 }
