@@ -338,7 +338,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-test-placeholder-not-used-in-ci' }}
       LOG_LEVEL: info
       # SENTRY_DSN intentionally unset in CI; SDK no-ops gracefully.
-      # NEXT_PUBLIC_SENTRY_DSN intentionally unset; browser SDK no-ops gracefully.
+      # SENTRY_BROWSER_DSN intentionally unset; no meta tag, browser SDK stays off.
       # SENTRY_AUTH_TOKEN intentionally unset; source-map upload skipped.
       # Ask/RAG (Plan 4c): feature gated off in CI to keep e2e cheap and
       # to avoid needing a real Voyage key. OCR backend off prevents the
@@ -545,8 +545,25 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          # Keep build-args identical in the smoke-test step below: ARG values
+          # are part of the layer cache key, and a mismatch rebuilds the image.
+          # The SENTRY_* repo variables are optional (empty = no source-map
+          # upload); next.config.ts drops empty values.
           build-args: |
             GIT_SHA=${{ github.sha }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+            SENTRY_URL=${{ vars.SENTRY_URL }}
+          # Source-map upload token: main only (PR builds would upload maps for
+          # releases that never ship), one matrix leg only (same source, same
+          # Turbopack build: the browser chunks should be byte-identical on both
+          # architectures, so a second upload of the release is redundant; if
+          # they ever differ, drop the platform condition), and only when the
+          # secret exists. An empty
+          # string passes no secret at all. The other leg still deletes its
+          # maps (next.config.ts). Secrets are not part of the cache key, so
+          # the smoke step below still hits the cache.
+          secrets: ${{ github.ref == 'refs/heads/main' && matrix.platform == 'linux/amd64' && secrets.SENTRY_AUTH_TOKEN != '' && format('sentry_auth_token={0}', secrets.SENTRY_AUTH_TOKEN) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           # On main: build by digest and push to GHCR; publish-manifest
           # downstream consumes the digest. On PRs: build to verify the
@@ -568,6 +585,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: |
             GIT_SHA=${{ github.sha }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+            SENTRY_URL=${{ vars.SENTRY_URL }}
           load: true
           tags: house-manager:smoke
       # Boots both roles from the image that was actually built. Guards the

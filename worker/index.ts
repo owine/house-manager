@@ -1,6 +1,3 @@
-// Sentry init MUST run before any other imports so that lib/queue.ts's
-// boss.on('error') handler (which calls Sentry.captureException) has a
-// live SDK to report through. The DSN gate makes init a no-op when unset.
 import * as Sentry from '@sentry/node';
 import { getEnv } from '@/lib/env';
 import { checkHealth } from '@/lib/health';
@@ -8,7 +5,6 @@ import { getLogger } from '@/lib/logger';
 import { startMemoryWatchdog } from '@/lib/observability/memory-watchdog';
 import { getBoss, Queue } from '@/lib/queue';
 import { ensureSearchIndex } from '@/lib/search/init';
-import { APP_GIT_SHA } from '@/lib/version';
 import { createHealthServer, resolveWorkerHealthPort } from './health-server';
 import { createHeartbeat } from './heartbeat';
 import { handleChoreAutoCompleteTick } from './jobs/chore-auto-complete-tick';
@@ -30,16 +26,12 @@ import { handleRemindersTick } from './jobs/reminders-tick';
 import { handleSearchIndex, type SearchIndexJob } from './jobs/search-index';
 import { handleThumbnail, type ThumbnailJob } from './jobs/thumbnail';
 import { runRemindersTick, runSearchReindex } from './monitored-jobs';
+import { flushSentry, initWorkerSentry } from './sentry';
 
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    release: APP_GIT_SHA,
-    environment: process.env.NODE_ENV,
-    tracesSampleRate: 0,
-    sendDefaultPii: false,
-  });
-}
+// Before main(): lib/queue.ts's boss.on('error') reports through this client,
+// and getBoss() runs inside main(). Also installs the Pino -> Sentry bridge.
+// No SENTRY_DSN makes this a no-op.
+initWorkerSentry();
 
 const logger = getLogger('worker.lifecycle');
 
@@ -213,8 +205,8 @@ async function main() {
 
   // Memory watchdog (Plan 4c) — Tesseract.js + Voyage batching can push the
   // worker container above its implicit memory budget on a Pi. The watchdog
-  // logs a structured warning when RSS crosses 800 MB; Sentry picks it up
-  // through the Plan 5a integration.
+  // logs a structured warning when RSS crosses 800 MB. Log-only: the Pino ->
+  // Sentry bridge forwards error/fatal calls that carry an Error, not warns.
   startMemoryWatchdog({ thresholdMb: 800, intervalMs: 60_000 });
 
   // First beat now so the container can go healthy without waiting a full
@@ -231,11 +223,14 @@ async function main() {
     heartbeat.stop();
     healthServer.close();
     await boss.stop({ graceful: true });
+    await flushSentry();
     process.exit(0);
   };
   const onSignal = (signal: string) => {
-    shutdown(signal).catch((e) => {
+    shutdown(signal).catch(async (e) => {
       logger.error({ err: e }, 'shutdown failed');
+      // Same as the startup path below: the bridged event only queues.
+      await flushSentry();
       process.exit(1);
     });
   };
@@ -243,8 +238,11 @@ async function main() {
   process.on('SIGINT', () => onSignal('SIGINT'));
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   Sentry.captureException(e);
   logger.error({ err: e }, 'failed to start');
+  // captureException only queues. Exiting straight away dropped this event,
+  // the one a crash-looping worker most needs to send.
+  await flushSentry();
   process.exit(1);
 });

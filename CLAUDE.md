@@ -138,9 +138,12 @@ policy reaches an existing database only through the `updateQueue` call beside i
 The worker runs under `tsx` in dev *and* prod — no compile step, deliberately (avoids
 path-alias/ESM-extension breakage from tsc-emitted JS). The `@/` alias is resolved at
 runtime from `tsconfig.json`, which is why the Dockerfile copies it into the **runtime**
-stage; removing that COPY breaks the worker at boot, not at build. Sentry init must stay
-the first import in `worker/index.ts` (`lib/queue.ts` registers `boss.on('error')` →
-`Sentry.captureException`). Worker uses `@sentry/node`, web uses `@sentry/nextjs`.
+stage; removing that COPY breaks the worker at boot, not at build. `initWorkerSentry()`
+must run before `main()` calls `getBoss()` (`lib/queue.ts`'s `boss.on('error')` reports
+through it), which is why it sits at module top level; the import's position is
+irrelevant, since ESM evaluates every import first. Worker uses `@sentry/node`, web uses
+`@sentry/nextjs`. What both share (the `Sentry.init` options and the Pino → Sentry
+bridge) lives SDK-free in `lib/observability/`: never import either SDK from there.
 
 **Nothing the worker imports may live outside the runtime image.** The same runtime alias
 resolution cuts the other way: the runtime stage copies `worker/`, `lib/`, `prisma/`,
@@ -364,6 +367,15 @@ declared `Content-Type`, and can forge `From:`.
   (`send-response.js`), which is why the global CSP skips `/api/files/`. No
   script-src CSP: it needs nonces from a `proxy.ts`, and a proxy truncates
   bodies over 10 MB, which breaks inbound HMAC.
+
+### A log level is a reporting decision
+
+`logger.error(...)` / `logger.fatal(...)` with an Error (`{ err }`, or the Error as the
+first argument) **is a Sentry event** when `SENTRY_DSN` is set, via the bridge in
+`lib/observability/error-reporter.ts`. `warn` never is. So: expected or retried failures
+log at `warn`; failures someone should look at log at `error` with the `err`. An error
+line without an Error is not reported, and an Error the call site already passed to
+`Sentry.captureException` is not reported twice. Details: `docs/observability.md`.
 
 ### Migrations carry SQL that Prisma cannot regenerate
 

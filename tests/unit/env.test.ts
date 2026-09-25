@@ -80,9 +80,7 @@ describe('parseEnv', () => {
       INBOUND_EMAIL_TOKEN: 'test-inbound-token-1234567890ab',
       INBOUND_EMAIL_HMAC_KEY: 'test-inbound-hmac-key-1234567890',
     };
-    expect(() =>
-      parseEnv({ ...baseValid, SENTRY_DSN: '', NEXT_PUBLIC_SENTRY_DSN: '' }),
-    ).not.toThrow();
+    expect(() => parseEnv({ ...baseValid, SENTRY_DSN: '' })).not.toThrow();
   });
 
   it('rejects malformed SENTRY_DSN that is non-empty but not a URL', () => {

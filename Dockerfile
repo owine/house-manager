@@ -33,23 +33,25 @@ RUN DATABASE_URL=postgresql://build:build@localhost:5432/build pnpm db:generate
 ARG GIT_SHA=unknown
 ENV NEXT_PUBLIC_GIT_SHA=$GIT_SHA
 
-# Sentry (optional — non-secret DSNs as ARG/ENV; auth token via --secret mount).
-# The DSNs are public values that ship in the bundle anyway (NEXT_PUBLIC_*) or
-# only identify a project, so ARG/ENV is fine. SENTRY_AUTH_TOKEN is a write
-# token to the Sentry project — buildkit's SecretsUsedInArgOrEnv lint
-# correctly flagged using ARG/ENV for it (the value would land in image
-# history). We mount it inline on the build RUN below so it's available as an
-# env var ONLY during that step and never persisted in any layer.
-ARG SENTRY_DSN
-ARG NEXT_PUBLIC_SENTRY_DSN
-ENV SENTRY_DSN=$SENTRY_DSN
-ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-ENV LOG_LEVEL=info
-
-# To enable source-map upload during build, pass:
+# Sentry: no DSN is baked in. SENTRY_DSN (server + worker) and
+# SENTRY_BROWSER_DSN (rendered into the page by the root layout) are read at
+# RUNTIME from the container env, so this one image serves every deployment.
+#
+# Source-map upload (optional) is the only build-time Sentry work. The three
+# ARGs below are non-secret identifiers; empty means "not configured" and the
+# upload is skipped. SENTRY_AUTH_TOKEN is a write token, so it is NOT an ARG
+# (buildkit's SecretsUsedInArgOrEnv lint flags that: the value would land in
+# image history). It is mounted inline on the build RUN below, available as an
+# env var ONLY during that step and never persisted in any layer:
 #   docker build --secret id=sentry_auth_token,src=/path/to/token ...
-# When the secret is absent, buildkit just doesn't set the env var, so
-# withSentryConfig's authToken is undefined and source-map upload no-ops.
+# When the secret is absent, buildkit doesn't set the env var, withSentryConfig's
+# authToken is undefined, and the upload no-ops.
+# (An ARG is visible to this stage's RUN steps as an env var; no ENV needed,
+# and nothing Sentry-related reaches the runtime stage.)
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+ARG SENTRY_URL
+ENV LOG_LEVEL=info
 RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
     DATABASE_URL=postgresql://build:build@localhost:5432/build \
     AUTH_SECRET=buildsecretbuildsecretbuildsecretbuild \

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
+import { browserSentryDsn } from '@/lib/observability/browser-dsn';
+import { BROWSER_DSN_META } from '@/lib/observability/sentry-options';
 import './globals.css';
 
 // next/font/google downloads the font files at build time and self-hosts
@@ -57,6 +59,11 @@ const themeScript = `
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Read per request: every page under (app)/ is dynamic (auth()), so this is
+  // the server's runtime env, not the build's. Statically prerendered pages
+  // (not-found) are rendered at build time, when it is unset, and so ship no
+  // DSN: those pages simply run without browser reporting.
+  const sentryDsn = browserSentryDsn();
   return (
     <html
       lang="en"
@@ -68,6 +75,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             This is the standard React pattern for injecting a pre-paint theme script
             that must run synchronously before hydration to prevent flash-of-wrong-theme. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* Read by instrumentation-client.ts. A DSN is public by design. */}
+        {sentryDsn ? <meta name={BROWSER_DSN_META} content={sentryDsn} /> : null}
       </head>
       <body>{children}</body>
     </html>

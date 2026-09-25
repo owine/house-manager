@@ -12,8 +12,8 @@ export type MemoryWatchdogOptions = {
 /**
  * Periodic RSS-memory watchdog for the worker process. When `process.memoryUsage().rss`
  * crosses `thresholdMb`, emit a structured `module: 'worker.memory'` warning.
- * The Plan 5a Pino+Sentry pipeline picks the warning up; from there it surfaces
- * in logs and (if Sentry is configured) creates a breadcrumb event.
+ * Log-only: the Pino -> Sentry bridge forwards error/fatal lines that carry an
+ * Error, so this warn never reaches Sentry. Find it in `docker logs`.
  *
  * The watchdog never kills the process — that's the caller's policy. Its job
  * is purely observation so memory creep is visible before the host actually

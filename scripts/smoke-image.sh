@@ -194,6 +194,14 @@ curl -fsS -m 15 -o /dev/null "http://localhost:13000$chunk" || {
 }
 echo "  ✓ .next/static asset ($chunk)"
 
+# No source maps in the image. Under Turbopack, @sentry/nextjs switches on
+# productionBrowserSourceMaps and deletes the maps after its upload step
+# whether or not an auth token was present (next.config.ts). If a future SDK
+# stops deleting them, catch it here rather than by reading a bundle listing.
+maps="$(docker run --rm --pull=never "$IMAGE" sh -c 'find /app/web/.next/static -name "*.map" | head -3')"
+[ -z "$maps" ] || fail "source maps shipped in /app/web/.next/static: $maps"
+echo "  ✓ no source maps shipped"
+
 echo "→ starting worker"
 docker run -d --name "$WORKER" --network "$NET" --pull=never -p 13001:3000 "${env_args[@]}" \
   "$IMAGE" sh -c "$WORKER_CMD" >/dev/null

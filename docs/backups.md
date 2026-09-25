@@ -46,15 +46,15 @@ If unset, it defaults to `./db-backups` (relative to the docker-compose.yml dire
 
 A backup that silently stops is the failure that matters, so the job reports success to a dead-man switch. It never reports failure. The monitor goes red when the success pings **stop**, which also covers a worker that is down, wedged, or never scheduled the job.
 
-Set up once, in uptime-kuma:
+Set up once, in HetrixTools:
 
-1. **Add New Monitor** → Monitor Type **Push**. Name it e.g. `house-manager backup`.
-2. **Heartbeat Interval**: `90000` seconds (25 hours: one daily run plus slack). **Retries**: `0`.
-3. Save, and copy the **Push URL** it shows (`https://<kuma>/api/push/<token>?status=up&msg=OK&ping=`).
+1. Add a **Cron Job monitor** (HetrixTools' heartbeat monitor). Name it e.g. `house-manager backup`.
+2. **Timeout** `1 day` + **Grace period** `60 min` (25 hours: one daily run plus slack). Never total less than 24 hours: it would page every day.
+3. Save, and copy the unique URL it generates (`https://sm.hetrixtools.net/hb/?s=<token>`).
 4. Set it as `BACKUP_HEARTBEAT_URL` on the **worker** container, then **recreate** the worker so it picks up the new environment: `docker compose up -d` (in production, your normal deploy). `docker restart` keeps the old environment.
-5. Send the first ping by running the [manual smoke test](#manual-smoke-test-after-deployment). The monitor stays pending until then.
+5. Send the first ping by running the [manual smoke test](#manual-smoke-test-after-deployment). The monitor has no data until then.
 
-The URL is fetched verbatim with a 10-second timeout. A monitor that is down or slow logs `"event":"pg-dump.heartbeat.failed"` and never fails the backup. The URL carries the push token, so the job never logs it; treat it as a secret.
+The URL is fetched verbatim with a plain GET and a 10-second timeout (HetrixTools' examples use `curl`/`wget`; the worker needs outbound HTTPS to `sm.hetrixtools.net`). A monitor that is down or slow logs `"event":"pg-dump.heartbeat.failed"` and never fails the backup. The `?s=` token is the secret, so the job never logs the URL; treat it as one. The two other dead-man monitors are in [observability.md § Dead-man monitors](observability.md#dead-man-monitors).
 
 ## Production deployments
 
@@ -67,7 +67,7 @@ The worker block needs both mounts, plus the heartbeat URL:
       - <host-files-path>:/data/files
       - <host-backups-path>:/backups
     environment:
-      BACKUP_HEARTBEAT_URL: <uptime-kuma push URL>
+      BACKUP_HEARTBEAT_URL: <HetrixTools Cron Job monitor URL>
 ```
 
 If `/backups` is missing inside the worker container, `pg_dump` fails with `could not open output file ... No such file or directory`. The job then fails as described above, and the heartbeat monitor alerts about 25 hours after the last good dump.

@@ -11,7 +11,10 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    // A digest means the error was thrown on the server, where onRequestError
+    // (instrumentation.ts) already reported the original. The browser only
+    // has a redacted copy; reporting it too would double every server error.
+    if (!error.digest) Sentry.captureException(error);
   }, [error]);
 
   return (
