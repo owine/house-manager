@@ -67,11 +67,26 @@ MOCK_PID=""
 WORKER_PID=""
 DEV_PID=""
 cleanup() {
+  local pid live i
   for pid in "$DEV_PID" "$WORKER_PID" "$MOCK_PID"; do
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
   done
+  # Wait for them to actually exit, as global-teardown.ts does: returning
+  # straight after the SIGTERM leaves a slow shutdown running as an orphan,
+  # which the next run meets as EADDRINUSE. SIGKILL whatever is left at 15s.
+  for i in $(seq 1 30); do
+    live=""
+    for pid in "$DEV_PID" "$WORKER_PID" "$MOCK_PID"; do
+      if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then live="$live $pid"; fi
+    done
+    [ -z "$live" ] && return
+    sleep 0.5
+  done
+  echo "cleanup: SIGKILL after 15s:$live" >&2
+  # shellcheck disable=SC2086
+  kill -KILL $live 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
