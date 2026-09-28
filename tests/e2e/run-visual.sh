@@ -59,31 +59,49 @@ source tests/e2e/_env-local.sh
 pnpm exec prisma migrate deploy
 pnpm exec tsx --env-file=.env prisma/seed.ts
 
-# Track background PIDs so the trap can clean them up on any exit path.
+# Track background PIDs so the trap can clean them up on any exit path. The
+# three below run their binaries directly, not via pnpm, so each $! is the
+# real process: a pnpm in between may not pass the trap's SIGTERM on (see
+# global-setup.ts), which would orphan it still holding its port.
 MOCK_PID=""
 WORKER_PID=""
 DEV_PID=""
 cleanup() {
+  local pid live i
   for pid in "$DEV_PID" "$WORKER_PID" "$MOCK_PID"; do
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
   done
+  # Wait for them to actually exit, as global-teardown.ts does: returning
+  # straight after the SIGTERM leaves a slow shutdown running as an orphan,
+  # which the next run meets as EADDRINUSE. SIGKILL whatever is left at 15s.
+  for i in $(seq 1 30); do
+    live=""
+    for pid in "$DEV_PID" "$WORKER_PID" "$MOCK_PID"; do
+      if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then live="$live $pid"; fi
+    done
+    [ -z "$live" ] && return
+    sleep 0.5
+  done
+  echo "cleanup: SIGKILL after 15s:$live" >&2
+  # shellcheck disable=SC2086
+  kill -KILL $live 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 # 2) Mock-OIDC host launcher (mirrors what global-setup.ts does in-process).
-pnpm exec tsx tests/e2e/start-mock-oidc.ts &
+node_modules/.bin/tsx tests/e2e/start-mock-oidc.ts &
 MOCK_PID=$!
 
 # 3) pg-boss worker (mirrors global-setup.ts). The ~2s wait lets it register
 # its handlers before specs start enqueueing search.index jobs.
-pnpm exec tsx --env-file=.env worker/index.ts &
+node_modules/.bin/tsx --env-file=.env worker/index.ts &
 WORKER_PID=$!
 sleep 2
 
 # 4) Next dev server.
-pnpm dev &
+node_modules/.bin/next dev &
 DEV_PID=$!
 
 # Wait for :3000 to come up (cold-compile can take a while on first hit).

@@ -32,12 +32,16 @@ export default async function globalSetup() {
   // (Next.js auto-loads it for the dev server, not for spawned children), so
   // we use `tsx --env-file=.env` to pull values from .env at startup. CI:
   // the job's env block already populates process.env, no .env file exists,
-  // so we use the plain worker:dev script and inherit process.env.
+  // so we inherit process.env.
+  //
+  // tsx is spawned directly, not through pnpm: teardown SIGTERMs the pid we
+  // hold here, and a pnpm in between doesn't reliably pass it on. A global
+  // pnpm older than `packageManager` re-execs the pinned version as a child
+  // and dies alone on SIGTERM, orphaning that child, tsx and the worker, which
+  // keeps holding its health port. Same rule as the webServer command (#526).
   const useEnvFile = existsSync('.env');
-  const workerArgs = useEnvFile
-    ? ['exec', 'tsx', '--env-file=.env', 'worker/index.ts']
-    : ['worker:dev'];
-  const worker = spawn('pnpm', workerArgs, {
+  const workerArgs = useEnvFile ? ['--env-file=.env', 'worker/index.ts'] : ['worker/index.ts'];
+  const worker = spawn('node_modules/.bin/tsx', workerArgs, {
     // Piped rather than inherited so we can watch for the readiness line
     // below; both streams are written straight through, so worker logs still
     // show up in the Playwright output exactly as before.
