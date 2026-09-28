@@ -36,7 +36,14 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'pnpm dev',
+        // Not `pnpm dev`. Playwright stops the webServer with a SIGKILL to its
+        // process group and then waits — with no timeout — for the child's stdio
+        // to close. pnpm >= 12.6 runs scripts in a process group of their own on
+        // Linux (to forward signals, pnpm#7374), so the group kill missed
+        // `next dev`, which kept the pipes open and hung CI until the 6h job
+        // limit after every test had passed (#521). macOS is unaffected, so a
+        // local run can't catch a regression here; keep pnpm out of this chain.
+        command: 'node_modules/.bin/next dev',
         url: 'http://localhost:3000',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

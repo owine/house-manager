@@ -298,6 +298,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-26.04
+    # A hang (not a failure) otherwise runs to GitHub's 6h default: #521's
+    # webServer teardown hung after every test passed. Normal runtime is
+    # 2-5 min, so 20 leaves room for retries without burning hours.
+    timeout-minutes: 20
     services:
       db:
         image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
@@ -373,6 +377,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-26.04
+    # Same hang guard as e2e (#521).
+    timeout-minutes: 20
     services:
       db:
         image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
