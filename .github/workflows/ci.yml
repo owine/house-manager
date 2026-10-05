@@ -200,7 +200,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -304,7 +304,7 @@ jobs:
     timeout-minutes: 20
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -381,7 +381,7 @@ jobs:
     timeout-minutes: 20
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
