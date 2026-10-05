@@ -545,6 +545,7 @@ describe('sentryOptions', () => {
       graphQL: { document: false, variables: false },
       genAI: { inputs: false, outputs: false },
       databaseQueryData: false,
+      queues: false,
       stackFrameVariables: false,
       frameContextLines: 5,
     });
