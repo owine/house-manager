@@ -27,14 +27,15 @@ const SENTINELS = [
   'react-dom',
 ];
 
-// typescript needs a DIFFERENT check and cannot go in the list above.
-//
-// The Prisma CLI reads prisma.config.ts at web boot, so it needs a TS loader at
-// runtime. But typescript is a devDependency: `pnpm prune --prod` has already
-// removed its top-level node_modules/typescript symlink before this script
-// runs. It survives only as a nested transitive inside the `prisma` store
-// entry, so a top-level existsSync would fail on every single build.
-const STORE_SENTINEL_PREFIXES = ['typescript@'];
+// typescript is deliberately NOT a sentinel. It once was, on the belief that
+// the Prisma CLI needs it to read prisma.config.ts at web boot. It does not:
+// @prisma/config loads the file through c12 -> jiti, which strips types itself,
+// and typescript is only an OPTIONAL peer of prisma. Since pnpm 12.7 (#15344)
+// `pnpm prune --prod` drops a devDependency that only satisfies an optional
+// peer, so the old check failed every build (#538). Verified then: with
+// typescript unresolvable from prisma, `prisma validate` still loads the
+// config. The end-to-end check is scripts/smoke-image.sh, which runs
+// `prisma migrate deploy` in the built image.
 
 // Catastrophe floor only. Deliberately slack: the denominator is the full
 // production tree, and this design's premise is that web-only dependencies are
@@ -176,13 +177,6 @@ function main() {
   }
 
   const missing = SENTINELS.filter((s) => !existsSync(join(nodeModules, s)));
-
-  // Store-level sentinels have no top-level symlink to stat (see the comment on
-  // STORE_SENTINEL_PREFIXES), so check the surviving .pnpm entries instead.
-  const survivors = readdirSync(store);
-  for (const prefix of STORE_SENTINEL_PREFIXES) {
-    if (!survivors.some((d) => d.startsWith(prefix))) missing.push(`${prefix}* (in .pnpm)`);
-  }
 
   if (missing.length > 0) {
     console.error(
