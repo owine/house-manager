@@ -242,11 +242,11 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
       pg-boss:
-        specifier: 12.35.1
-        version: 12.35.1
+        specifier: 12.36.0
+        version: 12.36.0(@opentelemetry/api@1.9.1)
       pino:
-        specifier: 10.3.1
-        version: 10.3.1
+        specifier: 10.4.0
+        version: 10.4.0
       prisma:
         specifier: 7.10.0
         version: 7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)
@@ -4756,10 +4756,12 @@ packages:
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
 
-  pg-boss@12.35.1:
-    resolution: {integrity: sha512-2eGu2HhelLE0jaifdEMMtuy1pgoF9fycs5deHEwQiaXUcxuPQ9udNxb27VquNO8XgYTM3b1cWnsfSuc8RzXuWw==}
+  pg-boss@12.36.0:
+    resolution: {integrity: sha512-67Jj4xNuv8mkShTzfmsFtJeVa2ChXyrknjlw/WKZCIMuzRTwyHOUGjl2mf5Snrhmb0xglvFbkfAt5+hLtXukag==}
     engines: {node: '>=22.12.0'}
     hasBin: true
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
 
   pg-cloudflare@1.4.1:
     resolution: {integrity: sha512-6PQbsFWZcp9EmJEwy5cGQ2La+AMWpP46lgbb8X+U/XsHIUweYDNCpeuKck5RxL2MdVFi7krbbEi5nX4Zh7JhrQ==}
@@ -4816,8 +4818,8 @@ packages:
   pino-std-serializers@7.1.0:
     resolution: {integrity: sha512-BndPH67/JxGExRgiX1dX0w1FvZck5Wa4aal9198SrRhZjH3GxKQUKIBnYJTdj2HDN3UQAS06HlfcSbQj2OHmaw==}
 
-  pino@10.3.1:
-    resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
+  pino@10.4.0:
+    resolution: {integrity: sha512-bk1ZMTwG/Vymx+zPoa28MhNzucFvXJWp3csrSuxuHPSMeUettaCoQ5Jvg07mtC4JGNpcfTwz41oVCnNgBK9+vA==}
     hasBin: true
 
   pkce-challenge@5.0.1:
@@ -5018,10 +5020,6 @@ packages:
   readdirp@5.1.1:
     resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
     engines: {node: '>= 20.19.0'}
-
-  real-require@0.2.0:
-    resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
-    engines: {node: '>= 12.13.0'}
 
   real-require@1.0.0:
     resolution: {integrity: sha512-P4nbQYQfePJxRSmY+v/KINxVucm4NF3p3s7pJveMTtom52FR4YGltUQLB8idDXwDDWW+eYrWDFbuzUnjoWHF7g==}
@@ -9927,8 +9925,9 @@ snapshots:
 
   perfect-debounce@2.1.0: {}
 
-  pg-boss@12.35.1:
+  pg-boss@12.36.0(@opentelemetry/api@1.9.1):
     dependencies:
+      '@opentelemetry/api': 1.9.1
       cron-parser: 5.10.1
       pg: 8.23.1
       rrule-temporal: 2.2.8
@@ -9999,7 +9998,7 @@ snapshots:
 
   pino-std-serializers@7.1.0: {}
 
-  pino@10.3.1:
+  pino@10.4.0:
     dependencies:
       '@pinojs/redact': 0.4.0
       atomic-sleep: 1.0.0
@@ -10008,7 +10007,7 @@ snapshots:
       pino-std-serializers: 7.1.0
       process-warning: 5.1.0
       quick-format-unescaped: 4.0.4
-      real-require: 0.2.0
+      real-require: 1.0.0
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
@@ -10236,8 +10235,6 @@ snapshots:
       minimatch: 5.1.9
 
   readdirp@5.1.1: {}
-
-  real-require@0.2.0: {}
 
   real-require@1.0.0: {}
 
