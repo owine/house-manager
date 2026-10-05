@@ -20,12 +20,11 @@ export function initWorkerSentry(
   if (!dsn) return false;
   Sentry.init({
     ...sentryOptions(dsn),
-    // In 10.75 the HTTP integration buffers incoming request bodies onto the
-    // scope unless told not to, whatever dataCollection.httpBodies says. The
+    // A set maxRequestBodySize wins over dataCollection.httpBodies, so this
+    // pins incoming body capture off even if httpBodies is ever loosened. The
     // worker's only server is its health endpoint; this keeps both server
-    // inits identical. (11 renames the option and gates it on dataCollection;
-    // tsc will flag this line on that bump.)
-    integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: 'none' })],
+    // inits identical.
+    integrations: [Sentry.httpIntegration({ maxRequestBodySize: 'none' })],
     ...overrides,
   });
   setErrorReporter(sentryReporter(Sentry.captureException));

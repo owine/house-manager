@@ -22,18 +22,18 @@ export async function register() {
   const { sentryOptions } = await import('@/lib/observability/sentry-options');
   Sentry.init({
     ...sentryOptions(dsn),
-    // nodejs only (the edge SDK has no HTTP server integration). In 10.75 it
-    // buffers incoming request bodies onto the scope unless told not to,
-    // whatever dataCollection.httpBodies says; scrubEvent also drops
-    // `request.data`, so this is belt and braces. (11 renames the option and
-    // gates it on dataCollection; tsc will flag this line on that bump.)
+    // nodejs only (the edge SDK has no HTTP server integration). In 11 an
+    // unset maxRequestBodySize falls back to dataCollection.httpBodies (already
+    // `[]`), but a set one wins over it (server-subscription.js in
+    // @sentry/core 11.0.0), so this pins body capture off even if httpBodies
+    // is ever loosened. scrubEvent also drops `request.data`: belt and braces.
     // Passing our own httpIntegration REPLACES @sentry/nextjs's default, which
     // sets disableIncomingRequestSpans (server/index.js): Next creates its own
     // request spans, and without this every request gets a second root span.
     ...(process.env.NEXT_RUNTIME === 'nodejs' && {
       integrations: [
         Sentry.httpIntegration({
-          maxIncomingRequestBodySize: 'none',
+          maxRequestBodySize: 'none',
           disableIncomingRequestSpans: true,
         }),
       ],

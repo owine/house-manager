@@ -68,11 +68,11 @@ describe('instrumentation', () => {
     expect(options).toMatchObject({ dsn: DSN, tracesSampleRate: 0, beforeSend: scrubEvent });
     expect(options.dataCollection).toMatchObject({ cookies: false, httpHeaders: false });
     expect(options).not.toHaveProperty('sendDefaultPii');
-    // 10.75 buffers incoming request bodies unless the HTTP integration is told
-    // not to. Mutation-checked: dropping the integration fails this.
+    // A set maxRequestBodySize pins incoming body capture off regardless of
+    // dataCollection.httpBodies. Mutation-checked: dropping the integration fails this.
     // Replacing @sentry/nextjs's default Http integration must keep its
     // disableIncomingRequestSpans. Mutation-checked: dropping either option fails.
-    const http = { maxIncomingRequestBodySize: 'none', disableIncomingRequestSpans: true };
+    const http = { maxRequestBodySize: 'none', disableIncomingRequestSpans: true };
     expect(sentry.httpIntegration).toHaveBeenCalledWith(http);
     expect(options.integrations).toEqual([{ name: 'Http', options: http }]);
   });
