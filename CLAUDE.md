@@ -189,11 +189,11 @@ this same tree.
 The prune carries its own sanity checks, and they are the point rather than
 decoration — this is the one step in the build that can produce a green image
 and a dead container. Named sentinels are stat-ed against the *post-prune* tree,
-plus a deliberately slack 25% survivor floor for the catastrophic case. Note
-`typescript` is checked in `.pnpm` rather than at top level: it is a
-devDependency whose top-level symlink `pnpm prune --prod` already removed, and
-it survives only as a transitive of `prisma`, which needs it to read
-`prisma.config.ts` at web boot.
+plus a deliberately slack 25% survivor floor for the catastrophic case.
+`typescript` is deliberately *not* a sentinel: Prisma loads `prisma.config.ts`
+through `c12` → `jiti`, and `typescript` is only an optional peer of `prisma`,
+which `pnpm prune --prod` drops since pnpm 12.7. A sentinel on it once failed
+every image build (#538) while guarding nothing.
 
 The image ships no pnpm. Both roles invoke tooling by explicit path
 (`node_modules/.bin/tsx`, `node_modules/.bin/prisma`); web runs
