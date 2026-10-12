@@ -48,7 +48,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.132.1",
     "@auth/prisma-adapter": "2.11.3",
-    "@base-ui/react": "1.8.0",
+    "@base-ui/react": "1.9.0",
     "@hookform/resolvers": "5.9.1",
     "@paralleldrive/cuid2": "3.3.0",
     "@prisma/adapter-pg": "7.10.0",
