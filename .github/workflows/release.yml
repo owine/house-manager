@@ -1,0 +1,303 @@
+name: Release
+
+# Publishing a GitHub Release for a `vX.Y.Z` tag RETAGS the image ci.yml
+# already built, smoke-tested and published from main. It never rebuilds: the
+# released digest is the one publish-manifest pushed as `sha-<full>`. Image
+# tags carry no `v`: `X.Y.Z`, plus `X.Y`, `X` and `latest` when this is the
+# newest release in that series (forward-only).
+#
+# Contract (shared across the owine image repos):
+#   - tag must be strict vX.Y.Z on a non-prerelease
+#   - tagged commit must be on main, and main's CI run on it must pass ci-pass
+#   - the image is the nearest ancestor (inclusive) with a `sha-<full>` tag
+#   - X.Y.Z is immutable; X.Y / X / latest only move forward
+#
+# Releases published with GITHUB_TOKEN do not trigger workflows, so publish
+# releases (or the release-drafter draft) as a human: UI or `gh release`.
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+defaults:
+  run:
+    # Explicit `shell: bash` adds -o pipefail (the implicit default is bash -e).
+    shell: bash
+
+jobs:
+  # Everything that needs no registry write, so packages:write is not held
+  # through a CI wait that can last most of an hour.
+  gate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 50
+    permissions:
+      contents: read  # resolve the tag, compare the commit against main
+      actions: read   # find ci.yml's run for the commit
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - id: version
+        name: Require a strict vX.Y.Z tag on a non-prerelease
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          # A prerelease would otherwise move `latest`.
+          if [ "$PRERELEASE" = true ]; then
+            echo "::error::$TAG is marked prerelease; only full releases get image tags."
+            exit 1
+          fi
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if ! [[ "$TAG" =~ $re ]]; then
+            echo "::error::Tag '$TAG' is not vX.Y.Z (no prerelease/build suffix, no leading zeros); no image tags were changed."
+            exit 1
+          fi
+          {
+            echo "version=${TAG#v}"
+            echo "major=${BASH_REMATCH[1]}"
+            echo "minor=${BASH_REMATCH[2]}"
+          } >> "$GITHUB_OUTPUT"
+
+      - id: commit
+        name: Require the tagged commit to be on main
+        env:
+          EVENT_SHA: ${{ github.sha }}  # the tag's commit when the release was published
+        run: |
+          # refs/tags/ peels annotated tags to their commit.
+          sha=$(gh api "repos/$REPO/commits/refs/tags/$TAG" --jq .sha)
+          if [ "$sha" != "$EVENT_SHA" ]; then
+            echo "::error::$TAG now points at $sha but was $EVENT_SHA when the release was published; refusing a moved tag."
+            exit 1
+          fi
+          # identical = main is at SHA; ahead = SHA is an ancestor of main.
+          status=$(gh api "repos/$REPO/compare/$sha...main" --jq .status)
+          case "$status" in
+            identical|ahead) echo "::notice::$TAG -> $sha (main is $status)" ;;
+            *) echo "::error::$TAG -> $sha is not on main (compare status: $status). Release from a main commit."; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for main's CI run on the tagged commit and require ci-pass
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          # The run may not exist yet when a release is cut right after a
+          # merge, or may be mid re-run, so wait for one that is completed.
+          deadline=$(( $(date +%s) + 45 * 60 ))
+          while :; do
+            run=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=main&per_page=1" \
+              --jq '.workflow_runs[0] // empty | {id, status, html_url}')
+            if [ -n "$run" ] && [ "$(jq -r .status <<<"$run")" = completed ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out after 45 min waiting for main CI on $SHA (${run:-no run found})"
+              exit 1
+            fi
+            echo "Waiting for main CI on $SHA: ${run:-no run yet}"
+            sleep 30
+          done
+          id=$(jq -r .id <<<"$run")
+          url=$(jq -r .html_url <<<"$run")
+          # ci-pass, not the run conclusion: it is the stable-named aggregate,
+          # and it covers publish-manifest (see ci.yml).
+          result=$(gh api "repos/$REPO/actions/runs/$id/jobs?filter=latest&per_page=100" \
+            --jq '[.jobs[] | select(.name == "ci-pass")][0].conclusion // "missing"')
+          if [ "$result" != success ]; then
+            # `cancelled` usually means a newer push superseded the run
+            # (ci.yml cancels in-progress runs per ref): tag a later commit.
+            echo "::error::ci-pass on $SHA is '$result': $url"
+            exit 1
+          fi
+          echo "::notice::ci-pass succeeded on $SHA: $url"
+
+  retag:
+    needs: gate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # Serialize the read-tags/compare/push critical section so two releases
+    # can't race each other and move a floating tag backwards. GitHub keeps
+    # only ONE pending job per group: if three releases queue at once, the
+    # middle one is cancelled. Re-run it (retag is idempotent).
+    concurrency:
+      group: release-retag
+      cancel-in-progress: false
+    permissions:
+      contents: read   # walk main's history via the commits API
+      actions: read    # re-check CI on the source commit
+      packages: write  # list the package's tags; push the release tags
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      IMAGE: ghcr.io/${{ github.repository }}
+      SHA: ${{ needs.gate.outputs.sha }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      MAJOR: ${{ needs.gate.outputs.major }}
+      MINOR: ${{ needs.gate.outputs.minor }}
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ci.yml builds on every main push, so this normally matches on the
+      # first iteration. It walks back for a commit whose push skipped the
+      # build: its nearest built ancestor is byte-identical in content.
+      # Commits from before `sha-<full>` tags existed never match, so they
+      # cannot be released; that fails closed below.
+      - id: source
+        name: Find the image for the tagged commit (or its nearest built ancestor)
+        run: |
+          err="$RUNNER_TEMP/inspect.err"
+          commits=$(gh api "repos/$REPO/commits?sha=$SHA&per_page=50" --jq '.[].sha')
+          for c in $commits; do
+            if digest=$(docker buildx imagetools inspect "$IMAGE:sha-$c" \
+                --format '{{json .Manifest.Digest}}' 2>"$err" | jq -er .); then
+              [ "$c" = "$SHA" ] || echo "::notice::$SHA has no image; using nearest built ancestor $c"
+              echo "::notice::Source image $IMAGE:sha-$c = $digest"
+              {
+                echo "digest=$digest"
+                echo "commit=$c"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # Only a missing tag means "keep walking". Any other failure
+            # (auth, network, rate limit) would otherwise skip past the real
+            # image and release an older one.
+            if ! grep -q ': not found' "$err"; then
+              cat "$err" >&2
+              echo "::error::Could not inspect $IMAGE:sha-$c"
+              exit 1
+            fi
+          done
+          echo "::error::No $IMAGE:sha-<commit> image within 50 commits of $SHA"
+          exit 1
+
+      # Bind the digest to a passing build. A CI re-run on the source commit
+      # re-pushes `sha-<full>` with a NEW digest before its ci-pass reports,
+      # so if a re-run pushed the digest resolved above, that run is still in
+      # progress (or failed) now: fail closed. Also covers a walked-back
+      # ancestor, whose CI the gate job never checked.
+      - name: Re-check ci-pass on the source commit after resolving its digest
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          run=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SOURCE_COMMIT&event=push&branch=main&per_page=1" \
+            --jq '.workflow_runs[0] // empty | "\(.id) \(.status) \(.html_url)"')
+          read -r id status url <<<"$run"
+          result=missing
+          if [ "$status" = completed ]; then
+            result=$(gh api "repos/$REPO/actions/runs/$id/jobs?filter=latest&per_page=100" \
+              --jq '[.jobs[] | select(.name == "ci-pass")][0].conclusion // "missing"')
+          fi
+          if [ "$result" != success ]; then
+            echo "::error::ci-pass on source commit $SOURCE_COMMIT is '$result' (${url:-no run}); re-run the release once it passes"
+            exit 1
+          fi
+          echo "::notice::ci-pass on $SOURCE_COMMIT: $url"
+
+      - id: tags
+        name: Compute release tags (X.Y.Z immutable; X.Y, X, latest forward-only)
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          # Registry v2 tags/list; GHCR pages and returns a relative
+          # `Link: <...>; rel="next"` header for the next page.
+          token=$(curl -fsS -u "$GITHUB_ACTOR:$GH_TOKEN" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:$REPO:pull" | jq -er .token)
+          echo "::add-mask::$token"
+          all="$RUNNER_TEMP/tags.txt"; headers="$RUNNER_TEMP/headers.txt"
+          : > "$all"
+          url="https://ghcr.io/v2/$REPO/tags/list?n=1000"
+          for _ in $(seq 1 50); do
+            curl -fsS -D "$headers" -H "Authorization: Bearer $token" "$url" | jq -r '.tags // [] | .[]' >> "$all"
+            next=$(tr -d '\r' < "$headers" | sed -nE 's/^[Ll]ink: *<([^>]+)>; *rel="next".*/\1/p')
+            case "$next" in
+              "") url=; break ;;
+              http*) url=$next ;;
+              *) url="https://ghcr.io$next" ;;
+            esac
+          done
+          if [ -n "$url" ]; then
+            echo "::error::GHCR tag listing did not finish within 50 pages"
+            exit 1
+          fi
+
+          # X.Y.Z is immutable: re-running this release is fine (same digest),
+          # but never repoint a published version at different content.
+          if grep -qxF "$VERSION" "$all"; then
+            existing=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}' | jq -er .)
+            if [ "$existing" != "$DIGEST" ]; then
+              echo "::error::$IMAGE:$VERSION already exists as $existing (this run resolved $DIGEST); refusing to overwrite a published version."
+              exit 1
+            fi
+          fi
+
+          semver=$(grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' "$all" || true)
+          # True when $VERSION sorts highest (ties included) among the existing
+          # X.Y.Z tags matching $1. Re-running an older release never moves a
+          # floating tag back, while a backport (1.2.5 after 2.0.0) still
+          # moves 1.2 and 1, just not latest.
+          is_newest() {
+            local top
+            top=$( { grep -E "$1" <<<"$semver" || true; echo "$VERSION"; } | sort -V | tail -n1)
+            [ "$top" = "$VERSION" ]
+          }
+          tags=("$VERSION")
+          for pair in "^$MAJOR\.$MINOR\.|$MAJOR.$MINOR" "^$MAJOR\.|$MAJOR" ".|latest"; do
+            if is_newest "${pair%%|*}"; then
+              tags+=("${pair#*|}")
+            else
+              echo "::notice::Not moving :${pair#*|}; a newer release already owns it"
+            fi
+          done
+          echo "Existing releases: $(tr '\n' ' ' <<<"$semver")"
+          echo "Release tags: ${tags[*]}"
+          echo "tags=${tags[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Retag the source digest (no rebuild)
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          args=()
+          for t in $TAGS; do args+=(-t "$IMAGE:$t"); done
+          # A single source with no annotations is copied as-is, so the
+          # digest is unchanged (asserted below).
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+
+      # Runs even if the retag step failed part-way, so the summary shows
+      # which tags were written. Re-running the release reconciles them.
+      - name: Verify every release tag resolves to the source digest
+        if: ${{ !cancelled() && steps.tags.outcome == 'success' }}
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          {
+            echo "### Released \`$IMAGE:$VERSION\` from \`$SOURCE_COMMIT\`"
+            echo
+            echo "| tag | digest |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          bad=0
+          for t in $TAGS; do
+            got=$(docker buildx imagetools inspect "$IMAGE:$t" --format '{{json .Manifest.Digest}}' 2>/dev/null | jq -er . || echo missing)
+            echo "| \`$t\` | \`$got\` |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$got" != "$DIGEST" ]; then
+              echo "::error::$IMAGE:$t resolves to $got, expected $DIGEST"
+              bad=1
+            fi
+          done
+          exit "$bad"

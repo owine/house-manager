@@ -91,7 +91,7 @@ export default withSentryConfig(nextConfig, {
   project: process.env.SENTRY_PROJECT,
   // GlitchTip / self-hosted Sentry base URL. Unset means sentry.io.
   sentryUrl: process.env.SENTRY_URL,
-  // The same 7-char release the runtime SDKs report (lib/version.ts), so
+  // The same 7-char release the runtime SDKs report (lib/git-sha.ts), so
   // uploaded maps and events line up. NEXT_PUBLIC_GIT_SHA is the Docker
   // build-arg; there is no .git in the build context to derive it from.
   release: { name: (process.env.NEXT_PUBLIC_GIT_SHA ?? 'dev').slice(0, 7) },
