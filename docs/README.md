@@ -71,6 +71,15 @@ released (step 3 below fails closed on them).
 `vX.Y.Z` on a commit on `main`, either by publishing the release-drafter draft
 or with `gh release create vX.Y.Z --target main`. It must be published by a
 person: a release published with `GITHUB_TOKEN` triggers no workflows.
+
+The draft is refreshed on every push to `main` by
+`.github/workflows/release-drafter.yml`, using the fleet's shared config
+(`owine/renovate-config:/release-drafter.yml`). It sections and versions
+merged PRs by the Conventional Commit type of the **PR title**: `feat` bumps
+minor, `fix`/`perf`/`revert`/`deps` bump patch, a `!` in the title bumps
+major, and `chore`/`ci`/`docs`/`test`/`refactor`/`build`/`style` are hidden. A
+draft reading `_No user-facing changes._` exists only as a placeholder; don't
+publish it.
 `.github/workflows/release.yml` then:
 
 1. rejects anything but a strict `vX.Y.Z` tag on a non-prerelease, on a commit
