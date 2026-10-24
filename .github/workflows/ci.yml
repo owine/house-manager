@@ -616,6 +616,12 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Tags every main commit `main` + `sha-<full>`. It never moves `latest` or
+  # any semver tag: publishing a GitHub Release runs release.yml, which looks
+  # up this job's `sha-<full>` image for the tagged commit and RETAGS that
+  # digest as X.Y.Z / X.Y / X / latest, with no rebuild. So `latest` means
+  # "newest release", not "main HEAD". The sha tag is long so that lookup is
+  # unambiguous.
   publish-manifest:
     needs: build-image
     if: github.ref == 'refs/heads/main'
@@ -640,10 +646,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=sha
+            type=sha,format=long
             type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
@@ -660,10 +664,12 @@ jobs:
             images+=("ghcr.io/${{ github.repository }}@sha256:$digest")
           done
           docker buildx imagetools create "${tags[@]}" "${images[@]}"
+      # The tag release.yml resolves, rather than steps.meta.outputs.version
+      # (which would be `main`): a missing one fails here, not at release time.
       - name: Inspect image
         run: |
           docker buildx imagetools inspect \
-            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
 
   # Single aggregator gate for branch protection. Path-filtered jobs
   # (unit/integration/e2e/a11y/coverage/build-image) skip on docs-only PRs,
@@ -673,8 +679,13 @@ jobs:
   # underlying matrix child) lets a SKIP count as passing while a real
   # failure still fails. Mirrors the `always() && !failure() && !cancelled()`
   # idiom already used by `build-image` above.
+  #
+  # publish-manifest is in `needs` because release.yml reads a green ci-pass
+  # on a main commit as "this commit's image is published". Without it a
+  # failed publish leaves ci-pass green, and the release's walk-back would
+  # silently ship the parent commit's image. PRs skip it, which passes.
   ci-pass:
-    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage, build-image]
+    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage, build-image, publish-manifest]
     if: always()
     runs-on: ubuntu-26.04
     steps:

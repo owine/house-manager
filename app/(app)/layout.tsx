@@ -4,8 +4,8 @@ import { SearchBar } from '@/components/search/SearchBar';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import { auth } from '@/lib/auth';
+import { APP_GIT_SHA } from '@/lib/git-sha';
 import { countUntriagedInbox } from '@/lib/incoming-email/queries';
-import { APP_GIT_SHA, APP_VERSION } from '@/lib/version';
 import { AppSidebar } from './_components/AppSidebar';
 
 // SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
@@ -42,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
         <main className="flex-1 p-4 sm:p-6">{children}</main>
         <footer className="border-t px-4 py-3 text-xs text-muted-foreground sm:px-6">
-          v{APP_VERSION} · {APP_GIT_SHA}
+          {APP_GIT_SHA}
         </footer>
       </SidebarInset>
       <Toaster />

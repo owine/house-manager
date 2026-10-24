@@ -453,6 +453,23 @@ Error: browserType.launch: Executable doesn't exist at
 If that appears right after a dependency update, it is a stale browser cache, not a
 broken test. It bit both the dockerized harness (#325) and the host in the same session.
 
+### Releases retag a digest; they never rebuild
+
+Main pushes publish `main` + `sha-<full>` only. `latest`, `X.Y.Z`, `X.Y` and `X` are
+written solely by `release.yml` on a published `vX.Y.Z` GitHub Release, which retags
+the tagged commit's existing `sha-<full>` digest (forward-only for the floating
+tags; operator view in [`docs/README.md` § Image tags and releases](docs/README.md#image-tags-and-releases)).
+Two things follow:
+
+- **`ci-pass` must keep `publish-manifest` in its `needs`.** release.yml reads a
+  green `ci-pass` as "this commit's image is published"; without that edge a failed
+  publish would let the walk-back silently ship the parent's image.
+- **Nothing inside the image may claim a release version.** The image is built before
+  anyone decides it is `1.4.0`, so the footer, `/api/health` and the Sentry `release`
+  report the commit SHA (`lib/git-sha.ts`). Don't reintroduce `package.json`'s
+  `version` there, and don't bake a semver in at build time: that means rebuilding on
+  release, which defeats "the release is the image that passed CI".
+
 ## Conventions
 
 - **Dependency pinning:** every dep is pinned to an exact version (`x.y.z`, no range

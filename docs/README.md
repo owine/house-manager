@@ -49,6 +49,53 @@ every build), so treat that one as the reference and change all four together.
 table below still runs `next start` and remains the right command for local
 dev; it just isn't what production runs.
 
+### Image tags and releases
+
+CI publishes one multi-arch image (`linux/amd64` + `linux/arm64`) to
+`ghcr.io/owine/house-manager`:
+
+| Tag | Moves when | Use it for |
+|---|---|---|
+| `X.Y.Z` (e.g. `1.0.0`) | never; immutable once published | production pins |
+| `X.Y`, `X` | a newer release in that series is published | auto-follow patches / minors |
+| `latest` | a newer release is published | newest **release**, not main HEAD |
+| `main` | every push to `main` | tracking unreleased main |
+| `sha-<full 40-char sha>` | never (one per main commit) | a specific commit |
+
+Image tags carry no `v`. `1.0.0` is the first release; there is nothing
+earlier. Images from before releases existed carry the 7-character
+`sha-<short>` tags CI used to push instead of `sha-<full>`, and can't be
+released (step 3 below fails closed on them).
+
+**Cutting a release** means publishing a GitHub Release whose tag is
+`vX.Y.Z` on a commit on `main`, either by publishing the release-drafter draft
+or with `gh release create vX.Y.Z --target main`. It must be published by a
+person: a release published with `GITHUB_TOKEN` triggers no workflows.
+`.github/workflows/release.yml` then:
+
+1. rejects anything but a strict `vX.Y.Z` tag on a non-prerelease, on a commit
+   on `main`;
+2. waits up to 45 minutes for main's CI run on that commit and requires its
+   `ci-pass` job to have succeeded (which covers the image publish);
+3. finds that commit's `sha-<full>` image, walking back up to 50 commits to
+   the nearest built ancestor if the commit had none;
+4. **retags that digest** as `X.Y.Z`, plus `X.Y`, `X` and `latest` if this is
+   the newest release in each series, then checks every tag resolves to the
+   same digest.
+
+Nothing is rebuilt, so a release is byte-for-byte the image that was
+smoke-tested on main. The floating tags only move forward: re-running an old
+release re-asserts its `X.Y.Z` and leaves `X.Y`/`X`/`latest` alone, and a
+backport (`1.2.5` after `2.0.0`) moves `1.2` and `1` but not `latest`. An
+existing `X.Y.Z` is never repointed at a different digest. A commit whose main
+CI run was cancelled by a newer push can't be released; tag a later one.
+
+Because the semver is applied after the build, **the running app can't know
+its release version**. The footer, `/api/health`'s `sha` and the
+Sentry/GlitchTip `release` all report the 7-character commit SHA from the
+`GIT_SHA` build arg; map it to a release on the Releases page.
+`package.json`'s `version` is not reported anywhere.
+
 ### Image layout
 
 The runtime stage carries two separate `node_modules` trees, not one:
@@ -78,7 +125,7 @@ nothing.
 
 | Endpoint | Served by | Contract |
 |---|---|---|
-| `/api/health` | **both** web and worker, on port 3000 | Container health. Postgres unreachable → 503. Meilisearch unreachable → still 200, reported in `checks.meilisearch`. The worker additionally reports 503 when its queue heartbeat goes stale. |
+| `/api/health` | **both** web and worker, on port 3000 | Container health. Postgres unreachable → 503. Meilisearch unreachable → still 200, reported in `checks.meilisearch`. The worker additionally reports 503 when its queue heartbeat goes stale. Web's body is `{ status, sha, checks }`; `sha` is the build's 7-char commit (see [Image tags and releases](#image-tags-and-releases)). |
 | `/api/health/ready` | web only | Strict readiness — db *and* meilisearch must both answer. |
 
 The Dockerfile `HEALTHCHECK` probes `/api/health`. Both roles run from the same

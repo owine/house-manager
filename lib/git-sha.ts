@@ -1,7 +1,10 @@
-// The short git SHA of this build: the Sentry release, and the footer's
-// version stamp. Its own file, apart from lib/version.ts, because the browser
-// bundle needs it (instrumentation-client.ts, via sentry-options.ts) and has
-// no use for lib/version.ts's package.json import.
+// The short git SHA of this build: the Sentry release, the footer's version
+// stamp, and /api/health's `sha`. It is the app's only version identity. The
+// semver lives in image tags, and release.yml applies it by retagging an
+// already-built digest, so nothing inside the image can know which release
+// (if any) it became. package.json's `version` is not reported anywhere for
+// the same reason. The browser bundle imports this too
+// (instrumentation-client.ts, via sentry-options.ts).
 //
 // Two sources, because the two roles see different env:
 //   - NEXT_PUBLIC_GIT_SHA: a build-stage ENV in the Dockerfile. Next inlines it
