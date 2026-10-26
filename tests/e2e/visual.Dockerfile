@@ -8,7 +8,7 @@
 # over the host's darwin modules.
 #
 # Rebuild trigger: pnpm-lock.yaml change OR prisma/schema.prisma change.
-FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
 RUN corepack enable
 WORKDIR /work
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
