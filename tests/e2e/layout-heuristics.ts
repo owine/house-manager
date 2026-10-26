@@ -40,7 +40,7 @@ export async function assertNoLayoutNits(
     ({ tol, exclude }) => {
       const CONTROL_SELECTOR = 'button, [role="button"], [role="tab"], a[role="button"]';
 
-      function describe(el: Element): string {
+      function selectorOf(el: Element): string {
         const tag = el.tagName.toLowerCase();
         const id = (el as HTMLElement).id ? `#${(el as HTMLElement).id}` : '';
         const cls = (el as HTMLElement).className;
@@ -99,6 +99,7 @@ export async function assertNoLayoutNits(
 
         const style = getComputedStyle(el);
         const overflowsX = el.scrollWidth > el.clientWidth + tol;
+        // biome-ignore lint/performance/useDomNodeTextContent: rendered text is the point — hidden text can't overflow
         const hasText = (el.innerText ?? '').trim().length > 0;
         const isEllipsis = style.textOverflow === 'ellipsis';
         const overflowXVisible = style.overflowX === 'visible';
@@ -107,7 +108,7 @@ export async function assertNoLayoutNits(
         if (overflowsX && el.matches(CONTROL_SELECTOR) && hasText) {
           push({
             kind: 'control-overflow',
-            selector: describe(el),
+            selector: selectorOf(el),
             scrollWidth: el.scrollWidth,
             clientWidth: el.clientWidth,
             rect: rectOf(el),
@@ -118,7 +119,7 @@ export async function assertNoLayoutNits(
         if (overflowsX && hasText && overflowXVisible && !isEllipsis) {
           push({
             kind: 'text-overflow',
-            selector: describe(el),
+            selector: selectorOf(el),
             scrollWidth: el.scrollWidth,
             clientWidth: el.clientWidth,
             rect: rectOf(el),
@@ -134,7 +135,7 @@ export async function assertNoLayoutNits(
           if (r.width > 0 && r.height > 0) {
             push({
               kind: 'viewport-overflow',
-              selector: describe(el),
+              selector: selectorOf(el),
               rect: { x: r.x, y: r.y, width: r.width, height: r.height },
             });
           }
