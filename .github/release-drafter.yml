@@ -1,1 +1,9 @@
 _extends: owine/renovate-config:/release-drafter.yml
+
+footer: |
+
+  ### Use this release
+
+  ```sh
+  docker pull ghcr.io/owine/house-manager:$RESOLVED_VERSION
+  ```
