@@ -465,7 +465,8 @@ jobs:
       - run: pnpm exec vitest --merge-reports=.vitest-reports --coverage --reporter=default
 
   build-image:
-    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage]
+    needs:
+      [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage]
     # Always build on main (so we can push + publish a manifest for every
     # commit). On PRs, only build when image-affecting paths changed —
     # this catches regressions like the Plan 5a SENTRY_DSN one (broken
@@ -685,7 +686,21 @@ jobs:
   # failed publish leaves ci-pass green, and the release's walk-back would
   # silently ship the parent commit's image. PRs skip it, which passes.
   ci-pass:
-    needs: [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage, build-image, publish-manifest]
+    needs:
+      [
+        changes,
+        ggshield,
+        lint,
+        typecheck,
+        migrate-check,
+        unit,
+        integration,
+        e2e,
+        a11y,
+        coverage,
+        build-image,
+        publish-manifest,
+      ]
     if: always()
     runs-on: ubuntu-26.04
     steps:
