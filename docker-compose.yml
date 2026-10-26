@@ -49,11 +49,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       PGDATA: /var/lib/postgresql/data
-    ports: ["5432:5432"]
+    ports: ['5432:5432']
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -69,12 +69,12 @@ services:
       # recreate ("database version X is incompatible with engine version Y").
       # Not atomic, but safe here: the index is derived data that
       # search.reindex rebuilds from Postgres. Needs a DB from >= v1.12.
-      MEILI_UPGRADE_DB: "true"
-    ports: ["7700:7700"]
+      MEILI_UPGRADE_DB: 'true'
+    ports: ['7700:7700']
     volumes:
       - meilidata:/meili_data
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:7700/health"]
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:7700/health']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -91,7 +91,7 @@ services:
     environment: *app-env
     volumes:
       - files:/data/files
-    ports: ["3000:3000"]
+    ports: ['3000:3000']
     # Duplicated in scripts/smoke-image.sh, docs/README.md § Production, and the
     # production GitOps compose. Change one, change all four — only the smoke
     # script's copy is under automated test, so this one drifts silently.

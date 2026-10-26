@@ -33,8 +33,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 50
     permissions:
-      contents: read  # resolve the tag, compare the commit against main
-      actions: read   # find ci.yml's run for the commit
+      contents: read # resolve the tag, compare the commit against main
+      actions: read # find ci.yml's run for the commit
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
       version: ${{ steps.version.outputs.version }}
@@ -69,7 +69,7 @@ jobs:
       - id: commit
         name: Require the tagged commit to be on main
         env:
-          EVENT_SHA: ${{ github.sha }}  # the tag's commit when the release was published
+          EVENT_SHA: ${{ github.sha }} # the tag's commit when the release was published
         run: |
           # refs/tags/ peels annotated tags to their commit.
           sha=$(gh api "repos/$REPO/commits/refs/tags/$TAG" --jq .sha)
@@ -131,9 +131,9 @@ jobs:
       group: release-retag
       cancel-in-progress: false
     permissions:
-      contents: read   # walk main's history via the commits API
-      actions: read    # re-check CI on the source commit
-      packages: write  # list the package's tags; push the release tags
+      contents: read # walk main's history via the commits API
+      actions: read # re-check CI on the source commit
+      packages: write # list the package's tags; push the release tags
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}

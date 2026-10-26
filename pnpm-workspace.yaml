@@ -1,4 +1,4 @@
-savePrefix: ""
+savePrefix: ''
 
 # Settings below were moved out of `.npmrc`, which pnpm 11 no longer reads them
 # from. As of pnpm 11, INI files (.npmrc, the global rc) hold ONLY registry,
@@ -42,14 +42,14 @@ audit:
 # skipping its postinstall. Keep this list minimal — entries here run
 # arbitrary code at install time. Each was vetted at the time of inclusion.
 allowBuilds:
-  "@prisma/engines": true # downloads Prisma query engine binaries
-  "@sentry/cli": true # downloads sentry-cli native binary
-  "cpu-features": true # builds native CPU feature detection (transitive of ssh2)
-  "esbuild": true # builds platform-specific esbuild binary
-  "lefthook": true # installs git hooks
-  "msw": true # writes service-worker file (transitive)
-  "prisma": true # CLI ships native binaries
-  "protobufjs": true # generates static protobuf code (transitive)
-  "sharp": true # builds libvips bindings
-  "ssh2": true # optional native crypto (transitive)
+  '@prisma/engines': true # downloads Prisma query engine binaries
+  '@sentry/cli': true # downloads sentry-cli native binary
+  'cpu-features': true # builds native CPU feature detection (transitive of ssh2)
+  'esbuild': true # builds platform-specific esbuild binary
+  'lefthook': true # installs git hooks
+  'msw': true # writes service-worker file (transitive)
+  'prisma': true # CLI ships native binaries
+  'protobufjs': true # generates static protobuf code (transitive)
+  'sharp': true # builds libvips bindings
+  'ssh2': true # optional native crypto (transitive)
   tesseract.js: true # downloads English language data at install time (Plan 4c)
