@@ -19,9 +19,9 @@ import {
 //
 // These tests pass a REAL Prisma.Decimal, which is the shape production
 // actually produces. Passing a number or string would pass against the bug.
-describe('money survives a real Prisma.Decimal', () => {
-  const D = (v: string) => new Prisma.Decimal(v);
+const D = (v: string) => new Prisma.Decimal(v);
 
+describe('money survives a real Prisma.Decimal', () => {
   it('canonicalizeItem keeps purchasePrice', () => {
     const text = canonicalizeItem({
       name: 'Fridge',

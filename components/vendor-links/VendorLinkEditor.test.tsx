@@ -33,6 +33,13 @@ function renderEditor(opts?: {
   return { onChange, ...utils };
 }
 
+// Stateful wrapper so onChange updates re-render the editor. Module-level:
+// a component defined inside the test body is a new type on every call.
+function StatefulEditor({ initial }: { initial: VendorLinkInput }) {
+  const [val, setVal] = useState<VendorLinkInput>(initial);
+  return <VendorLinkEditor value={val} onChange={setVal} vendors={VENDORS} />;
+}
+
 describe('VendorLinkEditor', () => {
   const SC_OFF = { serviceContract: false as const, contractEndsOn: null };
 
@@ -176,34 +183,18 @@ describe('VendorLinkEditor', () => {
 
   it('checkbox toggles show/hide the "Contract ends" date input', async () => {
     const user = userEvent.setup();
-    // Use a stateful wrapper so onChange updates re-render the editor
-    let currentValue: VendorLinkInput = {
-      vendorId: 'v1',
-      freeformName: null,
-      role: 'SERVICE',
-      notes: null,
-      serviceContract: false,
-      contractEndsOn: null,
-    };
-    const onChange = vi.fn<(next: VendorLinkInput) => void>((next) => {
-      currentValue = next;
-    });
-
-    function StatefulEditor() {
-      const [val, setVal] = useState<VendorLinkInput>(currentValue);
-      return (
-        <VendorLinkEditor
-          value={val}
-          onChange={(next) => {
-            onChange(next);
-            setVal(next);
-          }}
-          vendors={VENDORS}
-        />
-      );
-    }
-
-    render(<StatefulEditor />);
+    render(
+      <StatefulEditor
+        initial={{
+          vendorId: 'v1',
+          freeformName: null,
+          role: 'SERVICE',
+          notes: null,
+          serviceContract: false,
+          contractEndsOn: null,
+        }}
+      />,
+    );
 
     // Date input should not be visible initially
     expect(screen.queryByLabelText('Contract ends')).not.toBeInTheDocument();
