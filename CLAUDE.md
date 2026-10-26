@@ -2,8 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-House Manager — a self-hosted home information manager. Next.js 16 (App Router, RSC)
-+ Prisma 7 / Postgres 18 + pgvector, Meilisearch, and a pg-boss worker.
+House Manager — a self-hosted home information manager. Next.js 16 (App Router, RSC) +
+Prisma 7 / Postgres 18 + pgvector, Meilisearch, and a pg-boss worker.
 
 Full docs live in [`docs/README.md`](docs/README.md) (stack, env vars, production),
 [`docs/TESTING.md`](docs/TESTING.md), [`docs/observability.md`](docs/observability.md),
