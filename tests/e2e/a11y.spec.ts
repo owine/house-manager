@@ -6,6 +6,7 @@ import {
   type SeededUrls,
   seedPopulated,
   VIEWPORTS,
+  waitForSearchHit,
 } from './_routes';
 import { A11Y_EXCLUDED_RULES } from './a11y-exclusions';
 import { resetAuth, signIn } from './auth';
@@ -59,6 +60,10 @@ test.describe('accessibility (WCAG 2.1 AA)', () => {
     await context.clearCookies();
     await signIn(page);
     const urls: SeededUrls = await seedPopulated(page);
+    // /search?q=furnace is among the routes scanned below. Without this wait
+    // axe scanned the empty-results view on some runs and the populated one on
+    // others, so a violation in the results markup came and went.
+    await waitForSearchHit(page, 'furnace', 'Furnace');
     for (const vp of VIEWPORTS) {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       for (const route of populatedRoutes(urls)) {

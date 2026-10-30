@@ -40,11 +40,13 @@ test('rendered note markdown has no leading blank line / first-child top margin'
   await page.getByRole('button', { name: 'Save note' }).click();
   await expect(page).toHaveURL(/\/notes\/c[a-z0-9]+$/);
 
-  // No empty leading paragraph (the .trim() in <Markdown>).
-  expect(await page.locator('.markdown p:empty').count()).toBe(0);
   // First rendered block carries no top margin (the .markdown > :first-child reset).
   const firstChild = page.locator('.markdown > *').first();
   await expect(firstChild).toContainText('Heading');
+  // No empty leading paragraph (the .trim() in <Markdown>). Asserted after the
+  // render is known to be there: a one-off count() taken before it passed
+  // vacuously against an empty .markdown.
+  await expect(page.locator('.markdown p:empty')).toHaveCount(0);
   const marginTop = await firstChild.evaluate((el) => getComputedStyle(el).marginTop);
   expect(marginTop).toBe('0px');
 });

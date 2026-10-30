@@ -110,9 +110,9 @@ test('logs a service record on a system and dedupes across system + components',
   await page.getByLabel('Performed on').press('Tab'); // commit React state
   await page.getByLabel('Summary').fill('Spring tune-up');
 
-  // Race-safe submit: arm the navigation wait BEFORE the click so a fast
-  // server-action response can't beat us to it. Previously this used a
-  // post-click `toHaveURL` and was flaky on busy CI runners.
+  // A 60s navigation budget: this used a post-click `toHaveURL` on the default
+  // timeout and was flaky on busy CI runners. The budget is what fixed it, not
+  // the ordering -- waitForURL resolves at once if the URL already matches.
   await Promise.all([
     page.waitForURL(/\/service\/c[a-z0-9]+$/, { timeout: 60_000 }),
     page.getByRole('button', { name: 'Save record' }).click(),

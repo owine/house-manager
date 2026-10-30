@@ -15,9 +15,16 @@ export default defineConfig({
   testMatch: ['**/*.spec.ts'],
   timeout: 60_000,
   // Default expect timeout is 5s. On CI's first hit to each route, dev-server
-  // JIT compile can take 5–10s, which makes post-form-submit URL assertions
-  // racy. Bump to 15s for breathing room.
-  expect: { timeout: 15_000 },
+  // JIT compile can take 5–10s, and a post-submit URL assertion pays for a
+  // server action, a redirect AND compiling the destination: 15s was not
+  // enough for that on busy runners (systems.spec.ts only went stable at an
+  // explicit 60s). 30s covers the ~25 post-submit `toHaveURL`s that rely on
+  // this default. It only bounds a FAILING assertion; a passing one returns
+  // as soon as it holds.
+  expect: { timeout: 30_000 },
+  // Retries keep a flake from failing CI, which also hides it: a test that
+  // passes on retry turns the job green. The json reporter below is what the
+  // CI "Annotate flaky tests" steps read to name those tests.
   retries: process.env.CI ? 2 : 0,
   // Serialize specs: they share auth tables in one DB, so concurrent OAuth
   // callbacks race on the User row's unique email constraint.
@@ -50,6 +57,10 @@ export default defineConfig({
         // The webServer inherits env vars from the process that spawns Playwright,
         // so AUTH_OIDC_ISSUER=http://localhost:9999 must be set when invoking pnpm test:e2e.
       },
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ...(process.env.CI ? ([['json', { outputFile: 'test-results/results.json' }]] as const) : []),
+  ],
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });
