@@ -1,15 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkHealth, isReady } from '@/lib/health';
-import { startStack, stopStack, type TestStack } from './setup';
+import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
-let stack: TestStack;
+// This file's own database on the shared server, not a Postgres container of its
+// own: probing a server that has just booted against lib/health's 2s budget, on
+// a runner busy starting every other file, was racing the budget for nothing.
+let ctx: IntegrationContext;
+let stack: IntegrationContext['stack'];
 
 beforeAll(async () => {
-  stack = await startStack();
+  ctx = await setupIntegration();
+  stack = ctx.stack;
 }, 120_000);
 
 afterAll(async () => {
-  await stopStack(stack);
+  await teardownIntegration(ctx);
 });
 
 describe('readiness check', () => {

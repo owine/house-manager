@@ -270,10 +270,12 @@ jobs:
           retention-days: 1
 
   # Sharded because it was the critical path: 76 files, 280s of wall clock on
-  # one runner (run 40436285483), and the floor of every file is ~6s of its own
-  # Testcontainers stack + `migrate deploy` -- so the work divides cleanly by
-  # file. `--shard` splits by file, not by duration; the three ~26s files can
-  # land on the same shard, so expect the halves to be uneven.
+  # one runner (run 40436285483), and at the time the floor of every file was
+  # ~6s of its own Testcontainers stack + `migrate deploy` -- so the work
+  # divides cleanly by file. (Since #616 each shard migrates one shared Postgres
+  # once and clones a database per file.) `--shard` splits by file, not by
+  # duration; the three ~26s files can land on the same shard, so expect the
+  # halves to be uneven.
   #
   # Each shard emits its own blob; `coverage` merges all of them, which is what
   # the blob reporter exists for. A new shard count needs no change there --
@@ -295,6 +297,26 @@ jobs:
       - run: pnpm db:generate
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
+      # Testcontainers pulls its images mid-run, anonymously and with no retry,
+      # so one Docker Hub hiccup failed whole files (a 500 on the Meili
+      # manifest, a 404 "No such image" on pgvector). Pull them here, with
+      # backoff, from the same pins tests/integration/setup.ts uses -- that file
+      # stays the only place they are written, so Renovate's annotation still
+      # covers them. The run then finds them local and never asks the registry.
+      - name: Pre-pull Testcontainers images
+        run: |
+          images=$(grep -oE "^const [A-Z_]+_IMAGE = '[^']+'" tests/integration/setup.ts | cut -d"'" -f2)
+          if [ -z "$images" ]; then
+            echo "::error::no *_IMAGE pins found in tests/integration/setup.ts"
+            exit 1
+          fi
+          for image in $images; do
+            for attempt in 1 2 3 4; do
+              docker pull --quiet "$image" && break
+              if [ "$attempt" = 4 ]; then exit 1; fi
+              sleep $((attempt * 10))
+            done
+          done
       # See unit job: collect a coverage blob with thresholds overridden to 0;
       # the `coverage` job merges every blob and enforces the real floor. Pair
       # blob with the default reporter so a failure names the failing test in
