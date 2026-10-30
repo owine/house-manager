@@ -56,6 +56,27 @@ describe('getChatSession', () => {
     expect(session?.messages.map((m) => m.role)).toEqual(['USER', 'ASSISTANT']);
   });
 
+  // A turn's two messages share a createdAt about a third of the time (one
+  // transaction, one millisecond). Insert a tied pair with the LATER id first,
+  // so the physical order Postgres would fall back on is the wrong one: only the
+  // `id` tie-break puts the user's message ahead of the reply.
+  it('orders messages that share a createdAt by id, not by physical row order', async () => {
+    const at = new Date('2026-07-15T14:30:00.000Z');
+    const session = await ctx.prisma.chatSession.create({
+      data: { userId: 'owner', title: 'Tie' },
+    });
+    await ctx.prisma.chatMessage.create({
+      data: { id: 'msg-2', sessionId: session.id, role: 'ASSISTANT', content: 'b', createdAt: at },
+    });
+    await ctx.prisma.chatMessage.create({
+      data: { id: 'msg-1', sessionId: session.id, role: 'USER', content: 'a', createdAt: at },
+    });
+
+    const read = await queries.getChatSession(session.id, 'owner');
+
+    expect(read?.messages.map((m) => m.id)).toEqual(['msg-1', 'msg-2']);
+  });
+
   // The security property. A stranger must get the same answer as for a
   // nonexistent id — callers cannot distinguish "not yours" from "not there",
   // so a guessed id leaks nothing.

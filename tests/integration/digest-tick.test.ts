@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getEnv } from '@/lib/env';
 import {
   calDaysOut,
@@ -8,6 +8,13 @@ import {
 } from './helpers';
 
 const sentEmails: unknown[] = [];
+
+// The prefs below are seeded from "now" and handleDigestTick reads its own
+// "now" to decide whether this is the user's hour (and, weekly, their day).
+// On the real clock those are two reads tens of ms apart, and a tick that
+// lands after the top of the hour sends nothing. Freeze Date mid-hour instead.
+// No HouseProfile row exists, so the house timezone is UTC.
+const MID_HOUR = new Date('2026-07-15T14:30:00Z'); // a Wednesday
 
 vi.mock('@/lib/notifications/email', () => ({
   sendEmail: vi.fn(async (_to: string, payload: unknown) => {
@@ -43,6 +50,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(MID_HOUR);
   sentEmails.length = 0;
   await ctx.prisma.digestLog.deleteMany({});
   await ctx.prisma.reminder.deleteMany({});
@@ -63,6 +72,10 @@ beforeEach(async () => {
     },
   });
   userId = user.id;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 async function seedOverdue() {

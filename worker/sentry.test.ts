@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/node';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { getLogger } from '@/lib/logger';
 import { getErrorReporter } from '@/lib/observability/error-reporter';
 import { initWorkerSentry } from './sentry';
@@ -8,7 +8,9 @@ import { initWorkerSentry } from './sentry';
 // bridge, the SDK's own capture bookkeeping. Only the transport is fake, so
 // every assertion is about what would actually leave the process.
 //
-// Tests run in order and share one SDK client (Sentry state is global).
+// Every test shares one SDK client (Sentry state is global), inited once in
+// beforeAll so each test stands alone under a `-t` filter or a shuffle. The
+// no-DSN case needs an SDK nothing has inited: ./sentry-no-dsn.test.ts.
 
 type SentEvent = {
   level?: string;
@@ -39,22 +41,16 @@ async function drain(): Promise<SentEvent[]> {
   return sent.splice(0);
 }
 
-describe('worker Sentry', () => {
-  it('without a DSN: no client, no bridge', () => {
-    // The default argument reads process.env.SENTRY_DSN; a developer's .env
-    // must not turn this into a real init.
-    vi.stubEnv('SENTRY_DSN', '');
-    expect(initWorkerSentry()).toBe(false);
-    vi.unstubAllEnvs();
-    expect(initWorkerSentry(undefined)).toBe(false);
-    expect(initWorkerSentry('')).toBe(false);
-    expect(Sentry.getClient()).toBeUndefined();
-    expect(getErrorReporter()).toBeUndefined();
-  });
+let initResult: boolean;
 
+beforeAll(() => {
+  // defaultIntegrations off: no process-wide handlers inside the test runner.
+  initResult = initWorkerSentry(DSN, { transport, defaultIntegrations: false });
+});
+
+describe('worker Sentry', () => {
   it('with a DSN: inits and installs the bridge', () => {
-    // defaultIntegrations off: no process-wide handlers inside the test runner.
-    expect(initWorkerSentry(DSN, { transport, defaultIntegrations: false })).toBe(true);
+    expect(initResult).toBe(true);
     expect(Sentry.getClient()).toBeDefined();
     expect(getErrorReporter()).toBeDefined();
     // Installed with incoming-body capture off (see worker/sentry.ts).
