@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { applyPrismaExtensions } from '@/lib/prisma-extensions';
@@ -31,7 +30,7 @@ function createTestPrismaClient(adapter: PrismaPg) {
 }
 
 import { Meilisearch, type Task } from 'meilisearch';
-import { startStack, stopStack, type TestStack } from './setup';
+import { acquireDatabase, meiliUrlOf, startMeili } from './setup';
 
 /**
  * Wait for a Meilisearch task AND assert it succeeded.
@@ -61,27 +60,33 @@ export async function waitForMeiliTask(meili: Meilisearch, taskUid: number): Pro
 }
 
 export type IntegrationContext = {
-  stack: TestStack;
+  stack: { databaseUrl: string; meiliUrl: string };
   prisma: ReturnType<typeof createTestPrismaClient>;
   meili: Meilisearch;
+  /** Drops this file's database and stops its Meilisearch. */
+  release: () => Promise<void>;
 };
 
+/**
+ * This file's own empty, migrated database (cloned on the run's shared Postgres
+ * -- see ./global-setup.ts) and its own Meilisearch container.
+ */
 export async function setupIntegration(): Promise<IntegrationContext> {
-  const stack = await startStack();
+  const [db, meiliContainer] = await Promise.all([acquireDatabase(), startMeili()]);
+  const stack = { databaseUrl: db.databaseUrl, meiliUrl: meiliUrlOf(meiliContainer) };
   process.env.DATABASE_URL = stack.databaseUrl;
   process.env.MEILI_HOST = stack.meiliUrl;
   process.env.MEILI_KEY = 'test';
-  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
-    env: { ...process.env, DATABASE_URL: stack.databaseUrl },
-    stdio: 'inherit',
-  });
   const adapter = new PrismaPg({ connectionString: stack.databaseUrl });
   const prisma = createTestPrismaClient(adapter);
   const meili = new Meilisearch({ host: stack.meiliUrl, apiKey: 'test' });
-  return { stack, prisma, meili };
+  const release = async () => {
+    await Promise.all([db.release(), meiliContainer.stop()]);
+  };
+  return { stack, prisma, meili, release };
 }
 
 export async function teardownIntegration(ctx: IntegrationContext) {
   await ctx.prisma.$disconnect();
-  await stopStack(ctx.stack);
+  await ctx.release();
 }
