@@ -387,12 +387,25 @@ jobs:
   # Accessibility: axe-core WCAG 2.1 AA scans over every route (empty + populated,
   # desktop + mobile). Its own job (not folded into e2e, which runs @critical only)
   # because it walks the full route set. Mirrors the e2e job's services + env.
+  #
+  # One leg per test, because the spec is two long serial walks (empty-state
+  # 1.3m, populated 1.1m in run 40436285483) and after #614 this job was the
+  # critical path. Selected by --grep, not --shard: Playwright shards by test
+  # GROUP unless `fullyParallel` is on, and both tests sit in one describe, so
+  # `--shard=2/2` would run nothing. The legs match the test titles in
+  # tests/e2e/a11y.spec.ts; rename one there and its leg fails with "No tests
+  # found" rather than silently passing.
   a11y:
     needs: changes
     if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-26.04
     # Same hang guard as e2e (#521).
     timeout-minutes: 20
+    strategy:
+      # Let the sibling finish so both legs' violations reach the report.
+      fail-fast: false
+      matrix:
+        routes: [empty-state, populated]
     services:
       db:
         image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
@@ -445,11 +458,11 @@ jobs:
       - run: pnpm db:deploy
       - run: pnpm db:seed
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:a11y
+      - run: pnpm test:a11y --grep "${{ matrix.routes }} routes"
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: a11y-report
+          name: a11y-report-${{ matrix.routes }}
           path: playwright-report/
           retention-days: 14
 
