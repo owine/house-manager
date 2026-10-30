@@ -269,10 +269,24 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Sharded because it was the critical path: 76 files, 280s of wall clock on
+  # one runner (run 40436285483), and the floor of every file is ~6s of its own
+  # Testcontainers stack + `migrate deploy` -- so the work divides cleanly by
+  # file. `--shard` splits by file, not by duration; the three ~26s files can
+  # land on the same shard, so expect the halves to be uneven.
+  #
+  # Each shard emits its own blob; `coverage` merges all of them, which is what
+  # the blob reporter exists for. A new shard count needs no change there --
+  # its `coverage-*` pattern picks up every `coverage-integration-N`.
   integration:
     needs: changes
     if: needs.changes.outputs.tests == 'true'
     runs-on: ubuntu-26.04
+    strategy:
+      # Let the sibling finish so both shards' failing test names reach the log.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
@@ -282,15 +296,15 @@ jobs:
         env:
           DATABASE_URL: postgresql://build:build@localhost:5432/build
       # See unit job: collect a coverage blob with thresholds overridden to 0;
-      # the `coverage` job merges both blobs and enforces the real floor. Pair
+      # the `coverage` job merges every blob and enforces the real floor. Pair
       # blob with the default reporter so a failure names the failing test in
       # this job's log instead of a bare "exit code 1" (the decode happens in
       # the `coverage` job, which is skipped on failure).
-      - run: pnpm test:integration --coverage --reporter=blob --reporter=default --outputFile.blob=.vitest-reports/blob-integration.json --coverage.thresholds.lines=0 --coverage.thresholds.functions=0 --coverage.thresholds.statements=0 --coverage.thresholds.branches=0
+      - run: pnpm test:integration --shard=${{ matrix.shard }}/2 --coverage --reporter=blob --reporter=default --outputFile.blob=.vitest-reports/blob-integration-${{ matrix.shard }}.json --coverage.thresholds.lines=0 --coverage.thresholds.functions=0 --coverage.thresholds.statements=0 --coverage.thresholds.branches=0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: coverage-integration
-          path: .vitest-reports/blob-integration.json
+          name: coverage-integration-${{ matrix.shard }}
+          path: .vitest-reports/blob-integration-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 1
 
@@ -439,9 +453,9 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # Merge the coverage blobs emitted by the parallel unit + integration jobs
-  # and enforce the configured thresholds (vitest.config.ts) once against the
-  # COMBINED report. The individual jobs deliberately don't enforce — neither
+  # Merge the coverage blobs emitted by the parallel unit + integration-shard
+  # jobs and enforce the configured thresholds (vitest.config.ts) once against
+  # the COMBINED report. The individual jobs deliberately don't enforce — neither
   # alone would clear the floor, and double-enforcing would be wrong.
   coverage:
     needs: [changes, unit, integration]
@@ -452,7 +466,7 @@ jobs:
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
           require-lockfile: true
-      # Both artifacts land flat in .vitest-reports/ (each is a single
+      # Every artifact lands flat in .vitest-reports/ (each is a single
       # blob-*.json), which is the directory `--merge-reports` reads.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -464,25 +478,27 @@ jobs:
       # the run fails if combined coverage is below it.
       - run: pnpm exec vitest --merge-reports=.vitest-reports --coverage --reporter=default
 
+  # Runs IN PARALLEL with the test jobs, not after them. It used to `need`
+  # every one of them, which serialized a ~3 min build behind the ~6 min
+  # integration -> coverage chain and made it the tail of every run -- while
+  # consuming nothing they produce. The test gate lives on `publish-manifest`
+  # instead, which is the step that actually makes an image addressable.
+  #
+  # What that trades: on main a commit whose tests then fail still pushes its
+  # digest, but only BY DIGEST (push-by-digest, no tag), so it sits untagged
+  # in GHCR where nothing can pull it by name and release.yml cannot find it
+  # (that resolves `sha-<full>`, which only publish-manifest writes). A red PR
+  # also pays for a build it did not need -- free on a public repo, and a
+  # broken Dockerfile now surfaces in the same run as a broken test.
   build-image:
-    needs:
-      [changes, ggshield, lint, typecheck, migrate-check, unit, integration, e2e, a11y, coverage]
+    needs: changes
     # Always build on main (so we can push + publish a manifest for every
     # commit). On PRs, only build when image-affecting paths changed —
     # this catches regressions like the Plan 5a SENTRY_DSN one (broken
     # docker build that PR CI didn't surface) without burning CI on
     # doc-only PRs. Push only on main; PR builds verify the build
     # succeeds without polluting GHCR.
-    # Test jobs (unit/integration/e2e/coverage) are now conditional, so on a
-    # docs-only push to main they SKIP — and a skipped `needs` would normally
-    # cascade-skip build-image, breaking the per-commit publish. always() lets
-    # this run despite skipped deps, while still failing fast on a real
-    # failure/cancellation upstream.
-    if: >-
-      always()
-      && !contains(needs.*.result, 'failure')
-      && !contains(needs.*.result, 'cancelled')
-      && (github.ref == 'refs/heads/main' || needs.changes.outputs.image == 'true')
+    if: github.ref == 'refs/heads/main' || needs.changes.outputs.image == 'true'
     permissions:
       contents: read
       packages: write
@@ -623,9 +639,34 @@ jobs:
   # digest as X.Y.Z / X.Y / X / latest, with no rebuild. So `latest` means
   # "newest release", not "main HEAD". The sha tag is long so that lookup is
   # unambiguous.
+  #
+  # This is the test gate for the image (build-image runs in parallel with the
+  # tests; see there), so it needs every check, not just build-image. Test jobs
+  # SKIP on a docs-only push to main, and a skipped `needs` would cascade-skip
+  # this job and break the per-commit publish -- always() lets it run despite
+  # skipped deps, while a real failure/cancellation anywhere upstream still
+  # stops it. build-image must have actually succeeded, not merely not failed.
   publish-manifest:
-    needs: build-image
-    if: github.ref == 'refs/heads/main'
+    needs:
+      [
+        changes,
+        ggshield,
+        lint,
+        typecheck,
+        migrate-check,
+        unit,
+        integration,
+        e2e,
+        a11y,
+        coverage,
+        build-image,
+      ]
+    if: >-
+      always()
+      && github.ref == 'refs/heads/main'
+      && needs.build-image.result == 'success'
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-26.04
     permissions:
       contents: read
