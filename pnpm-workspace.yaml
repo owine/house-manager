@@ -41,15 +41,23 @@ audit:
 # package not listed here errors at install time rather than silently
 # skipping its postinstall. Keep this list minimal — entries here run
 # arbitrary code at install time. Each was vetted at the time of inclusion.
+#
+# `false` is a reviewed DENIAL, not an omission: the package installs, its build
+# script is skipped, and strictDepBuilds stays quiet. cpu-features and ssh2 are
+# denied because both builds are optional native speedups for SSH (they come in
+# via testcontainers -> dockerode -> ssh2, which only uses SSH for Docker-over-SSH,
+# never used here), ssh2 `require`s each inside try/catch and falls back to
+# pure-JS crypto, and neither is in the production tree. The node-gyp compile
+# cost 7-24s in EVERY CI job's install and stalled to 99s once (run 41077314283).
 allowBuilds:
   '@prisma/engines': true # downloads Prisma query engine binaries
   '@sentry/cli': true # downloads sentry-cli native binary
-  'cpu-features': true # builds native CPU feature detection (transitive of ssh2)
+  'cpu-features': false # see above: optional, unused native build
   'esbuild': true # builds platform-specific esbuild binary
   'lefthook': true # installs git hooks
   'msw': true # writes service-worker file (transitive)
   'prisma': true # CLI ships native binaries
   'protobufjs': true # generates static protobuf code (transitive)
   'sharp': true # builds libvips bindings
-  'ssh2': true # optional native crypto (transitive)
+  'ssh2': false # see above: optional native crypto, pure-JS fallback
   tesseract.js: true # downloads English language data at install time (Plan 4c)
