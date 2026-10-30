@@ -1,4 +1,4 @@
-import { tzOffsetMinutes, tzParts } from '@/lib/time/tz';
+import { tzParts, wallClockToUtc } from '@/lib/time/tz';
 import type { NotificationPrefs } from './prefs';
 
 function parseHM(hm: string): { h: number; m: number } {
@@ -33,22 +33,29 @@ export function isInQuietWindow(now: Date, prefs: NotificationPrefs, tz: string)
  * the next `quietEnd` wall-clock time in the house timezone `tz`; otherwise
  * return `now`.
  *
- * DST note: uses the current tz offset (same simplification as
- * endOfCalendarDayInTz in lib/time/tz.ts); a DST transition right at quietEnd
- * would shift the result by ≤1 h, which is acceptable for notification deferral.
+ * Both candidates are converted with wallClockToUtc, which reads the offset at
+ * quietEnd itself. Using now's offset, or adding 24h to step a day, put the
+ * deferral an hour out on DST nights (06:00 on fall-back, 08:00 on spring-forward).
  */
 export function nextNonQuietTime(now: Date, prefs: NotificationPrefs, tz: string): Date {
   if (!prefs.quietEnd || !isInQuietWindow(now, prefs, tz)) return now;
   const end = parseHM(prefs.quietEnd);
 
   // Wall-clock Y/M/D in the house timezone.
-  const { year: y, month: mo, day: d } = tzParts(now, tz);
-  const offsetMins = tzOffsetMinutes(now, tz);
-  // quietEnd wall-clock time on the user's current calendar date, as UTC instant.
-  let candidate = Date.UTC(y, mo - 1, d, end.h, end.m, 0) - offsetMins * 60_000;
-  if (candidate <= now.getTime()) {
-    // End time already passed today — advance one calendar day.
-    candidate += 86_400_000;
-  }
-  return new Date(candidate);
+  const { year, month, day } = tzParts(now, tz);
+  const today = wallClockToUtc({ year, month, day, hour: end.h, minute: end.m }, tz);
+  if (today.getTime() > now.getTime()) return today;
+  // End time already passed today: the same wall clock on the next calendar
+  // day. Date.UTC rolls month/year overflow, so day + 1 is safe at month end.
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return wallClockToUtc(
+    {
+      year: next.getUTCFullYear(),
+      month: next.getUTCMonth() + 1,
+      day: next.getUTCDate(),
+      hour: end.h,
+      minute: end.m,
+    },
+    tz,
+  );
 }

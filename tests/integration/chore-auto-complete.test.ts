@@ -86,8 +86,9 @@ describe('handleChoreAutoCompleteTick', () => {
     expect(completions).toHaveLength(1);
     expect(completions[0].completedById).toBe(SYSTEM_AUTO_COMPLETE_USER_ID);
     expect(completions[0].notes).toBe('Auto-completed');
-    // completedOn should be end-of-due-day in NY tz, not far future
-    expect(completions[0].completedOn.getTime()).toBeLessThan(NOW.getTime());
+    // completedOn is the last millisecond of the due day in Chicago (CDT):
+    // 2026-05-25 23:59:59.999 -05:00.
+    expect(completions[0].completedOn.toISOString()).toBe('2026-05-26T04:59:59.999Z');
 
     const updatedTarget = await ctx.prisma.reminderTarget.findUniqueOrThrow({
       where: { id: target.id },
@@ -204,8 +205,34 @@ describe('handleChoreAutoCompleteTick', () => {
     expect(srCount).toBe(0);
   });
 
+  // The stamp used to be 23:59:59.999 minus the offset at the due date's UTC
+  // midnight -- CST on spring-forward day, so it landed at 00:59 CDT the NEXT
+  // day and the completion showed a day late everywhere it is displayed.
+  it('stamps a spring-forward due date on that day, not the next', async () => {
+    const reminder = await ctx.prisma.reminder.create({
+      data: {
+        title: 'DST chore',
+        kind: 'CHORE',
+        autoComplete: true,
+        active: true,
+        recurrence: { kind: 'interval', every: 1, unit: 'month' },
+        notifyUserIds: ['u1'],
+        targets: { create: [{ itemId, nextDueOn: new Date(Date.UTC(2026, 2, 8)) }] },
+      },
+    });
+
+    // 2026-03-09 10:00Z = 05:00 CDT, the morning after.
+    await handleChoreAutoCompleteTick(new Date('2026-03-09T10:00:00.000Z'));
+
+    const [completion] = await ctx.prisma.reminderCompletion.findMany({
+      where: { reminderId: reminder.id },
+    });
+    // 2026-03-08 23:59:59.999 CDT (-05:00), not 2026-03-09 00:59 CDT.
+    expect(completion?.completedOn.toISOString()).toBe('2026-03-09T04:59:59.999Z');
+  });
+
   it('falls back to UTC when no HouseProfile row exists (bootstrap case)', async () => {
-    // Remove the NY profile set in beforeEach to exercise the `?? 'UTC'` fallback.
+    // Remove the Chicago profile set in beforeEach to exercise the `?? 'UTC'` fallback.
     await ctx.prisma.houseProfile.deleteMany();
 
     const reminder = await ctx.prisma.reminder.create({

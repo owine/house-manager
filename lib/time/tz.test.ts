@@ -9,6 +9,7 @@ import {
   tzOffsetMinutes,
   tzParts,
   utcMidnight,
+  wallClockToUtc,
 } from './tz';
 
 describe('tzParts', () => {
@@ -210,5 +211,88 @@ describe('endOfCalendarDayInTz', () => {
   it('UTC returns 23:59:59.999Z of the same UTC date', () => {
     const eod = endOfCalendarDayInTz(dueOn(2026, 5, 27), UTC);
     expect(eod.toISOString()).toBe('2026-05-27T23:59:59.999Z');
+  });
+});
+
+// DST and awkward-offset sweep. The cases above are all July or January, so
+// none crosses a transition, and the one DST bug this file shipped
+// (endOfCalendarDayInTz landing on the NEXT day on spring-forward) went
+// unseen for months. Every day of two years, per zone, rather than a hand-picked
+// list: a missed transition date is exactly how the first bug got through.
+const SWEEP_ZONES = [
+  'America/Chicago', // the house
+  'America/New_York',
+  'Europe/Berlin',
+  'Australia/Lord_Howe', // 30-minute DST shift
+  'America/Santiago', // transitions at local midnight
+  'America/Havana', // spring-forward skips 00:00 entirely
+  'Asia/Kathmandu', // +05:45
+  'Pacific/Kiritimati', // +14:00
+  'Pacific/Pago_Pago', // -11:00
+  'UTC',
+];
+const DAY_MS = 86_400_000;
+const sweepDays = (): CalendarDate[] => {
+  const days: CalendarDate[] = [];
+  for (let t = Date.UTC(2026, 0, 1); t < Date.UTC(2028, 0, 1); t += DAY_MS) {
+    days.push(utcMidnight(new Date(t)));
+  }
+  return days;
+};
+
+describe.each(SWEEP_ZONES)('day boundaries in %s', (tz) => {
+  it('endOfCalendarDayInTz is the last millisecond of that house day, every day', () => {
+    const wrong: string[] = [];
+    for (const day of sweepDays()) {
+      const eod = endOfCalendarDayInTz(day, tz);
+      const sameDay = startOfDayUtc(eod, tz).getTime() === day.getTime();
+      const nextMsIsTomorrow =
+        startOfDayUtc(new Date(eod.getTime() + 1), tz).getTime() === day.getTime() + DAY_MS;
+      if (!sameDay || !nextMsIsTomorrow)
+        wrong.push(`${day.toISOString().slice(0, 10)} -> ${eod.toISOString()}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('wallClockToUtc lands on the requested wall clock whenever that time exists', () => {
+    const wrong: string[] = [];
+    for (const day of sweepDays()) {
+      const [y, m, d] = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate()];
+      const at = wallClockToUtc({ year: y, month: m, day: d, hour: 7, minute: 0 }, tz);
+      const p = tzParts(at, tz);
+      if (p.year !== y || p.month !== m || p.day !== d || p.hour !== 7 || p.minute !== 0) {
+        wrong.push(`${day.toISOString().slice(0, 10)} -> ${at.toISOString()}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe('endOfCalendarDayInTz on the transitions the house sees', () => {
+  it('spring-forward: 23:59:59.999 CDT, not 00:59 the next day', () => {
+    expect(endOfCalendarDayInTz(dueOn(2026, 3, 8), CHI).toISOString()).toBe(
+      '2026-03-09T04:59:59.999Z',
+    );
+  });
+
+  it('fall-back: 23:59:59.999 CST, not an hour early', () => {
+    expect(endOfCalendarDayInTz(dueOn(2026, 11, 1), CHI).toISOString()).toBe(
+      '2026-11-02T05:59:59.999Z',
+    );
+  });
+});
+
+describe('wallClockToUtc', () => {
+  it('reads the offset at the target time, not at some other instant', () => {
+    // 07:00 on fall-back Sunday is CST (UTC-6), though the night before was CDT.
+    expect(
+      wallClockToUtc({ year: 2026, month: 11, day: 1, hour: 7, minute: 0 }, CHI).toISOString(),
+    ).toBe('2026-11-01T13:00:00.000Z');
+  });
+
+  it('resolves a time inside the spring-forward gap to a real instant on that day', () => {
+    // 02:30 does not exist in Chicago on 2026-03-08; any answer must still be that day.
+    const at = wallClockToUtc({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 }, CHI);
+    expect(startOfDayUtc(at, CHI).toISOString()).toBe('2026-03-08T00:00:00.000Z');
   });
 });

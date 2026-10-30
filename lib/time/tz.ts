@@ -81,13 +81,31 @@ const WEEKDAY_MAP: Record<string, number> = {
   Sat: 6,
 };
 
+// Building an Intl.DateTimeFormat costs far more than formatting with one, and
+// endOfCalendarDayInTz calls tzParts ~30 times per stamp. One per zone.
+const PARTS_FORMATS = new Map<string, Intl.DateTimeFormat>();
+const OFFSET_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+function cachedFormat(
+  cache: Map<string, Intl.DateTimeFormat>,
+  locale: string,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  let format = cache.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { timeZone, ...options });
+    cache.set(timeZone, format);
+  }
+  return format;
+}
+
 /**
  * Decompose `date` into wall-clock parts in `timeZone` using Intl (no deps).
  */
 export function tzParts(date: Instant, timeZone: string): TzParts {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone,
+    cachedFormat(PARTS_FORMATS, 'en-CA', timeZone, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -115,14 +133,11 @@ export function tzParts(date: Instant, timeZone: string): TzParts {
  * Offset of `timeZone` from UTC at `date`, in minutes (e.g. America/New_York
  * in summer → -240; Asia/Kolkata → +330). Parsed from Intl's `longOffset`
  * (`GMT±HH:MM`). Returns 0 if the format can't be parsed (degrades to UTC —
- * the safe fallback). NOTE: this is the offset AT `date`; callers converting a
- * *different* wall-clock instant accept a ≤1h skew across a DST transition.
+ * the safe fallback). This is the offset AT `date`. To turn a wall-clock time
+ * into an instant, use wallClockToUtc, which reads it at the target instead.
  */
 export function tzOffsetMinutes(date: Date, timeZone: string): number {
-  const offsetName = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'longOffset',
-  })
+  const offsetName = cachedFormat(OFFSET_FORMATS, 'en-US', timeZone, { timeZoneName: 'longOffset' })
     .formatToParts(date)
     .find((p) => p.type === 'timeZoneName')?.value; // e.g. 'GMT-04:00' or 'GMT+05:30'
   const m = offsetName?.match(/GMT([+-])(\d{2}):(\d{2})/);
@@ -185,21 +200,55 @@ export function isOverdue(nextDueOn: CalendarDate, now: Instant, tz: string): bo
 }
 
 /**
- * The UTC instant of 23:59:59.999 wall-clock in `tz` on the calendar date that
- * `calendarDate` represents (a date-only value stored at UTC midnight). Used to
- * stamp `completedOn` when a chore auto-completes at end-of-due-day.
+ * The UTC instant at which the wall clock in `tz` reads `wall`.
  *
- * NOTE: the timezone offset is evaluated at `calendarDate` (UTC midnight), not at
- * 23:59:59. On a DST transition day the result may be off by ≤1h — acceptable for
- * a `completedOn` stamp.
+ * The offset is read at the target itself: a first guess from the offset at
+ * the naive instant, then the offset at that guess. Reading it at any other
+ * instant (`now`, the day's UTC midnight) is off by the DST shift whenever a
+ * transition falls in between -- which put quiet-hours deferrals an hour out
+ * on both transition nights.
+ *
+ * A wall time inside a spring-forward gap does not exist; it resolves to an
+ * instant on that day on one side of the gap. A time that fall-back repeats
+ * resolves to one of its two occurrences.
+ */
+export function wallClockToUtc(
+  wall: Pick<TzParts, 'year' | 'month' | 'day' | 'hour' | 'minute'>,
+  tz: string,
+): Date {
+  const naive = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+  const guess = naive - tzOffsetMinutes(new Date(naive), tz) * 60_000;
+  return new Date(naive - tzOffsetMinutes(new Date(guess), tz) * 60_000);
+}
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * The last millisecond of the house day that `calendarDate` represents (a
+ * date-only value stored at UTC midnight). Used to stamp `completedOn` when a
+ * chore auto-completes at end-of-due-day.
+ *
+ * Found as "1 ms before the next house day begins", by bisecting for that
+ * beginning -- not as 23:59:59.999 minus an offset. The offset changes during
+ * a transition day, and in zones that switch at midnight the next 00:00 may
+ * not exist (Havana) or 23:59 may happen twice (Santiago), so no single offset
+ * is right. Offset arithmetic here once stamped spring-forward completions at
+ * 00:59 the NEXT day.
  */
 export function endOfCalendarDayInTz(calendarDate: CalendarDate, tz: string): Date {
   assertCalendarDate(calendarDate, 'endOfCalendarDayInTz');
-  const year = calendarDate.getUTCFullYear();
-  const month = calendarDate.getUTCMonth();
-  const day = calendarDate.getUTCDate();
-  const offsetMinutes = tzOffsetMinutes(calendarDate, tz);
-  return new Date(Date.UTC(year, month, day, 23, 59, 59, 999) - offsetMinutes * 60_000);
+  const tomorrow = calendarDate.getTime() + DAY_MS;
+  // UTC offsets run from -12h to +14h, so `before` is still this day (or
+  // earlier) in every zone and `after` is already tomorrow in every zone.
+  let before = tomorrow - 16 * HOUR_MS;
+  let after = tomorrow + 14 * HOUR_MS;
+  while (after - before > 1) {
+    const mid = before + Math.floor((after - before) / 2);
+    if (startOfDayUtc(new Date(mid), tz).getTime() >= tomorrow) after = mid;
+    else before = mid;
+  }
+  return new Date(before);
 }
 
 /** ISO-8601 week key 'YYYY-Www' for the given wall-clock parts (Thursday-based). */
