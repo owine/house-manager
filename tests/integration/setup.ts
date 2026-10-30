@@ -1,5 +1,7 @@
+import { request } from 'node:http';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { GenericContainer, type StartedTestContainer } from 'testcontainers';
+import { inject } from 'vitest';
 
 /**
  * Container images for the integration stack.
@@ -33,25 +35,114 @@ export type TestStack = {
  * stack uses it, and so does any test that needs a second, empty server --
  * e.g. restoring a dump somewhere other than where it was taken.
  */
-export function startPostgres(): Promise<StartedPostgreSqlContainer> {
+function postgresContainer() {
   return new PostgreSqlContainer(POSTGRES_IMAGE)
     .withDatabase('housemanager')
     .withUsername('housemanager')
-    .withPassword('test')
+    .withPassword('test');
+}
+
+export function startPostgres(): Promise<StartedPostgreSqlContainer> {
+  return postgresContainer().start();
+}
+
+/**
+ * The one server every integration file shares (./global-setup.ts), so it is
+ * tuned for that rather than for being one of 76:
+ *
+ * - `max_connections`: files run concurrently against it, each with Prisma's and
+ *   pg-boss's pools, and the worker count is the host's CPU count -- the default
+ *   100 is reachable on a 10-core laptop.
+ * - `fsync` / `synchronous_commit` / `full_page_writes` off: durability across a
+ *   crash is meaningless for a container that is thrown away when the run ends,
+ *   and it is the one server now absorbing every file's writes.
+ */
+export function startSharedPostgres(): Promise<StartedPostgreSqlContainer> {
+  return postgresContainer()
+    .withCommand([
+      'postgres',
+      '-c',
+      'max_connections=500',
+      '-c',
+      'fsync=off',
+      '-c',
+      'synchronous_commit=off',
+      '-c',
+      'full_page_writes=off',
+    ])
     .start();
+}
+
+export function startMeili(): Promise<StartedTestContainer> {
+  return new GenericContainer(MEILI_IMAGE)
+    .withEnvironment({ MEILI_MASTER_KEY: 'test', MEILI_ENV: 'development' })
+    .withExposedPorts(7700)
+    .start();
+}
+
+export function meiliUrlOf(meili: StartedTestContainer): string {
+  return `http://${meili.getHost()}:${meili.getMappedPort(7700)}`;
+}
+
+/**
+ * A fresh, fully migrated database of this file's own on the shared server,
+ * plus the call that drops it. See ./global-setup.ts.
+ *
+ * Talks to the broker with `node:http` rather than `fetch` on purpose: a test
+ * that stubs the global `fetch` (Voyage and Anthropic are both fetch-based)
+ * would otherwise swallow the teardown DELETE and leak its database silently.
+ */
+export async function acquireDatabase(): Promise<{
+  databaseUrl: string;
+  release: () => Promise<void>;
+}> {
+  const broker = inject('integrationDbBroker');
+  if (!broker) {
+    throw new Error(
+      'integrationDbBroker was not provided: tests/integration/global-setup.ts must be in vitest.config.ts globalSetup',
+    );
+  }
+  const { name, databaseUrl } = JSON.parse(await brokerCall(broker, 'POST', '/databases')) as {
+    name: string;
+    databaseUrl: string;
+  };
+  return {
+    databaseUrl,
+    release: async () => {
+      await brokerCall(broker, 'DELETE', `/databases/${name}`);
+    },
+  };
+}
+
+function brokerCall(broker: string, method: string, path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = request(new URL(path, broker), { method }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode === 200) resolve(body);
+        else
+          reject(
+            new Error(`integration DB broker ${method} ${path} -> ${res.statusCode}\n${body}`),
+          );
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 export async function startStack(): Promise<TestStack> {
   const postgres = await startPostgres();
-  const meili = await new GenericContainer(MEILI_IMAGE)
-    .withEnvironment({ MEILI_MASTER_KEY: 'test', MEILI_ENV: 'development' })
-    .withExposedPorts(7700)
-    .start();
+  const meili = await startMeili();
   return {
     postgres,
     meili,
     databaseUrl: postgres.getConnectionUri(),
-    meiliUrl: `http://${meili.getHost()}:${meili.getMappedPort(7700)}`,
+    meiliUrl: meiliUrlOf(meili),
   };
 }
 

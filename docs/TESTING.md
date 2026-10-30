@@ -18,7 +18,7 @@ The app has four test surfaces — **unit**, **integration**, **e2e**, and **smo
 |---|---|
 | `pnpm test` | `vitest run` — bare run of all unit + integration includes (rarely used directly). |
 | `pnpm test:unit` | Unit tests: `tests/unit`, `lib`, `worker` (including `worker/jobs`), `components`, `app`. Mocked (`vitest.setup.ts`). |
-| `pnpm test:integration` | Integration tests: `tests/integration`. Vitest + Testcontainers (real Postgres). `pg-dump-restore.test.ts` also needs a PostgreSQL client ≥ the server major (18) on PATH (`pg_dump`, `pg_restore`). The ubuntu-26.04 CI runner ships 18.6. On macOS, `brew install libpq` and put `$(brew --prefix libpq)/bin` on PATH. The test fails with that hint, rather than skipping, when the client is missing or too old. |
+| `pnpm test:integration` | Integration tests: `tests/integration`. Vitest + Testcontainers (real Postgres). One Postgres per run, started lazily on first use and migrated once; each file gets its own database cloned from it plus its own Meilisearch (`tests/integration/global-setup.ts`). `pg-dump-restore.test.ts` also needs a PostgreSQL client ≥ the server major (18) on PATH (`pg_dump`, `pg_restore`). The ubuntu-26.04 CI runner ships 18.6. On macOS, `brew install libpq` and put `$(brew --prefix libpq)/bin` on PATH. The test fails with that hint, rather than skipping, when the client is missing or too old. |
 | `pnpm test:smoke` | Smoke tests via the separate `vitest.smoke.config.ts` — real Anthropic API, no mocks. |
 | `pnpm test:watch` | `vitest` in watch mode. |
 | `pnpm test:coverage` | Run with V8 coverage (text/json/html reporters). |

@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => ({
     globals: false,
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
+    // Lazily shares one Postgres across integration files. Starts nothing, and
+    // needs no Docker, until an integration file asks -- so unit runs are
+    // unaffected. Rationale in the file.
+    globalSetup: ['./tests/integration/global-setup.ts'],
     include: [
       'tests/unit/**/*.test.ts',
       'tests/integration/**/*.test.ts',
