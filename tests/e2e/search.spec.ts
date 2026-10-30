@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForSearchHit } from './_routes';
 import { resetAuth, signIn } from './auth';
 
 test.beforeEach(async () => {
@@ -25,17 +26,7 @@ test('searches across kinds, filters by facet', async ({ page, context }) => {
   await expect(page).toHaveURL(/\/items\/c[a-z0-9]+$/);
 
   // 2) Wait for the search index to catch up (fire-and-forget enqueue).
-  await expect
-    .poll(
-      async () => {
-        const res = await page.request.get('/api/search?q=furnace');
-        if (!res.ok()) return [];
-        const data = (await res.json()) as { hits: Array<{ title: string }> };
-        return data.hits.map((h) => h.title);
-      },
-      { timeout: 10_000, intervals: [500, 1000, 1500] },
-    )
-    .toContain('Furnace');
+  await waitForSearchHit(page, 'furnace', 'Furnace');
 
   // 3) Header dropdown shows the result; click navigates to the item page.
   await page.getByPlaceholder('Search…').fill('furnace');

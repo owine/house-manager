@@ -49,13 +49,11 @@ test('creates a reminder, marks it complete, sees it in history @critical', asyn
   await page.getByRole('button', { name: 'Save completion' }).click();
 
   // History shows the completion
-  await expect(page.locator('text=completed by Test User')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=completed by Test User')).toBeVisible();
 
   // Settings shows iCal generation
   await page.goto('/settings');
   await page.getByRole('button', { name: 'Generate calendar URL' }).click();
   // After generation, the URL appears in a readonly input containing the pattern /api/calendar/
-  await expect(page.locator('input[readonly][value*="/api/calendar/"]')).toBeVisible({
-    timeout: 5_000,
-  });
+  await expect(page.locator('input[readonly][value*="/api/calendar/"]')).toBeVisible();
 });

@@ -66,21 +66,46 @@ export type SeededUrls = {
  * Fill a native date input robustly against late hydration. A React-Hook-Form
  * controlled date field can have a pre-hydration `fill` reset to empty; `toPass`
  * retries the fill+assert until the value sticks.
+ *
+ * The inner assertion needs its own short timeout. Inheriting the config's
+ * expect timeout let one reset attempt spend the whole toPass budget waiting
+ * on a value that would never come back, so the re-fill never ran.
  */
 async function fillDate(locator: import('@playwright/test').Locator, value: string): Promise<void> {
   await expect(async () => {
     await locator.fill(value);
-    await expect(locator).toHaveValue(value);
+    await expect(locator).toHaveValue(value, { timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
+}
+
+/**
+ * Wait until search returns `title` for `q`. Creates enqueue indexing
+ * fire-and-forget and the e2e worker picks the job up on its poll interval, so
+ * a search right after seeding can still see an empty index. Budget covers the
+ * pg-boss poll plus Meili's own indexing on a busy runner.
+ */
+export async function waitForSearchHit(page: Page, q: string, title: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(`/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok()) return [];
+        const data = (await res.json()) as { hits: Array<{ title: string }> };
+        return data.hits.map((h) => h.title);
+      },
+      { timeout: 30_000, intervals: [500, 1000, 1500] },
+    )
+    .toContain(title);
 }
 
 export async function seedPopulated(
   page: Page,
   opts?: { onSuggestInterstitial?: (page: Page) => Promise<void> },
 ): Promise<SeededUrls> {
-  // Submit helper: arm the navigation wait BEFORE the click (race-safe — a fast
-  // server-action response can complete before a post-click waitForURL starts
-  // listening, hanging forever; this is the pattern the CI-gated specs use).
+  // Submit helper with a 60s navigation budget: a server action, a redirect and
+  // a cold compile of the destination route can outlast the expect timeout on
+  // a busy runner. (Not a race fix -- waitForURL resolves at once when the URL
+  // already matches, so a post-click wait cannot miss a fast navigation.)
   const submitAndWait = async (url: RegExp, click: () => Promise<void>) => {
     await Promise.all([page.waitForURL(url, { timeout: 60_000 }), click()]);
   };

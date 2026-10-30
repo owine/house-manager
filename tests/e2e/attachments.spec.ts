@@ -32,7 +32,7 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   // glyph with a lucide check icon next to the bare filename, so we now
   // assert on the filename's appearance in the status list directly.
   await page.setInputFiles('input[type=file]', 'tests/fixtures/sample.jpg');
-  await expect(page.locator('text=sample.jpg').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=sample.jpg').first()).toBeVisible();
 
   // Verify a card with the file rendered (Delete button is the visible signal).
   // Note: the dev server doesn't run the worker process, so the thumbnail
@@ -49,7 +49,7 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
   await page.getByLabel('Label (optional)').fill('Furnace manual on Proton');
   await page.getByLabel('URL (https or http)').fill('https://drive.proton.me/urls/EXAMPLE');
   await page.getByRole('button', { name: 'Add link' }).click();
-  await expect(page.locator('text=Furnace manual on Proton')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('text=Furnace manual on Proton')).toBeVisible();
 
   // Delete the link.
   await page.getByRole('button', { name: 'Delete' }).click();
@@ -88,7 +88,7 @@ test('pages and files carry their security headers @critical', async ({ page, co
   await page.getByRole('link', { name: 'Files' }).click();
   await page.setInputFiles('input[type=file]', 'tests/fixtures/sample.pdf');
   const fileLink = page.locator('a[href^="/api/files/"]').first();
-  await expect(fileLink).toBeVisible({ timeout: 10_000 });
+  await expect(fileLink).toBeVisible();
   const href = await fileLink.getAttribute('href');
   expect(href).toBeTruthy();
 

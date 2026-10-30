@@ -399,6 +399,20 @@ jobs:
       - run: pnpm db:seed
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:critical
+      # Retries (playwright.config.ts) keep a flake from failing this job, which
+      # also hides it: the run goes green with one "flaky" line in the raw log.
+      # Name each test that only passed on retry as a warning annotation, so it
+      # shows on the PR and the run summary without blocking the merge.
+      - name: Annotate flaky tests
+        if: always()
+        run: |
+          results=test-results/results.json
+          if [ ! -f "$results" ]; then exit 0; fi
+          jq -r '.. | objects | select(has("specs")) | .specs[] | . as $s | .tests[]
+            | select(.status == "flaky") | "\($s.file):\($s.line) \($s.title)"' "$results" |
+            while read -r flaky; do
+              echo "::warning title=Flaky e2e test (passed on retry)::$flaky"
+            done
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -481,6 +495,20 @@ jobs:
       - run: pnpm db:seed
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:a11y --grep "${{ matrix.routes }} routes"
+      # Retries (playwright.config.ts) keep a flake from failing this job, which
+      # also hides it: the run goes green with one "flaky" line in the raw log.
+      # Name each test that only passed on retry as a warning annotation, so it
+      # shows on the PR and the run summary without blocking the merge.
+      - name: Annotate flaky tests
+        if: always()
+        run: |
+          results=test-results/results.json
+          if [ ! -f "$results" ]; then exit 0; fi
+          jq -r '.. | objects | select(has("specs")) | .specs[] | . as $s | .tests[]
+            | select(.status == "flaky") | "\($s.file):\($s.line) \($s.title)"' "$results" |
+            while read -r flaky; do
+              echo "::warning title=Flaky e2e test (passed on retry)::$flaky"
+            done
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
