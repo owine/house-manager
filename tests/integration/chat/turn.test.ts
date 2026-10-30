@@ -365,7 +365,8 @@ describe('chatTurn', () => {
     const session = await ctx.prisma.chatSession.findFirstOrThrow({ where: { userId } });
     const messages = await ctx.prisma.chatMessage.findMany({
       where: { sessionId: session.id },
-      orderBy: { createdAt: 'asc' },
+      // Same tie-break as getChatSession: the pair often shares a millisecond.
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     expect(messages.map((m) => m.role)).toEqual(['USER', 'ASSISTANT']);
     expect(messages[0].content).toBe('this will fail to embed');

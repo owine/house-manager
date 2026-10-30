@@ -11,14 +11,21 @@ export async function getChatSession(id: string, userId: string) {
       id: true,
       title: true,
       messages: {
-        orderBy: { createdAt: 'asc' },
+        // `id` breaks createdAt ties, and ties are the norm, not an edge: a
+        // turn's USER and ASSISTANT rows are written in one transaction, so
+        // they share a millisecond about a third of the time (and always, from
+        // a nested create). Without it the pair's order is whatever Postgres
+        // happens to return. cuid() ids are timestamp + per-process counter,
+        // so they ascend in creation order.
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           role: true,
           content: true,
           createdAt: true,
           proposals: {
-            orderBy: { createdAt: 'asc' },
+            // Same tie-break: a message's proposals come from one nested create.
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             select: {
               id: true,
               kind: true,
