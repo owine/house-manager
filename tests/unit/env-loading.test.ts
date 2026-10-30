@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dotenvFallbacks } from '../../vitest.env';
+import { dotenvFallbacks, UNSET_FOR_TESTS } from '../../vitest.env';
 
 /**
  * Guards the `test.env` wiring in vitest.config.ts.
@@ -110,7 +110,11 @@ describe('vitest env loading', () => {
   });
 
   it.skipIf(!hasDotenv)('exposes every .env key to test workers via process.env', () => {
-    const missing = dotenvKeys().filter((key) => process.env[key] === undefined);
+    // vitest.setup.ts deliberately drops these, from `.env` as much as the shell.
+    const unset: readonly string[] = UNSET_FOR_TESTS;
+    const missing = dotenvKeys().filter(
+      (key) => process.env[key] === undefined && !unset.includes(key),
+    );
     expect(missing).toEqual([]);
   });
 

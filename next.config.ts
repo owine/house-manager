@@ -54,6 +54,10 @@ const nextConfig: NextConfig = {
     : undefined,
   // Don't advertise the framework on every response.
   poweredByHeader: false,
+  // When `next dev` detects a coding agent it writes an untracked AGENTS.md
+  // (generate-agent-files.js). CLAUDE.md already carries that guidance, so
+  // the file was only ever a dirty tree. False also makes Next delete it.
+  agentRules: false,
   async headers() {
     return [
       { source: '/:path*', headers: SECURITY_HEADERS },

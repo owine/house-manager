@@ -22,7 +22,7 @@ pnpm lint                 # biome check . && lint:tokens && lint:knip
 pnpm lint:fix             # biome autofix
 pnpm typecheck            # tsc --noEmit (TS 7)
 
-pnpm test:unit            # tests/unit + lib + worker + components + app (mocked)
+pnpm test:unit            # tests/unit + e2e helpers + lib + worker + components + app (mocked)
 pnpm test:integration     # tests/integration — real Postgres via Testcontainers
 pnpm test:e2e:local       # full Playwright suite w/ env wrapper + mock OIDC
 pnpm test:local           # umbrella pre-merge: unit → integration → e2e → coverage floor
@@ -500,12 +500,10 @@ Two things follow:
   (known keys redacted, values pattern-scrubbed). Don't re-roll per-site redaction.
 - **Commits:** SSH-signed via 1Password (`commit.gpgsign=true`).
 
-<!-- BEGIN:nextjs-agent-rules -->
-
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+This section is hand-maintained; `next dev` does not touch this file. Next 16.4 writes the
+same block to `AGENTS.md` when it detects a coding agent, which `agentRules: false` in
+`next.config.ts` turns off (see `node_modules/next/dist/server/lib/generate-agent-files.js`).

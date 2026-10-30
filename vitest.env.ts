@@ -48,3 +48,11 @@ export function dotenvFallbacks(
     Object.entries(fromFiles).filter(([key]) => process.env[key] === undefined),
   );
 }
+
+/**
+ * Keys `vitest.setup.ts` deletes before each test file, so neither the shell
+ * nor `.env` can change them. `LOG_LEVEL` is read once at import by
+ * lib/logger.ts; set to `fatal` it silenced the logger.error calls the
+ * Sentry-bridge tests assert on, which passed in CI and failed locally.
+ */
+export const UNSET_FOR_TESTS = ['LOG_LEVEL'] as const;
