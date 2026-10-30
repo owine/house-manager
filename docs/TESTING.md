@@ -79,7 +79,7 @@ This ties into the spec/plan workflow: a plan task that ships a user-facing flow
 **How it's enforced:**
 
 - **Locally:** `pnpm test:coverage:check` runs with `--coverage`, which fails the run if combined coverage drops below the floor. It's the last step of `pnpm test:local`.
-- **In CI:** the `unit` and `integration` jobs each emit a coverage **blob** (`--reporter=blob`) as an artifact; they deliberately do **not** enforce the floor alone (neither subset clears it). A dedicated `coverage` job downloads both blobs, runs `vitest --merge-reports` with `--coverage`, and enforces the threshold once against the **combined** report.
+- **In CI:** the `unit` job and each `integration` shard (`--shard=N/2`) emit a coverage **blob** (`--reporter=blob`) as an artifact; they deliberately do **not** enforce the floor alone (no subset clears it). A dedicated `coverage` job downloads every blob, runs `vitest --merge-reports` with `--coverage`, and enforces the threshold once against the **combined** report.
 
 **Ratchet rule:** the floor only ever goes **up**. Never lower a threshold to make a red build green — add the missing tests. Raise the numbers as real coverage improves so the floor stays a meaningful regression guard.
 
