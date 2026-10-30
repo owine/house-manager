@@ -23,17 +23,10 @@ const POSTGRES_IMAGE = 'pgvector/pgvector:pg18';
 // renovate: datasource=docker depName=getmeili/meilisearch
 const MEILI_IMAGE = 'getmeili/meilisearch:v1.55';
 
-export type TestStack = {
-  postgres: StartedPostgreSqlContainer;
-  meili: StartedTestContainer;
-  databaseUrl: string;
-  meiliUrl: string;
-};
-
 /**
  * A bare Postgres from the stack's image, credentials and database name. The
- * stack uses it, and so does any test that needs a second, empty server --
- * e.g. restoring a dump somewhere other than where it was taken.
+ * shared server uses it, and so does any test that needs a second, empty
+ * server -- e.g. restoring a dump somewhere other than where it was taken.
  */
 function postgresContainer() {
   return new PostgreSqlContainer(POSTGRES_IMAGE)
@@ -135,18 +128,29 @@ function brokerCall(broker: string, method: string, path: string): Promise<strin
   });
 }
 
-export async function startStack(): Promise<TestStack> {
-  const postgres = await startPostgres();
-  const meili = await startMeili();
-  return {
-    postgres,
-    meili,
-    databaseUrl: postgres.getConnectionUri(),
-    meiliUrl: meiliUrlOf(meili),
-  };
-}
-
-export async function stopStack(stack: TestStack) {
-  await stack.postgres.stop();
-  await stack.meili.stop();
+/**
+ * Stop a container without letting a teardown error fail the file.
+ *
+ * testcontainers' `stop()` is `docker stop -t 0` followed by a NON-forced
+ * `docker rm`. Under load the daemon can still report the container as running
+ * when the remove lands, and the rm rejects with `(HTTP code 409) … container
+ * is running: stop the container before removing`. That rejected `afterAll`
+ * and turned whole files red after every test in them had passed -- five times
+ * on CI (notes, health, chore-auto-complete, dashboard-activity twice).
+ *
+ * Nothing is lost by swallowing it: the container was told to stop, and Ryuk
+ * (testcontainers' reaper, enabled by default) removes everything this run
+ * started when the run's session ends.
+ */
+export async function stopContainer(container: StartedTestContainer | undefined): Promise<void> {
+  if (!container) return;
+  try {
+    await container.stop();
+  } catch (err) {
+    console.warn(
+      `[integration] stopping container ${container.getId().slice(0, 12)} failed; Ryuk will reap it: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }

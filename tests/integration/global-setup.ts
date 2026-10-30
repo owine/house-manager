@@ -125,6 +125,7 @@ export default async function setup(project: TestProject) {
     const started = await shared?.catch(() => undefined);
     if (!started) return;
     await started.admin.end();
-    await started.container.stop();
+    const { stopContainer } = await import('./setup');
+    await stopContainer(started.container);
   };
 }

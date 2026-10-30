@@ -1,9 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  type IntegrationContext,
-  setupIntegration,
-  teardownIntegration,
-} from './../../tests/integration/helpers';
+import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 let ctx: IntegrationContext;
 let getHouseTimezone: () => Promise<string>;
@@ -11,7 +7,7 @@ let getHouseTimezone: () => Promise<string>;
 beforeAll(async () => {
   ctx = await setupIntegration();
   // Dynamic import to avoid the module-load DATABASE_URL trap.
-  ({ getHouseTimezone } = await import('./queries'));
+  ({ getHouseTimezone } = await import('@/lib/house-profile/queries'));
 }, 180_000);
 
 afterAll(async () => {

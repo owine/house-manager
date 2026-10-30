@@ -14,7 +14,7 @@ import {
   setupIntegration,
   teardownIntegration,
 } from './helpers';
-import { startPostgres } from './setup';
+import { startPostgres, stopContainer } from './setup';
 
 // Backups are the only recovery path, and nothing else proves a dump can be
 // restored with the hand-written SQL that `prisma migrate diff` cannot
@@ -275,7 +275,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await restored?.end();
   await source?.end();
-  await target?.stop();
+  await stopContainer(target);
   if (backupDir) await fs.rm(backupDir, { recursive: true, force: true });
   await teardownIntegration(ctx);
 });

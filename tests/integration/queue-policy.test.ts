@@ -1,6 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { startStack, stopStack, type TestStack } from './setup';
+import { acquireDatabase } from './setup';
 
 // getBoss() reads only DATABASE_URL. Mock getEnv to exactly that, like every
 // other integration file: the real getEnv() validates the WHOLE schema, which
@@ -23,15 +23,16 @@ vi.mock('@/lib/env', () => ({
  * without it this test fails the same way the unit test does.
  *
  * No Prisma/Meilisearch needed — pg-boss owns its own `pgboss` schema — so
- * this uses the lighter `startStack`/`stopStack` (see `tests/integration/
- * health.test.ts`) rather than `setupIntegration`, which also runs a full
- * Prisma migrate and starts Meilisearch.
+ * this takes just a database of its own from the shared server
+ * (`acquireDatabase`) rather than `setupIntegration`, which also starts
+ * Meilisearch. The clone has never run pg-boss, so it starts as bare as any
+ * pre-pg-boss database would.
  *
  * `@/lib/env` is mocked to return only `DATABASE_URL` (see the `vi.mock`
  * above), which `beforeAll` points at the container.
  */
 
-let stack: TestStack;
+let db: Awaited<ReturnType<typeof acquireDatabase>>;
 const bosses: PgBoss[] = [];
 
 async function trackedBoss(connectionString: string): Promise<PgBoss> {
@@ -41,16 +42,16 @@ async function trackedBoss(connectionString: string): Promise<PgBoss> {
 }
 
 beforeAll(async () => {
-  stack = await startStack();
-  process.env.DATABASE_URL = stack.databaseUrl;
+  db = await acquireDatabase();
+  process.env.DATABASE_URL = db.databaseUrl;
 }, 120_000);
 
 afterAll(async () => {
   // Stop every PgBoss instance this file started, whether or not the test
   // body reached its own cleanup, so nothing leaks a connection past the
-  // container teardown.
+  // database drop.
   await Promise.all(bosses.map((boss) => boss.stop().catch(() => {})));
-  await stopStack(stack);
+  await db?.release();
 });
 
 describe('getBoss applies its queue policy to a pre-existing database', () => {
@@ -59,7 +60,7 @@ describe('getBoss applies its queue policy to a pre-existing database', () => {
     // whatever pg-boss defaults it was created under, before this fix ever
     // ran. createQueue with no options is exactly what the pre-fix
     // `lib/queue.ts` did.
-    const preexisting = await trackedBoss(stack.databaseUrl);
+    const preexisting = await trackedBoss(db.databaseUrl);
     await preexisting.start();
     await preexisting.createQueue('embed.content');
     await preexisting.stop();

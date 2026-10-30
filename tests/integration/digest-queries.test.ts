@@ -1,11 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  type IntegrationContext,
-  setupIntegration,
-  teardownIntegration,
-} from './../../tests/integration/helpers';
-import type { DigestRow } from './group';
-import { groupBySystem } from './group';
+import type { DigestRow } from '@/lib/digests/group';
+import { groupBySystem } from '@/lib/digests/group';
+import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 let ctx: IntegrationContext;
 let userId: string;
@@ -18,7 +14,7 @@ let getWeeklyForUser: (userId: string, tz: string, now?: Date) => Promise<Digest
 beforeAll(async () => {
   ctx = await setupIntegration();
   // Dynamic import to avoid the module-load DATABASE_URL trap.
-  const mod = await import('./queries');
+  const mod = await import('@/lib/digests/queries');
   getOverdueForUser = mod.getOverdueForUser;
   getWeeklyForUser = mod.getWeeklyForUser;
 

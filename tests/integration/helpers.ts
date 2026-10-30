@@ -30,7 +30,7 @@ function createTestPrismaClient(adapter: PrismaPg) {
 }
 
 import { Meilisearch, type Task } from 'meilisearch';
-import { acquireDatabase, meiliUrlOf, startMeili } from './setup';
+import { acquireDatabase, meiliUrlOf, startMeili, stopContainer } from './setup';
 
 /**
  * Wait for a Meilisearch task AND assert it succeeded.
@@ -81,7 +81,7 @@ export async function setupIntegration(): Promise<IntegrationContext> {
   const prisma = createTestPrismaClient(adapter);
   const meili = new Meilisearch({ host: stack.meiliUrl, apiKey: 'test' });
   const release = async () => {
-    await Promise.all([db.release(), meiliContainer.stop()]);
+    await Promise.all([db.release(), stopContainer(meiliContainer)]);
   };
   return { stack, prisma, meili, release };
 }
