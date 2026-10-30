@@ -199,30 +199,77 @@ export function isOverdue(nextDueOn: CalendarDate, now: Instant, tz: string): bo
   return nextDueOn.getTime() < startOfDayUtc(now, tz).getTime();
 }
 
-/**
- * The UTC instant at which the wall clock in `tz` reads `wall`.
- *
- * The offset is read at the target itself: a first guess from the offset at
- * the naive instant, then the offset at that guess. Reading it at any other
- * instant (`now`, the day's UTC midnight) is off by the DST shift whenever a
- * transition falls in between -- which put quiet-hours deferrals an hour out
- * on both transition nights.
- *
- * A wall time inside a spring-forward gap does not exist; it resolves to an
- * instant on that day on one side of the gap. A time that fall-back repeats
- * resolves to one of its two occurrences.
- */
-export function wallClockToUtc(
-  wall: Pick<TzParts, 'year' | 'month' | 'day' | 'hour' | 'minute'>,
-  tz: string,
-): Date {
-  const naive = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
-  const guess = naive - tzOffsetMinutes(new Date(naive), tz) * 60_000;
-  return new Date(naive - tzOffsetMinutes(new Date(guess), tz) * 60_000);
-}
-
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
+
+type WallClock = Pick<TzParts, 'year' | 'month' | 'day' | 'hour' | 'minute'>;
+
+/**
+ * Every instant at which the wall clock in `tz` reads `wall`, earliest first.
+ * Usually one; two when fall-back repeats the time. A time inside a
+ * spring-forward gap never appears on the clock, so it resolves to the jump
+ * past it: the first instant the clock reads later than `wall`. That is when
+ * a wall-clock window ending at `wall` actually ends.
+ *
+ * Each candidate offset is checked at the instant it produces, so nothing
+ * here reads the offset at some other instant (`now`, the day's midnight),
+ * which is off by the DST shift whenever a transition falls in between.
+ */
+function instantsAtWallClock(wall: WallClock, tz: string): number[] {
+  const naive = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+  // Offsets either side of any transition near this date. Assumes no zone
+  // changes its offset twice within two days, which none does.
+  const earlier = tzOffsetMinutes(new Date(naive - DAY_MS), tz);
+  const later = tzOffsetMinutes(new Date(naive + DAY_MS), tz);
+  if (earlier === later) return [naive - earlier * 60_000];
+
+  // A candidate counts only if the zone really is on that offset there. Both
+  // count only in an overlap, where `earlier` > `later`, so this is in order.
+  const found: number[] = [];
+  for (const offset of [earlier, later]) {
+    const t = naive - offset * 60_000;
+    if (tzOffsetMinutes(new Date(t), tz) === offset) found.push(t);
+  }
+  if (found.length > 0) return found;
+
+  // Gap: `lo` reads before the gap on the old offset, `hi` past it on the new.
+  // Bisect for the transition, the first instant on the new offset.
+  let lo = naive - later * 60_000;
+  let hi = naive - earlier * 60_000;
+  while (hi - lo > 1) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (tzOffsetMinutes(new Date(mid), tz) === later) hi = mid;
+    else lo = mid;
+  }
+  return [hi];
+}
+
+/**
+ * The UTC instant at which the wall clock in `tz` reads `wall`: the first
+ * occurrence of a time fall-back repeats, the jump past a time inside a
+ * spring-forward gap.
+ */
+export function wallClockToUtc(wall: WallClock, tz: string): Date {
+  return new Date(instantsAtWallClock(wall, tz)[0]);
+}
+
+/**
+ * The first instant strictly after `after` at which the wall clock in `tz`
+ * reads `hour`:`minute` (resolved as in wallClockToUtc). Steps days by
+ * calendar date, not by 24h, which is a 23h or 25h day across a transition.
+ * Tomorrow's occurrence is always after `after`, so two days suffice.
+ */
+export function nextWallClockAfter(after: Date, hour: number, minute: number, tz: string): Date {
+  const { year, month, day } = tzParts(after, tz);
+  for (const offsetDays of [0, 1]) {
+    // Date.UTC rolls month/year overflow, so day + 1 is safe at month end.
+    const d = new Date(Date.UTC(year, month - 1, day + offsetDays));
+    const wall = { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+    const t = instantsAtWallClock({ ...wall, hour, minute }, tz).find((i) => i > after.getTime());
+    if (t !== undefined) return new Date(t);
+  }
+  throw new Error(`nextWallClockAfter: no ${hour}:${minute} after ${after.toISOString()} in ${tz}`);
+}
 
 /**
  * The last millisecond of the house day that `calendarDate` represents (a

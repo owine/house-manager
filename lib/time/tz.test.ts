@@ -5,6 +5,7 @@ import {
   endOfCalendarDayInTz,
   isOverdue,
   isoWeek,
+  nextWallClockAfter,
   startOfDayUtc,
   tzOffsetMinutes,
   tzParts,
@@ -240,6 +241,16 @@ const sweepDays = (): CalendarDate[] => {
   return days;
 };
 
+// Local times that transitions skip or repeat somewhere in SWEEP_ZONES.
+const TRANSITION_HOURS = [
+  [0, 0],
+  [0, 30],
+  [1, 30],
+  [2, 0],
+  [2, 30],
+  [3, 0],
+] as const;
+
 describe.each(SWEEP_ZONES)('day boundaries in %s', (tz) => {
   it('endOfCalendarDayInTz is the last millisecond of that house day, every day', () => {
     const wrong: string[] = [];
@@ -250,6 +261,28 @@ describe.each(SWEEP_ZONES)('day boundaries in %s', (tz) => {
         startOfDayUtc(new Date(eod.getTime() + 1), tz).getTime() === day.getTime() + DAY_MS;
       if (!sameDay || !nextMsIsTomorrow)
         wrong.push(`${day.toISOString().slice(0, 10)} -> ${eod.toISOString()}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('wallClockToUtc lands on the wall clock, or on the jump past it inside a gap', () => {
+    // Transitions happen at 00:xx-03:xx local, so sweep those half-hours. A
+    // naive Date.UTC of the parts orders wall clocks across midnight too.
+    const naive = (p: { year: number; month: number; day: number; hour: number; minute: number }) =>
+      Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+    const wrong: string[] = [];
+    for (const day of sweepDays()) {
+      const [y, m, d] = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate()];
+      for (const [hour, minute] of TRANSITION_HOURS) {
+        const wall = { year: y, month: m, day: d, hour, minute };
+        const at = wallClockToUtc(wall, tz);
+        const reads = naive(tzParts(at, tz));
+        const ok =
+          reads === naive(wall) ||
+          (naive(tzParts(new Date(at.getTime() - 1), tz)) < naive(wall) && reads > naive(wall));
+        if (!ok)
+          wrong.push(`${day.toISOString().slice(0, 10)} ${hour}:${minute} -> ${at.toISOString()}`);
+      }
     }
     expect(wrong).toEqual([]);
   });
@@ -290,9 +323,45 @@ describe('wallClockToUtc', () => {
     ).toBe('2026-11-01T13:00:00.000Z');
   });
 
-  it('resolves a time inside the spring-forward gap to a real instant on that day', () => {
-    // 02:30 does not exist in Chicago on 2026-03-08; any answer must still be that day.
-    const at = wallClockToUtc({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 }, CHI);
-    expect(startOfDayUtc(at, CHI).toISOString()).toBe('2026-03-08T00:00:00.000Z');
+  it('resolves a time inside the spring-forward gap to the jump past it', () => {
+    // 02:30 does not exist in Chicago on 2026-03-08: the clock goes 01:59 CST
+    // -> 03:00 CDT at 08:00Z, the first instant the clock reads past 02:30.
+    expect(
+      wallClockToUtc({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 }, CHI).toISOString(),
+    ).toBe('2026-03-08T08:00:00.000Z');
+  });
+
+  it('resolves a time that fall-back repeats to its first occurrence', () => {
+    // 01:30 happens at 06:30Z (CDT) and again at 07:30Z (CST).
+    expect(
+      wallClockToUtc({ year: 2026, month: 11, day: 1, hour: 1, minute: 30 }, CHI).toISOString(),
+    ).toBe('2026-11-01T06:30:00.000Z');
+  });
+});
+
+describe('nextWallClockAfter', () => {
+  it('returns today when the time is still ahead', () => {
+    expect(nextWallClockAfter(new Date('2026-07-01T10:00:00Z'), 7, 0, CHI).toISOString()).toBe(
+      '2026-07-01T12:00:00.000Z',
+    );
+  });
+
+  it('rolls to the next calendar day, across a month end and a DST change', () => {
+    // 08:00 CDT Oct-31 -> 07:00 CST Nov-1, 25 hours later.
+    expect(nextWallClockAfter(new Date('2026-10-31T13:00:00Z'), 7, 0, CHI).toISOString()).toBe(
+      '2026-11-01T13:00:00.000Z',
+    );
+  });
+
+  it('takes the second occurrence of a repeated time once the first has passed', () => {
+    expect(nextWallClockAfter(new Date('2026-11-01T07:15:00Z'), 1, 30, CHI).toISOString()).toBe(
+      '2026-11-01T07:30:00.000Z',
+    );
+  });
+
+  it('is strictly after: exactly at the time means the next occurrence', () => {
+    expect(nextWallClockAfter(new Date('2026-07-01T12:00:00Z'), 7, 0, CHI).toISOString()).toBe(
+      '2026-07-02T12:00:00.000Z',
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { tzParts, wallClockToUtc } from '@/lib/time/tz';
+import { nextWallClockAfter, tzParts } from '@/lib/time/tz';
 import type { NotificationPrefs } from './prefs';
 
 function parseHM(hm: string): { h: number; m: number } {
@@ -29,33 +29,17 @@ export function isInQuietWindow(now: Date, prefs: NotificationPrefs, tz: string)
 }
 
 /**
- * If `now` is inside the quiet window, return the UTC instant corresponding to
- * the next `quietEnd` wall-clock time in the house timezone `tz`; otherwise
+ * If `now` is inside the quiet window, return the next instant after `now` at
+ * which the wall clock in the house timezone `tz` reads `quietEnd`; otherwise
  * return `now`.
  *
- * Both candidates are converted with wallClockToUtc, which reads the offset at
- * quietEnd itself. Using now's offset, or adding 24h to step a day, put the
- * deferral an hour out on DST nights (06:00 on fall-back, 08:00 on spring-forward).
+ * nextWallClockAfter does the DST work: it reads the offset at quietEnd itself
+ * (now's offset put deferrals an hour out on transition nights), takes the
+ * second pass of a repeated quietEnd once the first is behind `now`, and
+ * releases a quietEnd inside a spring-forward gap when the clock jumps past it.
  */
 export function nextNonQuietTime(now: Date, prefs: NotificationPrefs, tz: string): Date {
   if (!prefs.quietEnd || !isInQuietWindow(now, prefs, tz)) return now;
   const end = parseHM(prefs.quietEnd);
-
-  // Wall-clock Y/M/D in the house timezone.
-  const { year, month, day } = tzParts(now, tz);
-  const today = wallClockToUtc({ year, month, day, hour: end.h, minute: end.m }, tz);
-  if (today.getTime() > now.getTime()) return today;
-  // End time already passed today: the same wall clock on the next calendar
-  // day. Date.UTC rolls month/year overflow, so day + 1 is safe at month end.
-  const next = new Date(Date.UTC(year, month - 1, day + 1));
-  return wallClockToUtc(
-    {
-      year: next.getUTCFullYear(),
-      month: next.getUTCMonth() + 1,
-      day: next.getUTCDate(),
-      hour: end.h,
-      minute: end.m,
-    },
-    tz,
-  );
+  return nextWallClockAfter(now, end.h, end.m, tz);
 }
