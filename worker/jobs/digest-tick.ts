@@ -11,6 +11,26 @@ import { isoWeek, tzParts } from '@/lib/time/tz';
 type DigestKind = 'overdue' | 'weekly';
 
 /**
+ * Hours after the chosen one in which a digest may still go out, so a missed
+ * hour does not mean a missed digest. The chosen hour can be skipped outright
+ * (02:00 on spring-forward Sunday in Chicago, where ticks read 01:30 then
+ * 03:00), and a worker down across both of its ticks used to lose that day's
+ * or week's digest. DigestLog's unique (userId, kind, cycle) makes every later
+ * tick in the window a no-op, so it still sends once.
+ */
+const CATCH_UP_HOURS = 3;
+
+/**
+ * True from `chosen` until CATCH_UP_HOURS later, on the same house day. It does
+ * not wrap past midnight: the cycle key is the house date (or ISO week), so a
+ * 23:00 digest caught up at 00:30 would be filed as the NEXT day's and then
+ * send again at that day's 23:00.
+ */
+function inSendWindow(hour: number, chosen: number): boolean {
+  return hour >= chosen && hour < chosen + CATCH_UP_HOURS;
+}
+
+/**
  * Local-time parts for "now" in the given tz. `week` is the ISO week key (YYYY-Www).
  */
 function localParts(timezone: string): { hour: number; day: number; date: string; week: string } {
@@ -88,14 +108,15 @@ export async function handleDigestTick(): Promise<void> {
 
     try {
       const local = localParts(tz);
-      const overdueDue = prefs.overdueDigestEnabled && local.hour === prefs.overdueDigestHour;
+      const overdueDue =
+        prefs.overdueDigestEnabled && inSendWindow(local.hour, prefs.overdueDigestHour);
       const weeklyDue =
         prefs.weeklySummaryEnabled &&
         local.day === prefs.weeklySummaryDay &&
-        local.hour === prefs.weeklySummaryHour;
+        inSendWindow(local.hour, prefs.weeklySummaryHour);
 
       if (!env.APP_URL) {
-        // Log a skipped row only for the kinds that would have fired this hour,
+        // Log a skipped row only for the kinds whose window is open now,
         // so the user sees exactly why no email arrived (no spurious rows).
         const skips: Array<[DigestKind, string]> = [];
         if (overdueDue) skips.push(['overdue', local.date]);

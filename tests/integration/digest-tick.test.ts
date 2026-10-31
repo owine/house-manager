@@ -181,3 +181,90 @@ describe('handleDigestTick — weekly path', () => {
     expect(log?.status).toBe('sent');
   });
 });
+
+describe('handleDigestTick — catch-up window (house in Chicago)', () => {
+  const tickAt = async (iso: string) => {
+    vi.setSystemTime(new Date(iso));
+    await handleDigestTick();
+  };
+  const setPrefs = (prefs: Record<string, unknown>) =>
+    ctx.prisma.user.update({
+      where: { id: userId },
+      data: { notificationPrefs: { emailEnabled: true, ...prefs } },
+    });
+  const sentKinds = async () =>
+    (await ctx.prisma.digestLog.findMany({ where: { userId, status: 'sent' } }))
+      .map((l) => `${l.kind}:${l.cycle}`)
+      .sort();
+
+  beforeEach(async () => {
+    await ctx.prisma.houseProfile.deleteMany();
+    await ctx.prisma.houseProfile.create({ data: { timezone: 'America/Chicago' } });
+  });
+  afterEach(async () => {
+    await ctx.prisma.houseProfile.deleteMany();
+  });
+
+  it('a 02:00 digest still goes out on spring-forward Sunday, when 02:00 never happens', async () => {
+    // Sun 2027-03-14 in Chicago: ticks read 01:00, 01:30, then 03:00 CDT.
+    vi.setSystemTime(new Date('2027-03-14T07:00:00Z'));
+    await seedOverdue();
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Upcoming',
+        recurrence: { kind: 'NONE' },
+        notifyUserIds: [userId],
+        active: true,
+        targets: { create: [{ itemId, nextDueOn: calDaysOut(3) }] },
+      },
+    });
+    await setPrefs({
+      overdueDigestEnabled: true,
+      overdueDigestHour: 2,
+      weeklySummaryEnabled: true,
+      weeklySummaryDay: 0,
+      weeklySummaryHour: 2,
+    });
+
+    for (const t of ['07:00', '07:30', '08:00', '08:30']) await tickAt(`2027-03-14T${t}:00Z`);
+
+    expect(await sentKinds()).toEqual(['overdue:2027-03-14', 'weekly:2027-W10']);
+    expect(sentEmails).toHaveLength(2);
+  });
+
+  it('catches up after missed ticks in the chosen hour, once', async () => {
+    // The worker was down for 08:00 and 08:30 CDT; it is back at 10:00. Both
+    // ticks below are inside the 08:00-10:59 window, so only DigestLog's
+    // dedupe stops the second one from sending again.
+    vi.setSystemTime(new Date('2026-07-15T15:00:00Z'));
+    await seedOverdue();
+    await setPrefs({ overdueDigestEnabled: true, overdueDigestHour: 8 });
+
+    await tickAt('2026-07-15T15:00:00Z'); // 10:00 CDT
+    await tickAt('2026-07-15T15:30:00Z'); // 10:30 CDT
+
+    expect(sentEmails).toHaveLength(1);
+    expect(await sentKinds()).toEqual(['overdue:2026-07-15']);
+  });
+
+  it('does not send before the chosen hour, or after the catch-up window closes', async () => {
+    vi.setSystemTime(new Date('2026-07-15T12:30:00Z'));
+    await seedOverdue();
+    await setPrefs({ overdueDigestEnabled: true, overdueDigestHour: 8 });
+
+    await tickAt('2026-07-15T12:30:00Z'); // 07:30 CDT, too early
+    await tickAt('2026-07-15T16:00:00Z'); // 11:00 CDT, window closed
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it('does not wrap past midnight into the next day’s cycle', async () => {
+    // A 23:00 digest caught up at 00:30 would be filed under the NEXT day,
+    // and that day's own 23:00 send would make two.
+    vi.setSystemTime(new Date('2026-07-16T05:30:00Z'));
+    await seedOverdue();
+    await setPrefs({ overdueDigestEnabled: true, overdueDigestHour: 23 });
+
+    await tickAt('2026-07-16T05:30:00Z'); // 00:30 CDT Jul 16
+    expect(sentEmails).toHaveLength(0);
+  });
+});
