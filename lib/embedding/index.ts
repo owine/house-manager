@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { EmbeddingEntityType } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
+import { startOfDayUtc } from '@/lib/time/tz';
 import {
   canonicalizeAttachment,
   canonicalizeChecklistItem,
@@ -194,7 +196,11 @@ async function buildCanonical(
         title: note.title,
         body: note.body,
         parent,
-        createdAt: note.createdAt,
+        // createdAt is an instant; sliced as-is, a note written after 7pm
+        // Chicago was embedded as created TOMORROW. Only those evening notes'
+        // text (and contentHash) changed with this, so embed.backfill
+        // re-embedded just them.
+        createdOn: startOfDayUtc(note.createdAt, await getHouseTimezone()),
       });
     }
     case 'SERVICE_RECORD': {

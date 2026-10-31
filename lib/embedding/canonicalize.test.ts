@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { calendarDate } from '@/lib/time/tz';
 
 import {
   canonicalizeAttachment,
@@ -95,8 +96,9 @@ describe('canonicalizeNote', () => {
       title: 'Furnace tune-up notes',
       body: 'Tech said the blower wheel is dirty.',
       parent: { kind: 'item', name: 'Carrier 58STA' },
-      createdAt: new Date('2026-04-12'),
+      createdOn: calendarDate(2026, 4, 12),
     });
+    expect(out).toContain('Created: 2026-04-12');
     expect(out).toContain('Note: Furnace tune-up notes');
     expect(out).toContain('Linked to item: Carrier 58STA');
     expect(out).toContain('blower wheel');
