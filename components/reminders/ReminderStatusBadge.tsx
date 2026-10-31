@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { isSentinelDate } from '@/lib/reminders/recurrence';
 import { type CalendarDate, isOverdue, startOfDayUtc } from '@/lib/time/tz';
 
 type Props = {
@@ -14,6 +15,14 @@ export function ReminderStatusBadge({ nextDueOn, active, tz, now = new Date() }:
     return (
       <Badge variant="secondary" data-testid="reminder-due-badge">
         Inactive
+      </Badge>
+    );
+  }
+  // A done one-time reminder stays active with the FAR_FUTURE sentinel due date.
+  if (isSentinelDate(nextDueOn)) {
+    return (
+      <Badge variant="secondary" data-testid="reminder-due-badge">
+        Completed
       </Badge>
     );
   }

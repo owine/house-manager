@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatCalendarDate } from '@/lib/format/date';
 import type { getPart } from '@/lib/parts/queries';
+import { formatNextDue } from '@/lib/reminders/display';
 
 type Part = NonNullable<Awaited<ReturnType<typeof getPart>>>;
 
@@ -34,7 +34,7 @@ export function RemindersTab({ part }: Props) {
                 )}
               </span>
               <span className="text-sm text-muted-foreground">
-                {formatCalendarDate(target.nextDueOn)}
+                {formatNextDue(target.nextDueOn)}
               </span>
             </li>
           ))}

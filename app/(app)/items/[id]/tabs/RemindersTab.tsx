@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { GenerateRemindersButton } from '@/components/ai/GenerateRemindersButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCalendarDate } from '@/lib/format/date';
 import type { getItem } from '@/lib/items/queries';
+import { formatNextDue } from '@/lib/reminders/display';
 
 type Item = NonNullable<Awaited<ReturnType<typeof getItem>>>;
 
@@ -38,9 +38,7 @@ export function RemindersTab({ item }: Props) {
                 >
                   {r.title}
                 </Link>
-                <span className="text-sm text-muted-foreground">
-                  {formatCalendarDate(r.nextDueOn)}
-                </span>
+                <span className="text-sm text-muted-foreground">{formatNextDue(r.nextDueOn)}</span>
               </li>
             ))}
           </ul>

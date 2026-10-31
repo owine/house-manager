@@ -16,6 +16,7 @@ import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
 import { listOrphanItems } from '@/lib/items/queries';
 import { listPartsForParent, listPartsForPicker } from '@/lib/parts/queries';
 import { getRemindersForSystem } from '@/lib/reminders/queries';
+import { isSentinelDate } from '@/lib/reminders/recurrence';
 import { getServiceRecordsForSystem } from '@/lib/service-records/queries';
 import {
   archiveSystem,
@@ -120,6 +121,9 @@ export default async function SystemDetailPage({ params }: { params: Params }) {
     });
   }
   for (const r of reminders) {
+    // A done one-time reminder has no date to place on the timeline (its due
+    // date is the FAR_FUTURE sentinel); its completion is its own entry.
+    if (r.nextDueOn && isSentinelDate(r.nextDueOn)) continue;
     const { chips, hasSystemTarget, hasItemTarget } = buildTargets(id, r.targets);
     events.push({
       id: r.id,

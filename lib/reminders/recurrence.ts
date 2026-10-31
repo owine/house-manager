@@ -11,14 +11,14 @@
 
 import type { Weekday } from 'rrule';
 import * as rruleNs from 'rrule';
-import type { CalendarDate } from '@/lib/time/tz';
+import { asCalendarDate, type CalendarDate } from '@/lib/time/tz';
 import type { Recurrence } from './schema';
 
 const { RRule } = ((rruleNs as unknown as { default?: typeof rruleNs }).default ??
   rruleNs) as typeof rruleNs;
 
 const DAY_MS = 86_400_000;
-export const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
+export const FAR_FUTURE = asCalendarDate(new Date('9999-12-31T00:00:00.000Z'));
 
 /** True when a date is the "never re-fires" sentinel a completed one-shot carries. */
 export function isSentinelDate(d: Date): boolean {

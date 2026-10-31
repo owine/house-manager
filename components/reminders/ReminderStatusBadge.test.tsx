@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { FAR_FUTURE } from '@/lib/reminders/recurrence';
 import { asCalendarDate, type CalendarDate, calendarDate } from '@/lib/time/tz';
 import { ReminderStatusBadge } from './ReminderStatusBadge';
 
@@ -14,6 +15,12 @@ describe('ReminderStatusBadge', () => {
     const badge = screen.getByTestId('reminder-due-badge');
     expect(badge).not.toHaveTextContent('Overdue');
     expect(badge).toHaveTextContent('Due today');
+  });
+
+  it('renders Completed for a done one-time reminder, not "In 2914xxxd"', () => {
+    const now = new Date('2026-05-27T15:00:00Z');
+    render(<ReminderStatusBadge nextDueOn={FAR_FUTURE} active={true} tz="UTC" now={now} />);
+    expect(screen.getByTestId('reminder-due-badge')).toHaveTextContent('Completed');
   });
 
   it('renders Overdue when due is yesterday in tz', () => {
