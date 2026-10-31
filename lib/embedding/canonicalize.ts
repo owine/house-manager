@@ -1,6 +1,7 @@
 import type { PartKind, Prisma } from '@prisma/client';
 import { isReservedMetadataKey, visibleMetadataEntries } from '@/lib/metadata/reserved-keys';
 import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
+import type { CalendarDate } from '@/lib/time/tz';
 
 // Canonical text builders for each entity type. The output is what gets
 // embedded by Voyage AND what the Ask LLM sees as context. Two design rules:
@@ -37,7 +38,8 @@ export type NoteForCanonical = {
     kind: 'item' | 'system' | 'vendor' | 'serviceRecord';
     name: string;
   } | null;
-  createdAt?: Date | null;
+  /** The house day the note was written: startOfDayUtc(createdAt, tz), not createdAt. */
+  createdOn?: CalendarDate | null;
 };
 
 export type ServiceRecordForCanonical = {
@@ -164,7 +166,7 @@ export function canonicalizeNote(note: NoteForCanonical): string {
   const lines: Array<string | null> = [
     `Note: ${note.title}`,
     note.parent ? `Linked to ${note.parent.kind}: ${note.parent.name}` : null,
-    note.createdAt ? `Created: ${fmtDate(note.createdAt)}` : null,
+    note.createdOn ? `Created: ${fmtDate(note.createdOn)}` : null,
     '---',
     note.body ?? null,
   ];
