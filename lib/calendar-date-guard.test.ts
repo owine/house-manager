@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { assertCalendarDateWrite } from './calendar-date-guard';
+import { assertCalendarDateWrite, CALENDAR_DATE_FIELDS } from './calendar-date-guard';
 
 const cal = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 const EVENING_IN_CHICAGO = new Date('2026-07-15T01:00:00Z'); // 20:00 CDT Jul 14
@@ -132,5 +133,25 @@ describe('nested relation writes', () => {
     expect(() =>
       assertCalendarDateWrite('Reminder', { targets: { connect: [{ id: 't' }] } }),
     ).not.toThrow();
+  });
+});
+
+describe('CALENDAR_DATE_FIELDS', () => {
+  it('lists exactly the @db.Date columns in schema.prisma', () => {
+    // The DMMF does not expose native types, so read the schema itself. A new
+    // `date` column missing from the map would leave the guard blind to it.
+    // [ \t], not \s: \s crosses the newline and pairs a field with the next line's @db.Date.
+    const schema = readFileSync(new URL('../prisma/schema.prisma', import.meta.url), 'utf8');
+    const fromSchema: Record<string, string[]> = {};
+    for (const [, model, body] of schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)) {
+      const fields = [...body.matchAll(/^[ \t]*(\w+)[ \t]+DateTime\??[ \t].*@db\.Date\b/gm)].map(
+        (m) => m[1],
+      );
+      if (fields.length > 0) fromSchema[model] = fields.sort();
+    }
+    const fromMap = Object.fromEntries(
+      Object.entries(CALENDAR_DATE_FIELDS).map(([model, fields]) => [model, [...fields].sort()]),
+    );
+    expect(fromMap).toEqual(fromSchema);
   });
 });

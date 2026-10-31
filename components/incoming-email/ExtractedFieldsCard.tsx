@@ -1,6 +1,7 @@
 import { Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
+import { formatCalendarDate } from '@/lib/format/date';
 import type { ExtractionView } from '@/lib/incoming-email/queries';
 import { Markdown } from '@/lib/markdown';
 
@@ -67,9 +68,8 @@ export function ExtractedFieldsCard({ extraction }: Props) {
         {extraction.performedOn !== null && (
           <div className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1">
             <span className="text-muted-foreground">Service date</span>
-            <span className="font-medium">
-              <LocalDate iso={extraction.performedOn.toISOString()} />
-            </span>
+            {/* A calendar date: LocalDate would show it in the viewer's timezone, a day early in the US. */}
+            <span className="font-medium">{formatCalendarDate(extraction.performedOn)}</span>
           </div>
         )}
         {extraction.scope !== null && (

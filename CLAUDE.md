@@ -321,8 +321,13 @@ Two defenses exist, and both need maintaining when you add a `@db.Date` column:
    extension in `lib/prisma-extensions.ts`. Add new date columns to that branding map.
 2. The runtime write guard in `lib/calendar-date-guard.ts`, which recurses into nested
    relation writes (`reminder.create({ data: { targets: { create: [{ nextDueOn }] } } })`
-   is exactly how targets are made). Add new columns to `CALENDAR_DATE_FIELDS` or the
-   guard is silently blind to them.
+   is exactly how targets are made). Add new columns to `CALENDAR_DATE_FIELDS`;
+   `lib/calendar-date-guard.test.ts` fails until the map matches the schema's
+   `@db.Date` columns.
+
+Both key off `@db.Date`, so **a column that holds a day must be `@db.Date`**. A day kept
+in a plain `DateTime` escapes both: `IncomingEmail.aiExtractedPerformedOn` did, and the
+inbox showed every extracted service date a day early in US browsers.
 
 `getHouseTimezone()` (`lib/house-profile/queries.ts`) reads the singleton
 `HouseProfile.timezone` and answers exactly one question: *what day is it now*. For

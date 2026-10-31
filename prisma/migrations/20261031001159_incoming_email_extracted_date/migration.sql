@@ -1,0 +1,12 @@
+-- incoming_emails.aiExtractedPerformedOn holds a calendar date (the model's
+-- YYYY-MM-DD, parsed to UTC midnight), but was a `timestamp`, so the
+-- CalendarDate brand and write guard never applied to it, and the inbox showed
+-- it in the viewer's timezone: a day early anywhere west of UTC.
+--
+-- The cast is exact. The column's only writer (worker/jobs/classify-incoming-email)
+-- has always stored `${YYYY-MM-DD}T00:00:00Z`, so every value is UTC midnight
+-- and has no time component for `::date` to drop.
+--
+-- Prisma's generated diff also dropped "embeddings_embedding_cosine_idx", the
+-- hand-written IVFFlat index it cannot model. Removed; do not re-add.
+ALTER TABLE "incoming_emails" ALTER COLUMN "aiExtractedPerformedOn" TYPE date USING "aiExtractedPerformedOn"::date;
