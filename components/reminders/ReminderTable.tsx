@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCalendarDate } from '@/lib/format/date';
+import { formatNextDue } from '@/lib/reminders/display';
 import type { CalendarDate } from '@/lib/time/tz';
 import { ReminderStatusBadge } from './ReminderStatusBadge';
 
@@ -47,7 +47,7 @@ export function ReminderTable({ reminders, tz }: { reminders: Row[]; tz: string 
             <TableCell>
               <TargetsChips targets={r.targets} />
             </TableCell>
-            <TableCell>{r.nextDueOn ? formatCalendarDate(r.nextDueOn) : '—'}</TableCell>
+            <TableCell>{formatNextDue(r.nextDueOn)}</TableCell>
             <TableCell>
               {r.nextDueOn ? (
                 <ReminderStatusBadge nextDueOn={r.nextDueOn} active={r.active} tz={tz} />

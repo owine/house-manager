@@ -8,6 +8,7 @@ import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { updateReminder } from '@/lib/reminders/actions';
 import { getReminder } from '@/lib/reminders/queries';
+import { isSentinelDate } from '@/lib/reminders/recurrence';
 import { parseRecurrence } from '@/lib/reminders/schema';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
 import { toTargetInputs } from '@/lib/targets/schema';
@@ -39,7 +40,12 @@ export default async function EditReminderPage({ params }: { params: Params }) {
   // house day), never `new Date()`: that instant is submitted untouched and the
   // calendar-date write guard rejects it (see CLAUDE.md, "Calendar dates are
   // not instants").
-  const nextDueOn = r.nextDueOn ?? startOfDayUtc(new Date(), await getHouseTimezone());
+  // A done one-time reminder's FAR_FUTURE sentinel falls back the same way, so
+  // editing re-arms it from today instead of pre-filling 9999-12-31.
+  const nextDueOn =
+    r.nextDueOn && !isSentinelDate(r.nextDueOn)
+      ? r.nextDueOn
+      : startOfDayUtc(new Date(), await getHouseTimezone());
   return (
     <FormPageShell header={<PageHeader title={isChore ? 'Edit chore' : 'Edit reminder'} />}>
       <ReminderForm

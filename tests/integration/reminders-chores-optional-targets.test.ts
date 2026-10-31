@@ -186,3 +186,85 @@ describe('chore reconciliation', () => {
     expect(targets[0].systemId).toBeNull();
   });
 });
+
+describe('editing the due date with the targets unchanged (what the edit form sends)', () => {
+  const dueOf = async (reminderId: string) =>
+    (
+      await ctx.prisma.reminderTarget.findMany({
+        where: { reminderId },
+        orderBy: { nextDueOn: 'asc' },
+        select: { nextDueOn: true },
+      })
+    ).map((t) => t.nextDueOn.toISOString().slice(0, 10));
+
+  it('moves the kept targets to the new date', async () => {
+    const item = await seedItem('Furnace');
+    const r = await actions.createReminder({
+      title: 'Filter',
+      kind: 'REMINDER',
+      targets: [{ itemId: item.id }],
+      recurrence: { kind: 'interval', every: 90, unit: 'day' },
+      nextDueOn: new Date('2026-06-01'),
+    });
+    if (!r.ok) throw new Error('create failed');
+
+    const u = await actions.updateReminder({
+      id: r.data.id,
+      kind: 'REMINDER',
+      targets: [{ itemId: item.id }],
+      nextDueOn: new Date('2026-07-15'),
+    });
+    expect(u).toMatchObject({ ok: true });
+    expect(await dueOf(r.data.id)).toEqual(['2026-07-15']);
+  });
+
+  it('leaves per-target dates alone when the shown (earliest) date was not changed', async () => {
+    const a = await seedItem('A');
+    const b = await seedItem('B');
+    const r = await actions.createReminder({
+      title: 'Two',
+      kind: 'REMINDER',
+      targets: [{ itemId: a.id }, { itemId: b.id }],
+      recurrence: { kind: 'interval', every: 90, unit: 'day' },
+      nextDueOn: new Date('2026-06-01'),
+    });
+    if (!r.ok) throw new Error('create failed');
+    await ctx.prisma.reminderTarget.updateMany({
+      where: { reminderId: r.data.id, itemId: b.id },
+      data: { nextDueOn: new Date('2026-09-01') },
+    });
+
+    const u = await actions.updateReminder({
+      id: r.data.id,
+      kind: 'REMINDER',
+      title: 'Two, renamed',
+      targets: [{ itemId: a.id }, { itemId: b.id }],
+      nextDueOn: new Date('2026-06-01'),
+    });
+    expect(u).toMatchObject({ ok: true });
+    expect(await dueOf(r.data.id)).toEqual(['2026-06-01', '2026-09-01']);
+  });
+
+  it('re-arms a completed one-time reminder from the date the form offers', async () => {
+    const item = await seedItem('Gutter');
+    const r = await actions.createReminder({
+      title: 'Once',
+      kind: 'REMINDER',
+      targets: [{ itemId: item.id }],
+      recurrence: { kind: 'once' },
+      nextDueOn: new Date('2026-06-01'),
+    });
+    if (!r.ok) throw new Error('create failed');
+    expect((await actions.completeReminder({ id: r.data.id })).ok).toBe(true);
+    expect(await dueOf(r.data.id)).toEqual(['9999-12-31']);
+
+    const u = await actions.updateReminder({
+      id: r.data.id,
+      kind: 'REMINDER',
+      targets: [{ itemId: item.id }],
+      nextDueOn: new Date('2026-08-01'),
+    });
+    expect(u).toMatchObject({ ok: true });
+    expect(await dueOf(r.data.id)).toEqual(['2026-08-01']);
+  });
+});

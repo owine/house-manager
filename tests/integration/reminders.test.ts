@@ -227,3 +227,26 @@ describe('listReminders ordering', () => {
     expect(reminders.map((r) => r.title)).toEqual(['Early', 'Middle', 'Late']);
   });
 });
+
+describe('listUpcomingReminders', () => {
+  it('leaves out a completed one-time reminder (the 9999-12-31 sentinel)', async () => {
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Done once',
+        recurrence: { kind: 'once' },
+        notifyUserIds: [userId],
+        targets: { create: [{ itemId, nextDueOn: new Date('9999-12-31') }] },
+      },
+    });
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Soon',
+        recurrence: { kind: 'interval', days: 30 },
+        notifyUserIds: [userId],
+        targets: { create: [{ itemId, nextDueOn: new Date('2026-12-01') }] },
+      },
+    });
+    const upcoming = await queries.listUpcomingReminders(5);
+    expect(upcoming.map((r) => r.title)).toEqual(['Soon']);
+  });
+});

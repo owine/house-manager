@@ -14,7 +14,7 @@ import { getHouseProfile } from '@/lib/house-profile/queries';
 import { Markdown } from '@/lib/markdown';
 import { describeRecurrence } from '@/lib/reminders/describe';
 import { getReminder } from '@/lib/reminders/queries';
-import { previewOccurrences } from '@/lib/reminders/recurrence';
+import { isSentinelDate, previewOccurrences } from '@/lib/reminders/recurrence';
 import { parseRecurrence } from '@/lib/reminders/schema';
 
 type Params = Promise<{ id: string }>;
@@ -32,9 +32,11 @@ export default async function ReminderDetailPage({ params }: { params: Params })
   const houseTimezone = (await getHouseProfile())?.timezone ?? 'UTC';
 
   const recurrence = parseRecurrence(r.recurrence);
-  const occurrences = r.nextDueOn
-    ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
-    : [];
+  // A done one-time reminder carries the FAR_FUTURE sentinel: nothing is upcoming.
+  const occurrences =
+    r.nextDueOn && !isSentinelDate(r.nextDueOn)
+      ? [r.nextDueOn, ...previewOccurrences(recurrence, r.nextDueOn, 4)]
+      : [];
 
   return (
     <div className="mx-auto max-w-3xl">

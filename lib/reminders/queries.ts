@@ -1,5 +1,6 @@
 import type { ReminderKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { FAR_FUTURE } from '@/lib/reminders/recurrence';
 import type { CalendarDate } from '@/lib/time/tz';
 import type { ListParams } from '@/lib/url-params';
 
@@ -128,7 +129,9 @@ export async function listUpcomingReminders(limit = 5) {
   const targets = await prisma.reminderTarget.findMany({
     // Chores are excluded — this widget is "what notifications will fire soon."
     // Chore due-dates live under /chores.
-    where: { reminder: { active: true, kind: 'REMINDER' } },
+    // Below FAR_FUTURE: a done one-time reminder stays active with that sentinel
+    // and, with few reminders, surfaced here as "Dec 31, 9999".
+    where: { reminder: { active: true, kind: 'REMINDER' }, nextDueOn: { lt: FAR_FUTURE } },
     orderBy: { nextDueOn: 'asc' },
     take: limit * 4,
     include: {
