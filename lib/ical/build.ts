@@ -10,7 +10,10 @@ export function buildIcal(events: CalendarEvent[], appUrl: string): string {
     const event = cal.createEvent({
       id: e.uid,
       start: e.date,
-      end: e.date,
+      // DTEND of an all-day event is exclusive (RFC 5545), so a one-day event
+      // ends the next day; `end: e.date` was a zero-length event. `e.date` is a
+      // UTC-midnight calendar date, which has no DST, so +24h is exactly one day.
+      end: new Date(e.date.getTime() + 86_400_000),
       allDay: true,
       summary: e.title,
       description: e.description,
