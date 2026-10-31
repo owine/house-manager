@@ -142,6 +142,24 @@ describe('handleRemindersTick', () => {
     const r = await handleRemindersTick({ enqueue: async () => {} });
     expect(r.enqueued).toBe(0);
   });
+
+  it('honours a lead time beyond 30 days (the schema allows up to 365)', async () => {
+    // Due in 60 days with a 90-day lead: the window opened 30 days ago. A
+    // 30-day look-ahead cap kept it out of the query until 30 days out.
+    await ctx.prisma.reminder.create({
+      data: {
+        title: 'Warranty expiring',
+        recurrence: { kind: 'interval', days: 365 },
+        leadTimeDays: 90,
+        notifyUserIds: [userId],
+        targets: {
+          create: [{ nextDueOn: calDaysOut(60), itemId }],
+        },
+      },
+    });
+    const r = await handleRemindersTick({ enqueue: async () => {} });
+    expect(r.enqueued).toBe(2);
+  });
 });
 
 describe('handleRemindersTick lead window (house timezone)', () => {
