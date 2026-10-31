@@ -40,4 +40,17 @@ describe('houseProfileSchema', () => {
       expect(houseProfileSchema.safeParse({ propertyType: val }).success).toBe(true);
     }
   });
+
+  it("accepts any IANA zone, not only the picker's list", () => {
+    for (const timezone of ['America/Chicago', 'UTC', 'Asia/Kathmandu', 'US/Central']) {
+      expect(houseProfileSchema.safeParse({ timezone }).success).toBe(true);
+    }
+  });
+
+  it('rejects a timezone Intl does not know', () => {
+    // Stored, it would make tzParts throw in every date path: overdue, ticks, digests.
+    const result = houseProfileSchema.safeParse({ timezone: 'Mars/Olympus' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.flatten().fieldErrors.timezone).toBeDefined();
+  });
 });
