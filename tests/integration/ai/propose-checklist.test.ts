@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fixture from '@/tests/fixtures/suggest/checklist-spring.json';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from '../helpers';
 import { getLastCall, mockParse, resetMock } from './_mock-ai-client';
@@ -51,13 +51,11 @@ describe('proposeChecklist', () => {
     const u = await ctx.prisma.user.create({ data: { email: 'cs@x', name: 'C' } });
     signInAs(u.id);
     mockParse(fixture);
-    const r = await proposeChecklist({ mode: 'seasonal', season: 'spring' });
+    const r = await proposeChecklist({ mode: 'seasonal' });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error();
     expect(r.data.name).toBe('Spring 2026 Maintenance');
     expect(r.data.items.length).toBeGreaterThan(0);
-    const args = getLastCall() as { messages: { content: string }[] };
-    expect(args.messages[0].content).toContain('spring');
   });
 
   it('freeform mode passes the user prompt through', async () => {
@@ -89,7 +87,47 @@ describe('proposeChecklist', () => {
   it('rejects malformed input via Zod', async () => {
     const u = await ctx.prisma.user.create({ data: { email: 'ci@x', name: 'C' } });
     signInAs(u.id);
-    const r = await proposeChecklist({ mode: 'seasonal' }); // missing `season` — Zod catches at runtime
+    const r = await proposeChecklist({ mode: 'seasonal-ish' }); // unknown mode — Zod catches at runtime
     expect(r.ok).toBe(false);
+  });
+
+  describe('seasonal mode reads the season and year off the house day', () => {
+    const promptAt = async (now: string, body: Record<string, unknown> = { mode: 'seasonal' }) => {
+      vi.setSystemTime(new Date(now));
+      const u = await ctx.prisma.user.create({ data: { email: `s${now}@x`, name: 'S' } });
+      signInAs(u.id);
+      mockParse(fixture);
+      const r = await proposeChecklist(body);
+      expect(r.ok).toBe(true);
+      return (getLastCall() as { messages: { content: string }[] }).messages[0].content;
+    };
+
+    beforeEach(async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      await ctx.prisma.houseProfile.deleteMany();
+      await ctx.prisma.houseProfile.create({ data: { timezone: 'America/Chicago' } });
+    });
+    afterEach(async () => {
+      vi.useRealTimers();
+      await ctx.prisma.houseProfile.deleteMany();
+    });
+
+    it('7pm on Nov 30 in Chicago is still fall, though it is Dec 1 in UTC', async () => {
+      const content = await promptAt('2026-12-01T01:00:00Z');
+      expect(content).toContain('Generate a fall maintenance checklist');
+      expect(content).toContain('"Fall 2026 Maintenance"');
+    });
+
+    it('7pm on Dec 31 in Chicago is still 2026, though it is 2027 in UTC', async () => {
+      expect(await promptAt('2027-01-01T01:00:00Z')).toContain('"Winter 2026 Maintenance"');
+    });
+
+    it('ignores a season sent by the client (from its own clock)', async () => {
+      const content = await promptAt('2026-07-01T17:00:00Z', {
+        mode: 'seasonal',
+        season: 'winter',
+      });
+      expect(content).toContain('Generate a summer maintenance checklist');
+    });
   });
 });

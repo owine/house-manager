@@ -1,7 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
-import { seasonForDate } from '@/lib/ai/prompts';
 import type { ProposedChecklistItem } from '@/lib/ai/schemas';
 import { proposeChecklist } from '@/lib/ai/suggest/checklist';
 
@@ -15,7 +14,6 @@ export type ChecklistPreview = {
 export function useChecklistSuggestion() {
   const [pending, startTransition] = useTransition();
   const [preview, setPreview] = useState<ChecklistPreview | null>(null);
-  const season = seasonForDate(new Date());
 
   function run(args: Parameters<typeof proposeChecklist>[0]) {
     startTransition(async () => {
@@ -36,8 +34,7 @@ export function useChecklistSuggestion() {
   return {
     pending,
     preview,
-    season,
-    generateSeasonal: () => run({ mode: 'seasonal', season }),
+    generateSeasonal: () => run({ mode: 'seasonal' }),
     generateFreeform: (freeFormPrompt: string) => run({ mode: 'freeform', freeFormPrompt }),
     reset: () => setPreview(null),
   };
