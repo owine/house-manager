@@ -3,6 +3,7 @@ import * as Sentry from '@sentry/node';
 import { ANTHROPIC_MODEL } from '@/lib/ai/client';
 import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
+import { parseCalendarDate } from '@/lib/chat/dates';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
@@ -149,14 +150,10 @@ async function classifyOne(id: string): Promise<void> {
       latencyMs: Date.now() - start,
     });
 
-    // Validate performedOn parses to a sensible date. Schema typed it as a
-    // string but the model occasionally returns malformed dates; prefer null
-    // over a wrong Date in the DB.
-    let aiPerformedOn: Date | null = null;
-    if (result.performedOn) {
-      const parsed = new Date(`${result.performedOn}T00:00:00Z`);
-      if (!Number.isNaN(parsed.getTime())) aiPerformedOn = parsed;
-    }
+    // The model occasionally returns malformed dates; prefer null over a wrong
+    // Date in the DB. parseCalendarDate also rejects impossible ones, which
+    // `new Date('2026-02-30T00:00:00Z')` silently rolls over to Mar 2.
+    const aiPerformedOn = result.performedOn ? parseCalendarDate(result.performedOn) : null;
 
     await prisma.$transaction(async (tx) => {
       if (ownsRow) {

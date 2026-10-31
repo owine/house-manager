@@ -446,7 +446,7 @@ model IncomingEmail {
   // new record's summary / cost / performedOn / notes.
   aiExtractedSummary      String?
   aiExtractedCost         Decimal? @db.Decimal(10, 2)
-  aiExtractedPerformedOn  DateTime?
+  aiExtractedPerformedOn  DateTime? @db.Date
   aiExtractedScope        String?  @db.Text
   aiExtractedAt           DateTime?
 

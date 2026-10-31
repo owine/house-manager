@@ -20,7 +20,7 @@ import { Prisma } from '@prisma/client';
  */
 
 /** Columns that hold a calendar date, keyed by Prisma model name. */
-const CALENDAR_DATE_FIELDS: Record<string, readonly string[]> = {
+export const CALENDAR_DATE_FIELDS: Record<string, readonly string[]> = {
   ReminderTarget: ['nextDueOn'],
   Warranty: ['startsOn', 'endsOn'],
   ServiceRecord: ['performedOn'],
@@ -29,6 +29,7 @@ const CALENDAR_DATE_FIELDS: Record<string, readonly string[]> = {
   Checklist: ['nextDueOn'],
   ItemVendor: ['contractEndsOn'],
   SystemVendor: ['contractEndsOn'],
+  IncomingEmail: ['aiExtractedPerformedOn'],
 };
 
 const DAY_MS = 86_400_000;

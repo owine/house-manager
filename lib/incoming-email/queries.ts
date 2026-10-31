@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { CalendarDate } from '@/lib/time/tz';
 
 export type InboxTab = 'untriaged' | 'archived';
 
@@ -92,7 +93,7 @@ export async function getInboxEmail(id: string) {
 export type ExtractionView = {
   summary: string | null;
   cost: number | null;
-  performedOn: Date | null;
+  performedOn: CalendarDate | null;
   scope: string | null;
   extractedAt: Date | null;
 };
@@ -105,7 +106,7 @@ export type ExtractionView = {
 export function selectExtraction(row: {
   aiExtractedSummary: string | null;
   aiExtractedCost: { toNumber(): number } | null;
-  aiExtractedPerformedOn: Date | null;
+  aiExtractedPerformedOn: CalendarDate | null;
   aiExtractedScope: string | null;
   aiExtractedAt: Date | null;
 }): ExtractionView {

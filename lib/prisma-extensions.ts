@@ -77,6 +77,12 @@ export function applyPrismaExtensions(client: PrismaClient) {
               compute: ({ contractEndsOn }) => brandNullable(contractEndsOn),
             },
           },
+          incomingEmail: {
+            aiExtractedPerformedOn: {
+              needs: { aiExtractedPerformedOn: true },
+              compute: ({ aiExtractedPerformedOn }) => brandNullable(aiExtractedPerformedOn),
+            },
+          },
         },
       })
   );

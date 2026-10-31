@@ -327,6 +327,32 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     expect(srCount).toBe(0);
   });
 
+  it('an impossible performedOn is stored as null, not rolled into the next month', async () => {
+    // new Date('2026-02-30T00:00:00Z') is a valid Date: Mar 2.
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: null,
+        targetItemId: null,
+        targetSystemId: null,
+        confidence: 'medium',
+        summary: 'Service',
+        cost: null,
+        performedOn: '2026-02-30',
+        scope: null,
+        rationale: 'Date misread.',
+      },
+      usage: { input_tokens: 10, output_tokens: 5 },
+    };
+    const e = await makeEmail({ messageId: '<feb30@a>', subject: 'Invoice' });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.aiExtractedAt).not.toBeNull();
+    expect(after?.aiExtractedPerformedOn).toBeNull();
+  });
+
   it('hallucinated vendorId → persisted null, no auto-stub', async () => {
     const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
     mockResponse = {
