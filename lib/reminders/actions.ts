@@ -355,9 +355,19 @@ export async function updateReminder(input: unknown): Promise<ActionResult<{ id:
       }
     }
 
-    // If nextDueOn is provided WITHOUT a targets change, propagate it to all
-    // existing target rows (matches the single-target form semantics).
-    if (nextDueOn !== undefined && targets === undefined) {
+    // Propagate nextDueOn to every target row. Without `targets` that is the
+    // whole patch. The edit form, though, always sends `targets` too, along
+    // with the date it showed, which is the EARLIEST target's: so apply it only
+    // when the user changed that date. Unconditionally, every save would
+    // flatten a multi-target reminder's own per-target dates; never (as
+    // before), the form's due date was silently ignored, and editing a done
+    // one-time reminder could not move it off the FAR_FUTURE sentinel.
+    const shownDueOn = existing.targets.reduce<Date | null>(
+      (min, t) => (min === null || t.nextDueOn < min ? t.nextDueOn : min),
+      null,
+    );
+    const dueOnChanged = shownDueOn === null || nextDueOn?.getTime() !== shownDueOn.getTime();
+    if (nextDueOn !== undefined && (targets === undefined || dueOnChanged)) {
       await tx.reminderTarget.updateMany({
         where: { reminderId: id },
         data: { nextDueOn },
