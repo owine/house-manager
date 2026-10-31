@@ -130,6 +130,20 @@ export function tzParts(date: Instant, timeZone: string): TzParts {
 }
 
 /**
+ * True iff `Intl` accepts `timeZone` (any IANA zone or alias, e.g. 'US/Central').
+ * Everything in this module builds an Intl.DateTimeFormat for the house zone, and
+ * an unknown one throws a RangeError there, in every date path at once.
+ */
+export function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Offset of `timeZone` from UTC at `date`, in minutes (e.g. America/New_York
  * in summer → -240; Asia/Kolkata → +330). Parsed from Intl's `longOffset`
  * (`GMT±HH:MM`). Returns 0 if the format can't be parsed (degrades to UTC —
