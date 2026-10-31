@@ -1,4 +1,4 @@
-import { tzOffsetMinutes, tzParts } from '@/lib/time/tz';
+import { nextWallClockAfter, tzParts } from '@/lib/time/tz';
 import type { NotificationPrefs } from './prefs';
 
 function parseHM(hm: string): { h: number; m: number } {
@@ -29,26 +29,17 @@ export function isInQuietWindow(now: Date, prefs: NotificationPrefs, tz: string)
 }
 
 /**
- * If `now` is inside the quiet window, return the UTC instant corresponding to
- * the next `quietEnd` wall-clock time in the house timezone `tz`; otherwise
+ * If `now` is inside the quiet window, return the next instant after `now` at
+ * which the wall clock in the house timezone `tz` reads `quietEnd`; otherwise
  * return `now`.
  *
- * DST note: uses the current tz offset (same simplification as
- * endOfCalendarDayInTz in lib/time/tz.ts); a DST transition right at quietEnd
- * would shift the result by ≤1 h, which is acceptable for notification deferral.
+ * nextWallClockAfter does the DST work: it reads the offset at quietEnd itself
+ * (now's offset put deferrals an hour out on transition nights), takes the
+ * second pass of a repeated quietEnd once the first is behind `now`, and
+ * releases a quietEnd inside a spring-forward gap when the clock jumps past it.
  */
 export function nextNonQuietTime(now: Date, prefs: NotificationPrefs, tz: string): Date {
   if (!prefs.quietEnd || !isInQuietWindow(now, prefs, tz)) return now;
   const end = parseHM(prefs.quietEnd);
-
-  // Wall-clock Y/M/D in the house timezone.
-  const { year: y, month: mo, day: d } = tzParts(now, tz);
-  const offsetMins = tzOffsetMinutes(now, tz);
-  // quietEnd wall-clock time on the user's current calendar date, as UTC instant.
-  let candidate = Date.UTC(y, mo - 1, d, end.h, end.m, 0) - offsetMins * 60_000;
-  if (candidate <= now.getTime()) {
-    // End time already passed today — advance one calendar day.
-    candidate += 86_400_000;
-  }
-  return new Date(candidate);
+  return nextWallClockAfter(now, end.h, end.m, tz);
 }

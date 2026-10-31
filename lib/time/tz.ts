@@ -81,13 +81,31 @@ const WEEKDAY_MAP: Record<string, number> = {
   Sat: 6,
 };
 
+// Building an Intl.DateTimeFormat costs far more than formatting with one, and
+// endOfCalendarDayInTz calls tzParts ~30 times per stamp. One per zone.
+const PARTS_FORMATS = new Map<string, Intl.DateTimeFormat>();
+const OFFSET_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+function cachedFormat(
+  cache: Map<string, Intl.DateTimeFormat>,
+  locale: string,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  let format = cache.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { timeZone, ...options });
+    cache.set(timeZone, format);
+  }
+  return format;
+}
+
 /**
  * Decompose `date` into wall-clock parts in `timeZone` using Intl (no deps).
  */
 export function tzParts(date: Instant, timeZone: string): TzParts {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone,
+    cachedFormat(PARTS_FORMATS, 'en-CA', timeZone, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -115,14 +133,11 @@ export function tzParts(date: Instant, timeZone: string): TzParts {
  * Offset of `timeZone` from UTC at `date`, in minutes (e.g. America/New_York
  * in summer → -240; Asia/Kolkata → +330). Parsed from Intl's `longOffset`
  * (`GMT±HH:MM`). Returns 0 if the format can't be parsed (degrades to UTC —
- * the safe fallback). NOTE: this is the offset AT `date`; callers converting a
- * *different* wall-clock instant accept a ≤1h skew across a DST transition.
+ * the safe fallback). This is the offset AT `date`. To turn a wall-clock time
+ * into an instant, use wallClockToUtc, which reads it at the target instead.
  */
 export function tzOffsetMinutes(date: Date, timeZone: string): number {
-  const offsetName = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'longOffset',
-  })
+  const offsetName = cachedFormat(OFFSET_FORMATS, 'en-US', timeZone, { timeZoneName: 'longOffset' })
     .formatToParts(date)
     .find((p) => p.type === 'timeZoneName')?.value; // e.g. 'GMT-04:00' or 'GMT+05:30'
   const m = offsetName?.match(/GMT([+-])(\d{2}):(\d{2})/);
@@ -184,22 +199,103 @@ export function isOverdue(nextDueOn: CalendarDate, now: Instant, tz: string): bo
   return nextDueOn.getTime() < startOfDayUtc(now, tz).getTime();
 }
 
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+type WallClock = Pick<TzParts, 'year' | 'month' | 'day' | 'hour' | 'minute'>;
+
 /**
- * The UTC instant of 23:59:59.999 wall-clock in `tz` on the calendar date that
- * `calendarDate` represents (a date-only value stored at UTC midnight). Used to
- * stamp `completedOn` when a chore auto-completes at end-of-due-day.
+ * Every instant at which the wall clock in `tz` reads `wall`, earliest first.
+ * Usually one; two when fall-back repeats the time. A time inside a
+ * spring-forward gap never appears on the clock, so it resolves to the jump
+ * past it: the first instant the clock reads later than `wall`. That is when
+ * a wall-clock window ending at `wall` actually ends.
  *
- * NOTE: the timezone offset is evaluated at `calendarDate` (UTC midnight), not at
- * 23:59:59. On a DST transition day the result may be off by ≤1h — acceptable for
- * a `completedOn` stamp.
+ * Each candidate offset is checked at the instant it produces, so nothing
+ * here reads the offset at some other instant (`now`, the day's midnight),
+ * which is off by the DST shift whenever a transition falls in between.
+ */
+function instantsAtWallClock(wall: WallClock, tz: string): number[] {
+  const naive = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+  // Offsets either side of any transition near this date. Assumes no zone
+  // changes its offset twice within two days, which none does.
+  const earlier = tzOffsetMinutes(new Date(naive - DAY_MS), tz);
+  const later = tzOffsetMinutes(new Date(naive + DAY_MS), tz);
+  if (earlier === later) return [naive - earlier * 60_000];
+
+  // A candidate counts only if the zone really is on that offset there. Both
+  // count only in an overlap, where `earlier` > `later`, so this is in order.
+  const found: number[] = [];
+  for (const offset of [earlier, later]) {
+    const t = naive - offset * 60_000;
+    if (tzOffsetMinutes(new Date(t), tz) === offset) found.push(t);
+  }
+  if (found.length > 0) return found;
+
+  // Gap: `lo` reads before the gap on the old offset, `hi` past it on the new.
+  // Bisect for the transition, the first instant on the new offset.
+  let lo = naive - later * 60_000;
+  let hi = naive - earlier * 60_000;
+  while (hi - lo > 1) {
+    const mid = lo + Math.floor((hi - lo) / 2);
+    if (tzOffsetMinutes(new Date(mid), tz) === later) hi = mid;
+    else lo = mid;
+  }
+  return [hi];
+}
+
+/**
+ * The UTC instant at which the wall clock in `tz` reads `wall`: the first
+ * occurrence of a time fall-back repeats, the jump past a time inside a
+ * spring-forward gap.
+ */
+export function wallClockToUtc(wall: WallClock, tz: string): Date {
+  return new Date(instantsAtWallClock(wall, tz)[0]);
+}
+
+/**
+ * The first instant strictly after `after` at which the wall clock in `tz`
+ * reads `hour`:`minute` (resolved as in wallClockToUtc). Steps days by
+ * calendar date, not by 24h, which is a 23h or 25h day across a transition.
+ * Tomorrow's occurrence is always after `after`, so two days suffice.
+ */
+export function nextWallClockAfter(after: Date, hour: number, minute: number, tz: string): Date {
+  const { year, month, day } = tzParts(after, tz);
+  for (const offsetDays of [0, 1]) {
+    // Date.UTC rolls month/year overflow, so day + 1 is safe at month end.
+    const d = new Date(Date.UTC(year, month - 1, day + offsetDays));
+    const wall = { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+    const t = instantsAtWallClock({ ...wall, hour, minute }, tz).find((i) => i > after.getTime());
+    if (t !== undefined) return new Date(t);
+  }
+  throw new Error(`nextWallClockAfter: no ${hour}:${minute} after ${after.toISOString()} in ${tz}`);
+}
+
+/**
+ * The last millisecond of the house day that `calendarDate` represents (a
+ * date-only value stored at UTC midnight). Used to stamp `completedOn` when a
+ * chore auto-completes at end-of-due-day.
+ *
+ * Found as "1 ms before the next house day begins", by bisecting for that
+ * beginning -- not as 23:59:59.999 minus an offset. The offset changes during
+ * a transition day, and in zones that switch at midnight the next 00:00 may
+ * not exist (Havana) or 23:59 may happen twice (Santiago), so no single offset
+ * is right. Offset arithmetic here once stamped spring-forward completions at
+ * 00:59 the NEXT day.
  */
 export function endOfCalendarDayInTz(calendarDate: CalendarDate, tz: string): Date {
   assertCalendarDate(calendarDate, 'endOfCalendarDayInTz');
-  const year = calendarDate.getUTCFullYear();
-  const month = calendarDate.getUTCMonth();
-  const day = calendarDate.getUTCDate();
-  const offsetMinutes = tzOffsetMinutes(calendarDate, tz);
-  return new Date(Date.UTC(year, month, day, 23, 59, 59, 999) - offsetMinutes * 60_000);
+  const tomorrow = calendarDate.getTime() + DAY_MS;
+  // UTC offsets run from -12h to +14h, so `before` is still this day (or
+  // earlier) in every zone and `after` is already tomorrow in every zone.
+  let before = tomorrow - 16 * HOUR_MS;
+  let after = tomorrow + 14 * HOUR_MS;
+  while (after - before > 1) {
+    const mid = before + Math.floor((after - before) / 2);
+    if (startOfDayUtc(new Date(mid), tz).getTime() >= tomorrow) after = mid;
+    else before = mid;
+  }
+  return new Date(before);
 }
 
 /** ISO-8601 week key 'YYYY-Www' for the given wall-clock parts (Thursday-based). */

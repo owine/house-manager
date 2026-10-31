@@ -80,3 +80,40 @@ describe('nextNonQuietTime — timezone aware', () => {
     );
   });
 });
+
+describe('nextNonQuietTime — across a DST change', () => {
+  const CHI = 'America/Chicago';
+  const prefs = { ...baseline, quietStart: '22:00', quietEnd: '07:00' };
+
+  it('fall-back night: 07:00 CST, not 06:00 (offset read at quietEnd, not now)', () => {
+    // 22:30 CDT on Oct-31; quiet ends at 07:00 CST on Nov-1 = 13:00Z.
+    expect(nextNonQuietTime(utc('2026-11-01T03:30:00Z'), prefs, CHI).toISOString()).toBe(
+      '2026-11-01T13:00:00.000Z',
+    );
+  });
+
+  it('spring-forward night: 07:00 CDT, not 08:00', () => {
+    // 22:30 CST on Mar-7; quiet ends at 07:00 CDT on Mar-8 = 12:00Z.
+    expect(nextNonQuietTime(utc('2026-03-08T04:30:00Z'), prefs, CHI).toISOString()).toBe(
+      '2026-03-08T12:00:00.000Z',
+    );
+  });
+
+  it('quietEnd inside the spring-forward gap releases when the clock jumps past it', () => {
+    // 02:30 never happens on Mar-8: at 01:45 CST the next non-quiet moment is
+    // 03:00 CDT (08:00Z), not 02:30 tomorrow.
+    const gapPrefs = { ...baseline, quietStart: '22:00', quietEnd: '02:30' };
+    expect(nextNonQuietTime(utc('2026-03-08T07:45:00Z'), gapPrefs, CHI).toISOString()).toBe(
+      '2026-03-08T08:00:00.000Z',
+    );
+  });
+
+  it('quietEnd inside the repeated hour releases at its second occurrence', () => {
+    // 01:15 CST is the second pass through 01:xx; the first 01:30 (CDT, 06:30Z)
+    // is already past, so quiet ends at 01:30 CST (07:30Z), not tomorrow.
+    const repeatPrefs = { ...baseline, quietStart: '22:00', quietEnd: '01:30' };
+    expect(nextNonQuietTime(utc('2026-11-01T07:15:00Z'), repeatPrefs, CHI).toISOString()).toBe(
+      '2026-11-01T07:30:00.000Z',
+    );
+  });
+});
