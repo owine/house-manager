@@ -151,12 +151,19 @@ export function parseRecurrence(json: unknown): Recurrence {
 const remindersTargetsSchema = z.array(partTargetSchema).min(1);
 const choresTargetsSchema = z.array(partTargetSchema);
 
+/**
+ * Longest notification lead a reminder may carry. The reminders tick sizes its
+ * look-ahead window from the largest active lead, capped here: a lower cap
+ * than the schema's limit silently notifies long-lead reminders late.
+ */
+export const MAX_LEAD_TIME_DAYS = 365;
+
 const baseReminderShape = {
   title: z.string().min(1).max(200),
   description: z.string().max(20_000).optional().or(z.literal('')),
   recurrence: recurrenceSchema,
   nextDueOn: z.coerce.date(),
-  leadTimeDays: z.number().int().min(0).max(365).default(3),
+  leadTimeDays: z.number().int().min(0).max(MAX_LEAD_TIME_DAYS).default(3),
   autoCreateServiceRecord: z.boolean().default(false),
   autoComplete: z.boolean().default(false),
   notifyUserIds: z.array(z.string().min(1)).optional(),

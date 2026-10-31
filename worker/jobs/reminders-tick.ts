@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { readNotificationPrefs } from '@/lib/notifications/prefs';
+import { MAX_LEAD_TIME_DAYS } from '@/lib/reminders/schema';
 import { startOfDayUtc } from '@/lib/time/tz';
 
 const DAY_MS = 86_400_000;
@@ -22,12 +23,14 @@ export async function handleRemindersTick(
   // the house day first, so both sides of every comparison below are day-aligned.
   const today = startOfDayUtc(now, await getHouseTimezone());
 
-  // Cap our look-ahead window to the largest active leadTimeDays (bounded for sanity).
+  // Size the look-ahead window to the largest active leadTimeDays. The cap is
+  // the schema's own limit: a tighter one (it was 30) kept a 90-day-lead
+  // reminder out of this query until 30 days out, 60 days late.
   const aggregateLeadTime = await prisma.reminder.aggregate({
     where: { active: true, kind: 'REMINDER' },
     _max: { leadTimeDays: true },
   });
-  const maxLead = Math.min(aggregateLeadTime._max.leadTimeDays ?? 3, 30);
+  const maxLead = Math.min(aggregateLeadTime._max.leadTimeDays ?? 3, MAX_LEAD_TIME_DAYS);
 
   // Reminder due-state lives on ReminderTarget after Task 4. Query the
   // per-target rows whose nextDueOn falls within the look-ahead window and

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_LEAD_TIME_DAYS } from '@/lib/reminders/schema';
 import { targetsArraySchema } from '@/lib/targets/schema';
 
 const warrantyBase = z.object({
@@ -14,7 +15,8 @@ const warrantyBase = z.object({
   // Edits to the warranty don't sync the reminder — the user can edit /
   // delete the reminder independently after creation.
   createExpiryReminder: z.boolean().default(true),
-  expiryReminderLeadDays: z.number().int().min(0).max(365).default(30),
+  // Becomes the expiry reminder's leadTimeDays.
+  expiryReminderLeadDays: z.number().int().min(0).max(MAX_LEAD_TIME_DAYS).default(30),
 });
 
 export const createWarrantySchema = warrantyBase.refine((data) => data.endsOn >= data.startsOn, {
