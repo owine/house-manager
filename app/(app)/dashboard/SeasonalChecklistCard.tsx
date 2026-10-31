@@ -4,9 +4,11 @@ import { SuggestionPreview } from '@/app/(app)/_components/SuggestionPreview';
 import { useChecklistSuggestion } from '@/components/checklists/useChecklistSuggestion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Season } from '@/lib/ai/prompts';
 
-export function SeasonalChecklistCard() {
-  const { pending, preview, season, generateSeasonal, reset } = useChecklistSuggestion();
+/** `season` is the house day's, computed by the page: the server generates for that one. */
+export function SeasonalChecklistCard({ season }: { season: Season }) {
+  const { pending, preview, generateSeasonal, reset } = useChecklistSuggestion();
 
   return (
     <Card>

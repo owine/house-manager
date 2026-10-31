@@ -10,11 +10,11 @@ import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getLogger } from '@/lib/logger';
 import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
-import { startOfDayUtc } from '@/lib/time/tz';
+import { type CalendarDate, startOfDayUtc } from '@/lib/time/tz';
 import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext } from '../context-builder';
 import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
-import { buildSystemBlocks } from '../prompts';
+import { buildSystemBlocks, seasonForDate } from '../prompts';
 import { checkRateLimit } from '../rate-limit';
 import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
 import {
@@ -27,7 +27,10 @@ import {
 const logger = getLogger('ai.suggest.checklist');
 
 const proposeChecklistInputSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('seasonal'), season: z.enum(['spring', 'summer', 'fall', 'winter']) }),
+  // No season from the client: it came from the browser's clock read in UTC,
+  // which said winter on the evening of Nov 30 in Chicago. The server reads it
+  // off the house day. (z.object strips a `season` an old bundle still sends.)
+  z.object({ mode: z.literal('seasonal') }),
   z.object({ mode: z.literal('freeform'), freeFormPrompt: z.string().min(3).max(2000) }),
   z.object({ mode: z.literal('append'), forChecklistId: z.string().min(1) }),
 ]);
@@ -44,9 +47,16 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function buildChecklistUserMessage(input: ProposeChecklistInput, appendingTo?: string): string {
+function buildChecklistUserMessage(
+  input: ProposeChecklistInput,
+  houseToday: CalendarDate,
+  appendingTo?: string,
+): string {
   if (input.mode === 'seasonal') {
-    return `Generate a ${input.season} maintenance checklist (5–15 items) tailored to the inventory and house profile. Pick a name like "${capitalize(input.season)} ${new Date().getUTCFullYear()} Maintenance".`;
+    // Both read off the house day, a CalendarDate, so UTC getters are right.
+    const season = seasonForDate(houseToday);
+    const year = houseToday.getUTCFullYear();
+    return `Generate a ${season} maintenance checklist (5–15 items) tailored to the inventory and house profile. Pick a name like "${capitalize(season)} ${year} Maintenance".`;
   }
   if (input.mode === 'freeform') {
     return `${input.freeFormPrompt}\n\nReturn a checklist with a clear name and 1–15 items. Include rationale per item.`;
@@ -99,7 +109,7 @@ export async function proposeChecklist(
   }
 
   // `today` is rendered into the prompt as a UTC day (`toISOString().slice(0,10)`)
-  // and drives seasonForDate. Passing a raw instant told the model TOMORROW's
+  // and drives seasonForDate, here and in the seasonal user message. Passing a raw instant told the model TOMORROW's
   // date every evening after 7pm Chicago. Reduce it to the house day first.
   const houseToday = startOfDayUtc(new Date(), await getHouseTimezone());
 
@@ -116,7 +126,9 @@ export async function proposeChecklist(
         today: houseToday,
         inventory: ctx.inventory,
       }),
-      messages: [{ role: 'user', content: buildChecklistUserMessage(input, appendingTo?.name) }],
+      messages: [
+        { role: 'user', content: buildChecklistUserMessage(input, houseToday, appendingTo?.name) },
+      ],
       output_config: { format: zodOutputFormat(proposeChecklistResponseSchema) },
     });
   } catch (e) {

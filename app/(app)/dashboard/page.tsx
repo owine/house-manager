@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'dashboard' };
 
+import { seasonForDate } from '@/lib/ai/prompts';
 import { auth } from '@/lib/auth';
 import { listChecklists } from '@/lib/checklists/queries';
 import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { listInboxEmails } from '@/lib/incoming-email/queries';
+import { startOfDayUtc } from '@/lib/time/tz';
 import { ActiveChecklistsCard } from './ActiveChecklistsCard';
 import { DashboardGreeting } from './DashboardGreeting';
 import { InboxPreviewCard } from './InboxPreviewCard';
@@ -51,7 +53,7 @@ export default async function Dashboard() {
 
       <ActiveChecklistsCard checklists={checklists} />
 
-      <SeasonalChecklistCard />
+      <SeasonalChecklistCard season={seasonForDate(startOfDayUtc(new Date(), tz))} />
     </div>
   );
 }
