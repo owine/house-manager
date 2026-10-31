@@ -233,13 +233,15 @@ describe('handleDigestTick — catch-up window (house in Chicago)', () => {
   });
 
   it('catches up after missed ticks in the chosen hour, once', async () => {
-    // The worker was down for 08:00 and 08:30 CDT; it is back at 10:30.
-    vi.setSystemTime(new Date('2026-07-15T15:30:00Z'));
+    // The worker was down for 08:00 and 08:30 CDT; it is back at 10:00. Both
+    // ticks below are inside the 08:00-10:59 window, so only DigestLog's
+    // dedupe stops the second one from sending again.
+    vi.setSystemTime(new Date('2026-07-15T15:00:00Z'));
     await seedOverdue();
     await setPrefs({ overdueDigestEnabled: true, overdueDigestHour: 8 });
 
+    await tickAt('2026-07-15T15:00:00Z'); // 10:00 CDT
     await tickAt('2026-07-15T15:30:00Z'); // 10:30 CDT
-    await tickAt('2026-07-15T16:00:00Z'); // 11:00 CDT
 
     expect(sentEmails).toHaveLength(1);
     expect(await sentKinds()).toEqual(['overdue:2026-07-15']);
