@@ -39,6 +39,17 @@ describe('buildIcal', () => {
     expect(noAlarm).not.toContain('BEGIN:VALARM');
   });
 
+  it('ends each all-day event the next day (DTEND is exclusive), not on its start', () => {
+    // RFC 5545: an all-day event's DTEND is the day AFTER it. DTEND == DTSTART is
+    // a zero-length event, which some clients drop or draw as nothing.
+    const text = buildIcal(
+      [ev({}), ev({ uid: 'reminder-r1-2026-12-31', date: new Date('2026-12-31T00:00:00Z') })],
+      'https://example.com',
+    );
+    expect(text).toContain('DTSTART;VALUE=DATE:20260630\r\nDTEND;VALUE=DATE:20260701');
+    expect(text).toContain('DTSTART;VALUE=DATE:20261231\r\nDTEND;VALUE=DATE:20270101');
+  });
+
   it('returns no VEVENT for an empty list', () => {
     const text = buildIcal([], 'https://example.com');
     expect(text).not.toContain('BEGIN:VEVENT');

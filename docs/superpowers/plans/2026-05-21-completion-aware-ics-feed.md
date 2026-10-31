@@ -395,7 +395,10 @@ export function buildIcal(events: CalendarEvent[], appUrl: string): string {
     const event = cal.createEvent({
       id: e.uid,
       start: e.date,
-      end: e.date,
+      // Corrected in #630: DTEND of an all-day event is exclusive (RFC 5545), so
+      // the end is the NEXT day. `end: e.date`, as first written here, was a
+      // zero-length event that some calendar clients drop.
+      end: new Date(e.date.getTime() + 86_400_000),
       allDay: true,
       summary: e.title,
       description: e.description,
