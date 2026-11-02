@@ -2,7 +2,10 @@
 
 FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS base
 # Installed with npm, not corepack: Node 25 stopped bundling corepack, so on
-# the 26 image `corepack enable` is command-not-found (exit 127).
+# the 26 image `corepack enable` is command-not-found (exit 127). This is the
+# repo's one deliberate npm call, and the pnpm-only rule does not cover it:
+# that rule is about resolving *this project's* dependencies, while this runs
+# before any project file is copied in, to install pnpm itself.
 # renovate: datasource=npm depName=pnpm
 # Must match package.json "packageManager" exactly. On a mismatch pnpm does not
 # fail — it silently switches to the packageManager version, downloading it

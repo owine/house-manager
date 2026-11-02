@@ -14,8 +14,8 @@ import { defineConfig, env } from 'prisma/config';
 // The Prisma CLI was the one entry point that never got wired up.
 //
 // `process.loadEnvFile` is Node's built-in `--env-file` reader, so no `dotenv`
-// dependency is needed -- `engines.node` is pinned to 24.20.0, well past the
-// 20.12 that added it. It does NOT overwrite variables that are already set,
+// dependency is needed -- `engines.node` is pinned well past the 20.12 that
+// added it. It does NOT overwrite variables that are already set,
 // which preserves the same "the shell wins" rule vitest.env.ts documents: CI's
 // job-level DATABASE_URL and a one-off `DATABASE_URL=… pnpm db:migrate` both
 // still take precedence.
