@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.28.0@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 
-FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS base
+FROM node:26.13.0-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS base
 # Installed with npm, not corepack: Node 25 stopped bundling corepack, so on
 # the 26 image `corepack enable` is command-not-found (exit 127). This is the
 # repo's one deliberate npm call, and the pnpm-only rule does not cover it:
@@ -90,7 +90,7 @@ RUN pnpm prune --prod
 RUN node scripts/prune-worker-tree.mjs
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
-FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS runtime
+FROM node:26.13.0-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS runtime
 # apk pins: Alpine 3.24, extracted natively by Renovate's dockerfile manager
 # (datasource `apk`) and looked up against the Alpine package index. The
 # release line lives in renovate.json's `registryUrls` (`branch=v3.24`) and
