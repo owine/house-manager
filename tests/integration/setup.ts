@@ -21,7 +21,7 @@ import { inject } from 'vitest';
 // renovate: datasource=docker depName=pgvector/pgvector
 const POSTGRES_IMAGE = 'pgvector/pgvector:pg18';
 // renovate: datasource=docker depName=getmeili/meilisearch
-const MEILI_IMAGE = 'getmeili/meilisearch:v1.55';
+const MEILI_IMAGE = 'getmeili/meilisearch:v1.56';
 
 /**
  * A bare Postgres from the stack's image, credentials and database name. The
