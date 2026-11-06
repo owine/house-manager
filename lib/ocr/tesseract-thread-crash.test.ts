@@ -68,10 +68,12 @@ vi.mock('tesseract.js', async (importOriginal) => {
 vi.mock('@/lib/env', () => ({ getEnv: () => ({ OCR_BACKEND: 'tesseract' }) }));
 
 let ocrImageBuffer: typeof import('./tesseract').ocrImageBuffer;
+let OcrUnavailableError: typeof import('./errors').OcrUnavailableError;
 
 beforeEach(async () => {
   vi.resetModules(); // fresh worker slot and cooldown per test
   ({ ocrImageBuffer } = await import('./tesseract'));
+  ({ OcrUnavailableError } = await import('./errors'));
 });
 
 describe('ocrImageBuffer when the tesseract thread crashes during init', () => {
@@ -86,9 +88,10 @@ describe('ocrImageBuffer when the tesseract thread crashes during init', () => {
     async (action, how) => {
       crash.onAction = action;
       crash.how = how;
-      await expect(ocrImageBuffer(Buffer.from('not an image'))).rejects.toThrow(
-        `simulated wasm abort during ${action}`,
-      );
+      const call = ocrImageBuffer(Buffer.from('not an image'));
+      await expect(call).rejects.toThrow(`simulated wasm abort during ${action}`);
+      // An init crash says nothing about the input: retryable (#670).
+      await expect(call).rejects.toBeInstanceOf(OcrUnavailableError);
     },
     // Well under the 120s init deadline: the rejection must come from the
     // crash itself, not from timing out on a thread that is already gone.

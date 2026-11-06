@@ -35,6 +35,9 @@ describe('ocrImageBuffer worker lifecycle', () => {
     await vi.waitFor(() => expect(first.thread.listenerCount('error')).toBe(1));
     first.thread.emit('error', new Error('wasm abort'));
     await expect(pending).rejects.toThrow('wasm abort');
+    // Dying mid-recognize may be this input's doing: never typed retryable.
+    const { OcrUnavailableError } = await import('./errors');
+    await expect(pending).rejects.not.toBeInstanceOf(OcrUnavailableError);
 
     await expect(ocrImageBuffer(Buffer.from('x'))).resolves.toBe('hello');
     expect(fake.createWorker).toHaveBeenCalledTimes(2);
