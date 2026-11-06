@@ -11,57 +11,47 @@
 //    getTextContent, which no page or char cap reaches, and in-thread timers
 //    cannot fire during it. These tests use the real thread and the real unpdf
 //    (module mocks do not cross into a worker thread).
+import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
+import { createDeflate } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pagesDecoded: number[] = [];
 // Per-page text items to serve instead of pdf.js's, for exact whitespace.
 let fakeItems: Array<Array<{ str: string; hasEOL: boolean }>> | null = null;
-const load = vi.hoisted(() => ({ fail: false, destroyed: 0 }));
+const load = vi.hoisted(() => ({ destroyed: 0 }));
 
 vi.mock('unpdf', async (importOriginal) => {
   const real = await importOriginal<typeof import('unpdf')>();
   return {
     ...real,
-    getResolvedPDFJS: async () => {
-      const pdfjs = await real.getResolvedPDFJS();
-      const getDocument = (src: Parameters<typeof pdfjs.getDocument>[0]) => {
-        const task = load.fail
-          ? {
-              promise: Promise.reject(new Error('Invalid PDF structure.')),
-              destroy: async () => {},
-            }
-          : pdfjs.getDocument(src);
-        const destroy = task.destroy.bind(task);
-        return {
-          destroy: () => {
-            load.destroyed++;
-            return destroy();
-          },
-          promise: task.promise.then((pdf) => {
-            const getPage = pdf.getPage.bind(pdf);
-            pdf.getPage = (n: number) => {
-              pagesDecoded.push(n);
-              const items = fakeItems?.[n - 1];
-              if (items) {
-                return Promise.resolve({
-                  getTextContent: async () => ({ items }),
-                  cleanup: () => true,
-                }) as unknown as ReturnType<typeof getPage>;
-              }
-              return getPage(n);
-            };
-            return pdf;
-          }),
-        };
+    getDocumentProxy: async (...args: Parameters<typeof real.getDocumentProxy>) => {
+      const pdf = await real.getDocumentProxy(...args);
+      const destroy = pdf.loadingTask.destroy.bind(pdf.loadingTask);
+      pdf.loadingTask.destroy = () => {
+        load.destroyed++;
+        return destroy();
       };
-      return { ...pdfjs, getDocument };
+      const getPage = pdf.getPage.bind(pdf);
+      pdf.getPage = (n: number) => {
+        pagesDecoded.push(n);
+        const items = fakeItems?.[n - 1];
+        if (items) {
+          return Promise.resolve({
+            getTextContent: async () => ({ items }),
+            cleanup: () => true,
+          }) as unknown as ReturnType<typeof getPage>;
+        }
+        return getPage(n);
+      };
+      return pdf;
     },
   };
 });
 
-import { extractPdfText, PdfTimeoutError } from './text';
+import { extractPdfText, PdfMemoryError, PdfTimeoutError } from './text';
 // @ts-expect-error -- untyped .mjs (Node runs it directly in a thread; allowJs is off)
 import { DEFAULT_MAX_PAGES, decodePdfText } from './text-thread.mjs';
 
@@ -150,7 +140,6 @@ function serialize(objs: string[]): Buffer {
 
 beforeEach(() => {
   pagesDecoded.length = 0;
-  load.fail = false;
   load.destroyed = 0;
 });
 
@@ -229,17 +218,55 @@ describe('decodePdfText — parity under maxChars', () => {
 });
 
 describe('decodePdfText — document lifecycle', () => {
-  it('destroys the loading task of a PDF that fails to load', async () => {
-    load.fail = true;
-    await expect(decode(makePdf(['x']))).rejects.toThrow('Invalid PDF structure');
-    expect(load.destroyed).toBe(1);
-  });
-
   it('destroys the loading task after a successful decode', async () => {
     await decode(makePdf(['x']));
     expect(load.destroyed).toBe(1);
   });
 });
+
+/**
+ * One page whose content stream is `mb` MiB of spaces, Flate-compressed to
+ * about a thousandth of that. pdf.js inflates it into typed arrays, which live
+ * OUTSIDE the V8 heap: a thread heap cap never sees them.
+ */
+async function makeFlateBomb(mb: number): Promise<Buffer> {
+  const z = createDeflate({ level: 9 });
+  const parts: Buffer[] = [];
+  z.on('data', (c: Buffer) => parts.push(c));
+  const chunk = Buffer.alloc(1 << 20, 0x20);
+  for (let i = 0; i < mb; i++) if (!z.write(chunk)) await once(z, 'drain');
+  z.end();
+  await once(z, 'end');
+  const stream = Buffer.concat(parts);
+
+  const pieces: Buffer[] = [];
+  const offsets: number[] = [];
+  let length = 0;
+  const push = (b: Buffer | string) => {
+    const buf = typeof b === 'string' ? Buffer.from(b, 'latin1') : b;
+    pieces.push(buf);
+    length += buf.length;
+  };
+  push('%PDF-1.4\n');
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>',
+  ];
+  objs.forEach((body, i) => {
+    offsets[i + 1] = length;
+    push(`${i + 1} 0 obj\n${body}\nendobj\n`);
+  });
+  offsets[4] = length;
+  push(`4 0 obj\n<< /Length ${stream.length} /Filter /FlateDecode >>\nstream\n`);
+  push(stream);
+  push('\nendstream\nendobj\n');
+  const xrefAt = length;
+  push('xref\n0 5\n0000000000 65535 f \n');
+  for (let id = 1; id <= 4; id++) push(`${String(offsets[id]).padStart(10, '0')} 00000 n \n`);
+  push(`trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`);
+  return Buffer.concat(pieces);
+}
 
 describe('extractPdfText — wall-clock deadline (real worker thread, real unpdf)', () => {
   it('returns the same text as the in-process decode', async () => {
@@ -263,4 +290,35 @@ describe('extractPdfText — wall-clock deadline (real worker thread, real unpdf
   it('a malformed PDF rejects rather than resolving empty', async () => {
     await expect(extractPdfText(Buffer.from('%PDF-1.4\nnot really a pdf'))).rejects.toThrow();
   });
+
+  it("a malformed PDF keeps pdf.js's exception name across the thread", async () => {
+    // Sentry groups by it; a generic Error would merge every PDF failure.
+    await expect(extractPdfText(Buffer.from('%PDF-1.4\nnot really a pdf'))).rejects.toMatchObject({
+      name: 'InvalidPDFException',
+      message: 'Invalid PDF structure.',
+    });
+  });
+
+  it('terminates the thread on every outcome (it owns any undestroyed loading task)', async () => {
+    const terminate = vi.spyOn(Worker.prototype, 'terminate');
+    try {
+      await extractPdfText(makePdf(['ok']));
+      await extractPdfText(Buffer.from('%PDF-1.4\nnot really a pdf')).catch(() => {});
+      expect(terminate).toHaveBeenCalledTimes(2);
+    } finally {
+      terminate.mockRestore();
+    }
+  });
+});
+
+describe('extractPdfText — memory budget (real worker thread, real unpdf)', () => {
+  it('a decompression bomb is cut off by RSS growth, not left to grow the process', async () => {
+    // ~200 KB on disk, 400 MiB once inflated; without a budget it resolves
+    // after growing the process by more than the inflated size.
+    const bomb = await makeFlateBomb(400);
+    expect(bomb.length).toBeLessThan(2 * 1024 * 1024); // inside the inbound cap
+    await expect(
+      extractPdfText(bomb, { timeoutMs: 30_000, maxMemoryGrowthMb: 64 }),
+    ).rejects.toBeInstanceOf(PdfMemoryError);
+  }, 60_000);
 });
