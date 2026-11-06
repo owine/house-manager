@@ -88,8 +88,9 @@ describe('getBoss applies its queue policy to a pre-existing database', () => {
 
     // A DB error now propagates out of classify for a retry; give a Postgres
     // blip a minute rather than retrying (and re-paying the model) at once.
+    // Expiry is sized to one job's worst case (see QUEUE_POLICY).
     const classify = await appBoss.getQueue(Queue.ClassifyIncomingEmail);
-    expect(classify).toMatchObject({ retryLimit: 2, retryDelay: 60 });
+    expect(classify).toMatchObject({ retryLimit: 2, retryDelay: 60, expireInSeconds: 300 });
 
     // A queue not in QUEUE_POLICY keeps pg-boss's own defaults: 2 retries,
     // 0s delay, no backoff, 900s (15 min) expiry.
