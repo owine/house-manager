@@ -156,10 +156,14 @@ async function main() {
   });
 
   // Inbound-email classifier — fired by the /api/inbound-email webhook handler
-  // after each new IncomingEmail row is persisted.
+  // after each new IncomingEmail row is persisted. `batchSize: 1` because a DB
+  // error after the model call propagates for a retry, and pg-boss fails EVERY
+  // job in a batch when the handler throws: at 4, one email's Postgres blip
+  // re-ran (and re-paid the model for) siblings that had already succeeded.
+  // The batch never bought parallelism; the handler classifies sequentially.
   await boss.work<ClassifyIncomingEmailJob>(
     Queue.ClassifyIncomingEmail,
-    { batchSize: 4 },
+    { batchSize: 1 },
     handleClassifyIncomingEmail,
   );
 

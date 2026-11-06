@@ -41,8 +41,9 @@ type ClassifyTarget = { itemId: string | null; systemId: string | null };
  *
  * If the model call fails, the heuristic classifier (`classifyEmail`) runs as
  * a fallback: it persists kind / vendor / targets (no aiExtracted*) and honors
- * its own auto-stub rule. Failures are non-fatal — an error AISuggestionLog
- * row is written, Sentry is notified, and the batch continues.
+ * its own auto-stub rule. A model failure is non-fatal — an error
+ * AISuggestionLog row is written, Sentry is notified, and the batch continues.
+ * A DB failure is not a model failure: it propagates, and pg-boss retries.
  */
 export async function handleClassifyIncomingEmail(
   jobs: { data: ClassifyIncomingEmailJob }[],
@@ -103,112 +104,31 @@ async function classifyOne(id: string): Promise<void> {
     return;
   }
 
+  // `receivedAt` is an INSTANT; the prompt renders it as a UTC day. An email
+  // received at 8pm Chicago would tell the model "Email date: <tomorrow>",
+  // and the model's answer feeds aiExtractedPerformedOn -> ServiceRecord.
+  // Reduce it to the house day first. (A DB read, so outside the AI try.)
+  const emailDay = startOfDayUtc(row.receivedAt, await getHouseTimezone());
+
+  // Only the model call is an AI failure. Everything after it is ours: a DB
+  // error there propagates so pg-boss retries the job. Catching it here used
+  // to log it as an AI failure, report it to Sentry as one, write a second
+  // AISuggestionLog row, discard the extraction we had just paid for, and run
+  // the heuristic, which can auto-stub on weaker evidence than the model's.
   const start = Date.now();
+  let classified: Awaited<ReturnType<typeof aiClassifyExtract>>;
   try {
-    const { result, usage } = await aiClassifyExtract({
+    classified = await aiClassifyExtract({
       fromAddress: row.fromAddress,
       fromName: row.fromName,
       subject: row.subject,
       bodyText: augmentedBody,
-      // `receivedAt` is an INSTANT; the prompt renders it as a UTC day. An email
-      // received at 8pm Chicago would tell the model "Email date: <tomorrow>",
-      // and the model's answer feeds aiExtractedPerformedOn -> ServiceRecord.
-      // Reduce it to the house day first.
-      emailDate: startOfDayUtc(row.receivedAt, await getHouseTimezone()),
+      emailDate: emailDay,
       vendors,
       items,
       systems,
       pdfs,
     });
-
-    const { vendorId, targetItemId, targetSystemId } = validateCandidateIds(
-      {
-        vendorId: result.vendorId,
-        targetItemId: result.targetItemId,
-        targetSystemId: result.targetSystemId,
-      },
-      { vendors, items, systems },
-    );
-
-    // Map validated ids → one target (item XOR system); empty if neither.
-    const targets: ClassifyTarget[] = [];
-    if (targetItemId) targets.push({ itemId: targetItemId, systemId: null });
-    else if (targetSystemId) targets.push({ itemId: null, systemId: targetSystemId });
-
-    await createSuggestionLog({
-      userId: systemUser.id,
-      kind: 'incoming-email-classify',
-      userPrompt: row.id,
-      inventorySnapshotIds: [],
-      response: result as unknown as Prisma.InputJsonValue,
-      model: ANTHROPIC_MODEL,
-      ...usageLogFields(usage),
-      latencyMs: Date.now() - start,
-    });
-
-    // The model occasionally returns malformed dates; prefer null over a wrong
-    // Date in the DB. parseCalendarDate also rejects impossible ones, which
-    // `new Date('2026-02-30T00:00:00Z')` silently rolls over to Mar 2.
-    const aiPerformedOn = result.performedOn ? parseCalendarDate(result.performedOn) : null;
-
-    const owned = await persistClassification(
-      id,
-      {
-        kind: result.kind,
-        vendorId,
-        aiExtractedSummary: result.summary,
-        aiExtractedCost: result.cost,
-        aiExtractedPerformedOn: aiPerformedOn,
-        aiExtractedScope: result.scope,
-        aiExtractedAt: new Date(),
-      },
-      targets,
-    );
-
-    // DMARC proves the From domain; this proves the domain is the vendor's.
-    const senderBound = senderBoundToVendor(
-      row.fromAddress,
-      vendors.find((v) => v.id === vendorId)?.email,
-    );
-    if (
-      owned &&
-      shouldAutoStub({
-        kind: result.kind,
-        vendorId,
-        targetItemId,
-        targetSystemId,
-        confidence: result.confidence,
-        dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
-        senderBound,
-      }) &&
-      !row.createdServiceRecordId
-    ) {
-      await autoStub({
-        rowId: row.id,
-        vendorId,
-        targets,
-        // `receivedAt` is an instant. Reduce it to the house day, or an email
-        // received at 8pm Chicago files the service record under TOMORROW.
-        performedOn: aiPerformedOn ?? startOfDayUtc(row.receivedAt, await getHouseTimezone()),
-        summary: result.summary ?? fallbackSummary(row.subject),
-        notes: result.scope ?? AUTO_NOTE,
-      });
-    } else {
-      log.info(
-        {
-          id: row.id,
-          kind: result.kind,
-          confidence: result.confidence,
-          vendorMatched: vendorId !== null,
-          targetMatched: targets.length > 0,
-          triageOwned: owned,
-          // Anything but 'pass' here is enough on its own to withhold the draft.
-          dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
-          senderBound,
-        },
-        'classify-incoming-email: AI classified (no auto-stub)',
-      );
-    }
   } catch (aiErr) {
     const errorReason = classifyAnthropicError(aiErr);
     Sentry.captureException(aiErr);
@@ -227,6 +147,97 @@ async function classifyOne(id: string): Promise<void> {
       'classify-incoming-email: AI call failed; falling back to heuristic',
     );
     await heuristicFallback(row, { vendors, items, systems }, augmentedBody);
+    return;
+  }
+  const { result, usage } = classified;
+
+  const { vendorId, targetItemId, targetSystemId } = validateCandidateIds(
+    {
+      vendorId: result.vendorId,
+      targetItemId: result.targetItemId,
+      targetSystemId: result.targetSystemId,
+    },
+    { vendors, items, systems },
+  );
+
+  // Map validated ids → one target (item XOR system); empty if neither.
+  const targets: ClassifyTarget[] = [];
+  if (targetItemId) targets.push({ itemId: targetItemId, systemId: null });
+  else if (targetSystemId) targets.push({ itemId: null, systemId: targetSystemId });
+
+  await createSuggestionLog({
+    userId: systemUser.id,
+    kind: 'incoming-email-classify',
+    userPrompt: row.id,
+    inventorySnapshotIds: [],
+    response: result as unknown as Prisma.InputJsonValue,
+    model: ANTHROPIC_MODEL,
+    ...usageLogFields(usage),
+    latencyMs: Date.now() - start,
+  });
+
+  // The model occasionally returns malformed dates; prefer null over a wrong
+  // Date in the DB. parseCalendarDate also rejects impossible ones, which
+  // `new Date('2026-02-30T00:00:00Z')` silently rolls over to Mar 2.
+  const aiPerformedOn = result.performedOn ? parseCalendarDate(result.performedOn) : null;
+
+  const owned = await persistClassification(
+    id,
+    {
+      kind: result.kind,
+      vendorId,
+      aiExtractedSummary: result.summary,
+      aiExtractedCost: result.cost,
+      aiExtractedPerformedOn: aiPerformedOn,
+      aiExtractedScope: result.scope,
+      aiExtractedAt: new Date(),
+    },
+    targets,
+  );
+
+  // DMARC proves the From domain; this proves the domain is the vendor's.
+  const senderBound = senderBoundToVendor(
+    row.fromAddress,
+    vendors.find((v) => v.id === vendorId)?.email,
+  );
+  if (
+    owned &&
+    shouldAutoStub({
+      kind: result.kind,
+      vendorId,
+      targetItemId,
+      targetSystemId,
+      confidence: result.confidence,
+      dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
+      senderBound,
+    }) &&
+    !row.createdServiceRecordId
+  ) {
+    await autoStub({
+      rowId: row.id,
+      vendorId,
+      targets,
+      // `receivedAt` is an instant. Reduce it to the house day, or an email
+      // received at 8pm Chicago files the service record under TOMORROW.
+      performedOn: aiPerformedOn ?? emailDay,
+      summary: result.summary ?? fallbackSummary(row.subject),
+      notes: result.scope ?? AUTO_NOTE,
+    });
+  } else {
+    log.info(
+      {
+        id: row.id,
+        kind: result.kind,
+        confidence: result.confidence,
+        vendorMatched: vendorId !== null,
+        targetMatched: targets.length > 0,
+        triageOwned: owned,
+        // Anything but 'pass' here is enough on its own to withhold the draft.
+        dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
+        senderBound,
+      },
+      'classify-incoming-email: AI classified (no auto-stub)',
+    );
   }
 }
 
