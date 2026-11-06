@@ -129,6 +129,23 @@ describe('walkWorkerGraph', () => {
     expect([...bareSpecifiers.keys()].sort()).toEqual(['@aws-sdk/client-s3', 'sharp']);
   });
 
+  it('follows `new URL(rel, import.meta.url)` file references into .cjs files', () => {
+    // How lib/ocr/tesseract.ts hands tesseract.js its thread entry. The .cjs is
+    // loaded by path, never imported, so without this it (and the package it
+    // requires) would be invisible to the runtime-image guard and the prune.
+    file('worker/index.ts', "const p = fileURLToPath(new URL('./thread.cjs', import.meta.url));");
+    file('worker/thread.cjs', "require('tesseract.js/src/worker-script/node/index.js');");
+
+    const { bareSpecifiers, files, unresolved } = walk(['worker/index.ts']);
+
+    expect(files.get('worker/thread.cjs')).toEqual({
+      importer: 'worker/index.ts',
+      specifier: './thread.cjs',
+    });
+    expect(bareSpecifiers.get('tesseract.js')).toBe('worker/thread.cjs');
+    expect(unresolved).toEqual([]);
+  });
+
   it('excludes node: builtins from both files and bare specifiers', () => {
     file('worker/index.ts', "import { readFileSync } from 'node:fs';\nimport 'node:http';");
 

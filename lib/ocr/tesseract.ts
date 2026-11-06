@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 
@@ -21,16 +22,28 @@ const log = getLogger('ocr.tesseract');
 //     `createWorker` pending forever: it only rejects for a failed `load`.
 //   - A crashed thread emits 'error' on the Node Worker, where tesseract.js
 //     only sets the browser-style `onerror` property, which Node never calls.
+//     During init we hold no handle to that Worker, so the 'error' had no
+//     listener and Node rethrew it in this process.
 //
-// So: an errorHandler that also fails init, an init deadline, an 'error'
-// listener on the thread, and a cached promise that is dropped on failure so
-// the next call retries instead of inheriting a dead worker.
+// So: a thread entry (./tesseract-worker.cjs) that turns its own crash into a
+// rejection of every pending job plus an 'exit', an errorHandler that also
+// fails init, an init deadline, 'error'/'exit' listeners once we hold the
+// thread, and a cached promise that is dropped on failure so the next call
+// retries instead of inheriting a dead worker.
 
 type TessWorker = {
   recognize: (data: Buffer) => Promise<{ data: { text: string } }>;
   terminate: () => Promise<unknown>;
   worker: { on: (event: 'error' | 'exit', cb: (arg: unknown) => void) => void };
 };
+
+/**
+ * Resolved from this module, not the cwd. `new URL(…, import.meta.url)` is
+ * also the form scripts/worker-graph.mjs follows, which is what keeps the
+ * .cjs (and the tesseract.js file it requires) inside the runtime-image guard
+ * and the prune. A plain string path would be invisible to both.
+ */
+const WORKER_PATH = fileURLToPath(new URL('./tesseract-worker.cjs', import.meta.url));
 
 /** Language data comes from the CDN on first use; give a slow fetch room. */
 const INIT_TIMEOUT_MS = 120_000;
@@ -76,6 +89,7 @@ async function startWorker(gen: number): Promise<Live> {
   });
 
   const created = createWorker('eng', undefined, {
+    workerPath: WORKER_PATH,
     // Replaces tesseract.js's `throw` in its message listener. A failed
     // recognize has already rejected its own caller by the time this runs;
     // during init, nothing else would settle `created`, so fail it here.
