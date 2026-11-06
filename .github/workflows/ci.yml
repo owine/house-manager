@@ -397,7 +397,19 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm db:seed
-      - run: pnpm exec playwright install --with-deps chromium
+      # No `--with-deps`. Playwright always adds a `tools` group to it (xvfb +
+      # fonts; `targets.add("tools")` is unconditional), and on ubuntu-26.04 the
+      # only packages that group actually downloads are nine CJK/Thai/xfonts
+      # fallback fonts -- every Chromium runtime lib, fonts-liberation and
+      # fonts-noto-color-emoji are already on the runner image. Those ~22 MB come
+      # from azure.archive.ubuntu.com, which has served them at 40-180 kB/s: a11y
+      # spent 2 min on them in run 42270267488 and its sibling leg was still at
+      # 4 of 22 MB after 6 min. If a future image drops a Chromium lib, launch
+      # fails loudly with Playwright's missing-libraries list; add the package
+      # here then, not `--with-deps` back. The timeout is a backstop for the CDN
+      # download itself, which normally takes ~10s.
+      - run: pnpm exec playwright install chromium
+        timeout-minutes: 5
       - run: pnpm test:e2e:critical
       # Retries (playwright.config.ts) keep a flake from failing this job, which
       # also hides it: the run goes green with one "flaky" line in the raw log.
@@ -493,7 +505,9 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm db:seed
-      - run: pnpm exec playwright install --with-deps chromium
+      # No `--with-deps`: see the same step in e2e.
+      - run: pnpm exec playwright install chromium
+        timeout-minutes: 5
       - run: pnpm test:a11y --grep "${{ matrix.routes }} routes"
       # Retries (playwright.config.ts) keep a flake from failing this job, which
       # also hides it: the run goes green with one "flaky" line in the raw log.
