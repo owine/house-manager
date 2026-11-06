@@ -15,7 +15,7 @@ import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext } from '../context-builder';
 import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
 import { buildSystemBlocks, seasonForDate } from '../prompts';
-import { checkRateLimit } from '../rate-limit';
+import { reserveRateLimit } from '../rate-limit';
 import { type ProposedChecklistItem, proposeChecklistResponseSchema } from '../schemas';
 import {
   ChecklistNotFoundError,
@@ -90,7 +90,7 @@ export async function proposeChecklist(
     appendingTo = found;
   }
 
-  const rl = await checkRateLimit(userId, 'checklist');
+  const rl = await reserveRateLimit(userId, 'checklist', ANTHROPIC_MODEL);
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -134,6 +134,7 @@ export async function proposeChecklist(
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'checklist',
       userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
@@ -159,6 +160,7 @@ export async function proposeChecklist(
     // model returned a shape we could not parse" — record which it was.
     const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
     await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'checklist',
       userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,
@@ -183,6 +185,7 @@ export async function proposeChecklist(
   const usage = result.usage;
 
   const log = await createSuggestionLog({
+    reservationId: rl.reservationId,
     userId,
     kind: 'checklist',
     userPrompt: input.mode === 'freeform' ? input.freeFormPrompt : null,

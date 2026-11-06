@@ -11,7 +11,7 @@ import {
   getAnthropic,
 } from '@/lib/ai/client';
 import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
-import { checkRateLimit } from '@/lib/ai/rate-limit';
+import { reserveRateLimit } from '@/lib/ai/rate-limit';
 import {
   classifyAnthropicError,
   classifyStopReason,
@@ -365,7 +365,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     );
   }
 
-  const rl = await checkRateLimit(userId, 'chat');
+  const rl = await reserveRateLimit(userId, 'chat', ANTHROPIC_MODEL);
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -389,6 +389,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   } catch (err) {
     logger.error({ err, userId }, 'voyage embed failed');
     const log = await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'chat',
       userPrompt: turnText,
@@ -517,6 +518,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     await partsPromise;
     const errorReason = classifyAnthropicError(e);
     const log = await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'chat',
       userPrompt: turnText,
@@ -548,6 +550,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
     // Distinguish a truncated or refused turn from an unparseable one.
     const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
     const log = await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'chat',
       userPrompt: turnText,
@@ -634,6 +637,7 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   // createSuggestionLog MUST run before persistTurn's ChatMessage write:
   // ChatMessage.aiSuggestionLogId is a forward FK.
   const log = await createSuggestionLog({
+    reservationId: rl.reservationId,
     userId,
     kind: 'chat',
     userPrompt: turnText,

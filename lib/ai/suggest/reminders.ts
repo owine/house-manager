@@ -16,7 +16,7 @@ import { ANTHROPIC_MAX_TOKENS, ANTHROPIC_MODEL, getAnthropic } from '../client';
 import { buildSuggestContext, type FocusedItem } from '../context-builder';
 import { createSuggestionLog, markAccepted, usageLogFields } from '../log';
 import { buildSystemBlocks } from '../prompts';
-import { checkRateLimit } from '../rate-limit';
+import { reserveRateLimit } from '../rate-limit';
 import {
   type ProposedReminder,
   proposedReminderSchema,
@@ -52,7 +52,7 @@ export async function proposeReminders(input: {
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
   const userId = session.user.id;
 
-  const rl = await checkRateLimit(userId, 'reminders');
+  const rl = await reserveRateLimit(userId, 'reminders', ANTHROPIC_MODEL);
   if (!rl.allowed) {
     await createSuggestionLog({
       userId,
@@ -94,6 +94,7 @@ export async function proposeReminders(input: {
   } catch (e) {
     const errorReason = classifyAnthropicError(e);
     await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'reminders',
       userPrompt: null,
@@ -120,6 +121,7 @@ export async function proposeReminders(input: {
     // model returned a shape we could not parse" — record which it was.
     const errorReason = classifyStopReason(result.stop_reason) ?? 'schema_violation';
     await createSuggestionLog({
+      reservationId: rl.reservationId,
       userId,
       kind: 'reminders',
       userPrompt: null,
@@ -144,6 +146,7 @@ export async function proposeReminders(input: {
   const usage = result.usage;
 
   const log = await createSuggestionLog({
+    reservationId: rl.reservationId,
     userId,
     kind: 'reminders',
     userPrompt: null,
