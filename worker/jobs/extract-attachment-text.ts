@@ -100,7 +100,8 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
 
   try {
     if (mime === 'application/pdf') {
-      const { text } = await extractPdfText(buf);
+      // maxChars lets a long text-layer PDF stop decoding at what we keep.
+      const { text } = await extractPdfText(buf, { maxChars: MAX_TEXT_LENGTH });
       if (text.length >= TEXT_LAYER_FALLBACK_THRESHOLD) {
         extractedText = text;
       } else {
