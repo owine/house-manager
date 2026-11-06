@@ -45,13 +45,15 @@ export const INIT_RETRY_COOLDOWN_MS = 10 * 60_000;
 
 type Live = { worker: TessWorker; died: Promise<never> };
 let livePromise: Promise<Live> | null = null;
+/** Bumped per init, so a dead worker can tell whether the slot is still its own. */
+let liveGen = 0;
 let initFailure: { err: Error; retryAt: number } | null = null;
 
 function asError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
-async function startWorker(): Promise<Live> {
+async function startWorker(gen: number): Promise<Live> {
   // tesseract.js@7 has no `exports` field in package.json, so under Node
   // ESM a destructured named import depends on `cjs-module-lexer` parsing
   // its CJS dist correctly. Today it works, but if the upstream ever ships
@@ -102,9 +104,15 @@ async function startWorker(): Promise<Live> {
     markDead = reject;
   });
   died.catch(() => {}); // observed via the race in ocrImageBuffer
+  // A crash emits 'error' and then 'exit'. Act once, and only clear the slot if
+  // it still holds THIS worker: a call between the two events may already have
+  // started a replacement, and clearing that would orphan its thread.
+  let dead = false;
   const onDeath = (e: Error) => {
+    if (dead) return;
+    dead = true;
     log.warn({ err: e }, 'tesseract: worker thread died; next call re-initializes');
-    livePromise = null;
+    if (liveGen === gen) livePromise = null;
     markDead(e);
   };
   worker.worker.on('error', (e) => onDeath(asError(e)));
@@ -117,7 +125,8 @@ async function startWorker(): Promise<Live> {
 function getLive(): Promise<Live> {
   if (livePromise) return livePromise;
   if (initFailure && Date.now() < initFailure.retryAt) return Promise.reject(initFailure.err);
-  const p = startWorker();
+  const gen = ++liveGen;
+  const p = startWorker(gen);
   livePromise = p;
   // A failed init is dropped (after the cooldown the next call retries), never
   // cached as the worker every later call inherits.

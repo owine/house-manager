@@ -40,6 +40,22 @@ describe('ocrImageBuffer worker lifecycle', () => {
     expect(fake.createWorker).toHaveBeenCalledTimes(2);
   });
 
+  it("a stale 'exit' after 'error' does not drop the replacement worker", async () => {
+    const first = fakeWorker(async () => ({ data: { text: 'one' } }));
+    const second = fakeWorker(async () => ({ data: { text: 'two' } }));
+    fake.createWorker.mockResolvedValueOnce(first.worker).mockResolvedValueOnce(second.worker);
+
+    await ocrImageBuffer(Buffer.from('x'));
+    first.thread.emit('error', new Error('wasm abort'));
+    // A call lands between the two events and starts the replacement.
+    await expect(ocrImageBuffer(Buffer.from('x'))).resolves.toBe('two');
+    first.thread.emit('exit', 1);
+
+    // Still the replacement: no third init, no orphaned thread.
+    await expect(ocrImageBuffer(Buffer.from('x'))).resolves.toBe('two');
+    expect(fake.createWorker).toHaveBeenCalledTimes(2);
+  });
+
   it('passes an errorHandler, so a failed job never hits the library throw', async () => {
     fake.createWorker.mockResolvedValueOnce(
       fakeWorker(async () => ({ data: { text: '' } })).worker,
