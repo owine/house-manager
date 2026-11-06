@@ -227,6 +227,39 @@ describe('chatTurn', () => {
     expect(args.messages.some((m) => m.role === 'assistant' && m.content === '{')).toBe(false);
   });
 
+  // The hourly budget counts turns, so a turn on a long session must not
+  // replay the whole thread: both model calls get the same bounded history.
+  it('replays a long session within the history char budget, to both calls', async () => {
+    const { HISTORY_CHAR_BUDGET } = await import('@/lib/chat/history');
+    const session = await ctx.prisma.chatSession.create({ data: { userId, title: 'long' } });
+    // 120 messages of 3000 chars: 360K chars of history, 7.5x the budget.
+    for (let i = 0; i < 120; i++) {
+      await ctx.prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          role: i % 2 === 0 ? 'USER' : 'ASSISTANT',
+          content: `${i} ${'x'.repeat(2990)}`,
+          createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
+        },
+      });
+    }
+    state.parseResponse = simpleReplyFixture;
+
+    await chatTurn(turnInput('and the porch bulbs?', session.id));
+
+    for (const args of [state.lastParseArgs, state.lastCreateArgs]) {
+      const messages = (args as { messages: Array<{ role: string; content: string }> }).messages;
+      const prior = messages.slice(0, -1);
+      const chars = prior.reduce((n, m) => n + m.content.length, 0);
+      expect(chars).toBeLessThanOrEqual(HISTORY_CHAR_BUDGET);
+      expect(prior.length).toBeGreaterThan(0);
+      expect(messages[0]?.role).toBe('user');
+      // The newest stored message is replayed; the oldest is not.
+      expect(prior.at(-1)?.content.startsWith('119 ')).toBe(true);
+      expect(prior.some((m) => m.content.startsWith('0 '))).toBe(false);
+    }
+  });
+
   it('a failed parts call costs only the part proposals, not the turn', async () => {
     state.parseResponse = updateNoteAndCreateItemFixture;
     state.partsResponse = new Error('anthropic 500');
