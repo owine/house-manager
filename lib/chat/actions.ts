@@ -36,6 +36,7 @@ import type { ActionResult } from '@/lib/result';
 import { enqueueSearchIndex } from '@/lib/search/client';
 import { parseCalendarDate, resolveAnchorDay } from './dates';
 import { findDuplicateNote, type NoteTitle } from './dedup';
+import { boundHistory } from './history';
 import { extractPartProposals } from './parts-extract';
 import { buildSnapshotBlock, CHAT_SYSTEM_PROMPT, type SnapshotInput } from './prompt';
 import { getChatSession } from './queries';
@@ -353,10 +354,15 @@ export async function chatTurn(input: unknown): Promise<ActionResult<ChatTurnDat
   if (sessionId) {
     const existing = await getChatSession(sessionId, userId);
     if (!existing) return { ok: false, formError: 'Session not found' };
-    priorMessages = existing.messages.map((m) => ({
-      role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
-      content: m.content,
-    }));
+    // Bounded: the hourly budget counts turns, so an unbounded replay let one
+    // turn cost as much as the context window allows. This array feeds both
+    // model calls (main and parts).
+    priorMessages = boundHistory(
+      existing.messages.map((m) => ({
+        role: m.role === 'USER' ? ('user' as const) : ('assistant' as const),
+        content: m.content,
+      })),
+    );
   }
 
   const rl = await checkRateLimit(userId, 'chat');
