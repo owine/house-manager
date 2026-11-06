@@ -36,14 +36,19 @@ const CORE_MODULES = new Set(builtinModules);
 // imports must survive the prune or the web container crash-loops.
 export const ENTRYPOINTS = ['worker/index.ts', 'prisma/seed.ts'];
 
-const EXTS = ['.ts', '.tsx', '.mjs', '.js', '.json'];
+const EXTS = ['.ts', '.tsx', '.mjs', '.cjs', '.js', '.json'];
 const INDEXES = EXTS.map((ext) => `index${ext}`);
 
 // `import x from 'y'`, `export * from 'y'`, `import('y')`, `require('y')`,
 // and `import 'y'` (side-effect) — the last is new; see the note above on why
 // a missed specifier is now fatal rather than merely unchecked.
+//
+// Also `new URL('./rel', import.meta.url)`: a file loaded by path rather than
+// imported, like the worker_thread entry lib/ocr/tesseract.ts hands to
+// tesseract.js. Only relative paths with an `import.meta.url` base count, so
+// `new URL('https://…')` is never mistaken for a package.
 const SPECIFIER_RE =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]/g;
+  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+|\bnew\s+URL\s*\(\s*(?=['"]\.[^'"]*['"]\s*,\s*import\.meta\.url\b))['"]([^'"]+)['"]/g;
 
 /** Bare specifier → package name. `@scope/pkg/sub` → `@scope/pkg`, `pkg/sub` → `pkg`. */
 export function packageNameOf(specifier) {
