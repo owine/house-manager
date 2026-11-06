@@ -29,7 +29,12 @@ let webpush: {
 };
 let sendPush: typeof import('./push').sendPush;
 
-const SUB = { id: 'sub-1', endpoint: 'https://push.example/abc', p256dh: 'p256', auth: 'authtok' };
+const SUB = {
+  id: 'sub-1',
+  endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+  p256dh: 'p256',
+  auth: 'authtok',
+};
 const PAYLOAD = { title: 'Due soon', body: 'Replace filter', url: '/reminders' };
 
 beforeEach(async () => {
@@ -53,7 +58,25 @@ describe('sendPush', () => {
     expect(webpush.sendNotification).toHaveBeenCalledWith(
       { endpoint: SUB.endpoint, keys: { p256dh: SUB.p256dh, auth: SUB.auth } },
       JSON.stringify(PAYLOAD),
+      { timeout: 10_000 },
     );
+  });
+
+  // Without a timeout, a peer that accepted the connection and never answered
+  // held the notify worker, and every user's reminders behind it.
+  it('bounds every send with a socket timeout', async () => {
+    webpush.sendNotification.mockResolvedValueOnce(undefined);
+    await sendPush(SUB, PAYLOAD);
+    const opts = webpush.sendNotification.mock.calls[0]?.[2] as { timeout?: number } | undefined;
+    expect(opts?.timeout).toBeGreaterThan(0);
+  });
+
+  // Rows stored before subscribe validated the endpoint. "Gone" makes the
+  // notify job delete them.
+  it('never connects to a stored endpoint outside the push services', async () => {
+    const result = await sendPush({ ...SUB, endpoint: 'https://attacker.example/hold' }, PAYLOAD);
+    expect(result).toEqual({ ok: false, reason: 'subscription-gone' });
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
   });
 
   it('maps a 410 Gone to subscription-gone', async () => {

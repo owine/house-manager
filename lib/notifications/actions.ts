@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import type { ActionResult } from '@/lib/result';
 import { notificationPrefsSchema } from './prefs';
+import { pushSubscriptionSchema } from './push-endpoint';
 
 export async function saveNotificationPrefs(input: unknown): Promise<ActionResult> {
   const session = await auth();
@@ -24,36 +25,35 @@ export async function saveNotificationPrefs(input: unknown): Promise<ActionResul
   return { ok: true, data: undefined };
 }
 
-export type PushSubscriptionInput = {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  userAgent?: string;
-};
-
-export async function subscribePush(
-  input: PushSubscriptionInput,
-): Promise<ActionResult<{ id: string }>> {
+export async function subscribePush(input: unknown): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, formError: 'Unauthorized' };
-  if (!input.endpoint || !input.p256dh || !input.auth) {
-    return { ok: false, formError: 'Invalid subscription payload' };
+  const parsed = pushSubscriptionSchema.safeParse(input);
+  if (!parsed.success) {
+    const endpointBad = parsed.error.issues.some((i) => i.path[0] === 'endpoint');
+    return {
+      ok: false,
+      formError: endpointBad
+        ? 'This browser uses a push service we do not support.'
+        : 'Invalid subscription payload',
+    };
   }
+  const data = parsed.data;
   // Upsert by endpoint (devices can re-subscribe).
   const sub = await prisma.pushSubscription.upsert({
-    where: { endpoint: input.endpoint },
+    where: { endpoint: data.endpoint },
     create: {
       userId: session.user.id,
-      endpoint: input.endpoint,
-      p256dh: input.p256dh,
-      auth: input.auth,
-      userAgent: input.userAgent ?? null,
+      endpoint: data.endpoint,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
     },
     update: {
       userId: session.user.id,
-      p256dh: input.p256dh,
-      auth: input.auth,
-      userAgent: input.userAgent ?? null,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
     },
     select: { id: true },
   });
