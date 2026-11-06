@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { PartForm } from '@/components/parts/PartForm';
+import { requireUser } from '@/lib/auth-guard';
 import { createPart, linkPartToParent } from '@/lib/parts/actions';
 
 export const metadata: Metadata = { title: 'new part' };
@@ -9,6 +10,7 @@ export const metadata: Metadata = { title: 'new part' };
 type SearchParams = Promise<{ itemId?: string; systemId?: string }>;
 
 export default async function NewPartPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const { itemId, systemId } = await searchParams;
   // Exactly one parent, matching the XOR on part_links. A URL carrying both is
   // nonsense; prefer the item and ignore the rest rather than half-linking.

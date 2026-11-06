@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
+import { requireUser } from '@/lib/auth-guard';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
@@ -17,12 +18,14 @@ import { startOfDayUtc } from '@/lib/time/tz';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const r = await getReminder(id);
   return { title: r ? `Edit ${r.title}` : 'Not found' };
 }
 
 export default async function EditReminderPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const [r, availableItems, availableSystems, availableParts] = await Promise.all([
     getReminder(id),

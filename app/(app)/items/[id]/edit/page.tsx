@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ItemForm } from '@/components/items/ItemForm';
+import { requireUser } from '@/lib/auth-guard';
 import { updateItem } from '@/lib/items/actions';
 import { getItem, listAllCategories } from '@/lib/items/queries';
 import { listSystemsForPicker } from '@/lib/systems/queries';
@@ -12,12 +13,14 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const item = await getItem(id);
   return { title: item ? `Edit ${item.name}` : 'Not found' };
 }
 
 export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireUser();
   const { id } = await params;
   const [item, categories, systems] = await Promise.all([
     getItem(id),

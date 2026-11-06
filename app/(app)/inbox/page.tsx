@@ -4,6 +4,7 @@ import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { InboxList } from '@/components/incoming-email/InboxList';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { requireUser } from '@/lib/auth-guard';
 import { type InboxTab, listInboxEmails } from '@/lib/incoming-email/queries';
 
 export const metadata: Metadata = { title: 'inbox' };
@@ -15,6 +16,7 @@ function isInboxTab(v: unknown): v is InboxTab {
 }
 
 export default async function InboxPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const tab: InboxTab = isInboxTab(sp.tab) ? sp.tab : 'untriaged';
   const rows = await listInboxEmails({ tab });

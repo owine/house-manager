@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { getReminder } = vi.hoisted(() => ({ getReminder: vi.fn() }));
 
+vi.mock('@/lib/auth-guard', () => ({ requireUser: vi.fn(async () => ({ user: { id: 'u1' } })) }));
 vi.mock('@/components/reminders/ReminderForm', () => ({ ReminderForm: () => null }));
 vi.mock('@/lib/reminders/actions', () => ({ updateReminder: vi.fn() }));
 vi.mock('@/lib/reminders/queries', () => ({ getReminder }));

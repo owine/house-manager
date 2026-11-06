@@ -6,6 +6,7 @@ import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { GenerateRemindersButton } from '@/components/ai/GenerateRemindersButton';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
 export async function generateMetadata({
@@ -13,12 +14,14 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const item = await prisma.item.findUnique({ where: { id }, select: { name: true } });
   return { title: item?.name ?? 'Not found' };
 }
 
 export default async function SuggestAfterCreate({ params }: { params: Promise<{ id: string }> }) {
+  await requireUser();
   const { id } = await params;
   const item = await prisma.item.findUnique({
     where: { id },

@@ -3,18 +3,21 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { SystemForm } from '@/components/systems/SystemForm';
+import { requireUser } from '@/lib/auth-guard';
 import { updateSystem } from '@/lib/systems/actions';
 import { getSystem } from '@/lib/systems/queries';
 
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const system = await getSystem(id);
   return { title: system ? `Edit ${system.name}` : 'Not found' };
 }
 
 export default async function EditSystemPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const system = await getSystem(id);
   if (!system) notFound();

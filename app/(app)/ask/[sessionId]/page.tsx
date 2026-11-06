@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ChatThread, type ThreadEntry } from '@/components/chat/ChatThread';
 import { toChatTurnProposal } from '@/components/chat/proposal-mapping';
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth-guard';
 import { applyProposal, chatTurn, refreshProposal, rejectProposal } from '@/lib/chat/actions';
 import { getChatSession } from '@/lib/chat/queries';
 
@@ -13,18 +13,15 @@ const ASK_ENABLED = process.env.ASK_ENABLED === 'true' || process.env.ASK_ENABLE
 type Params = Promise<{ sessionId: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const session = await requireUser();
   const { sessionId } = await params;
-  const session = await auth();
-  if (!session?.user?.id) return { title: 'ask' };
   const chatSession = await getChatSession(sessionId, session.user.id);
   return { title: chatSession?.title ?? 'ask' };
 }
 
 export default async function AskSessionPage({ params }: { params: Params }) {
+  const session = await requireUser();
   const { sessionId } = await params;
-
-  const session = await auth();
-  if (!session?.user?.id) return notFound();
 
   // null covers both "does not exist" and "belongs to another user" —
   // deliberately not distinguished, so this is a single notFound() branch.

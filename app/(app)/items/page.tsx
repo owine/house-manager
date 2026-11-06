@@ -10,12 +10,14 @@ import { EmptyState } from '@/components/EmptyState';
 import { ItemCardGrid } from '@/components/items/ItemCardGrid';
 import { ItemsFilterBar } from '@/components/items/ItemsFilterBar';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllCategories, listAllItemLocations, listItems } from '@/lib/items/queries';
 import { parseListParams } from '@/lib/url-params';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function ItemsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v);

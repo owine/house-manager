@@ -13,6 +13,7 @@ import {
 } from '@/components/systems/SystemTimeline';
 import { SystemVendorsSection } from '@/components/systems/SystemVendorsSection';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
+import { requireUser } from '@/lib/auth-guard';
 import { listOrphanItems } from '@/lib/items/queries';
 import { listPartsForParent, listPartsForPicker } from '@/lib/parts/queries';
 import { getRemindersForSystem } from '@/lib/reminders/queries';
@@ -32,6 +33,7 @@ import { getWarrantiesForSystem } from '@/lib/warranties/queries';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const detail = await getSystemDetail(id);
   return { title: detail?.system.name ?? 'Not found' };
@@ -75,6 +77,7 @@ function buildTargets(
 }
 
 export default async function SystemDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
 
   const detail = await getSystemDetail(id);

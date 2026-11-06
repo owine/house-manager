@@ -3,18 +3,21 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
+import { requireUser } from '@/lib/auth-guard';
 import { updateNote } from '@/lib/notes/actions';
 import { getNote, listAllItemsForAutocomplete } from '@/lib/notes/queries';
 
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const note = await getNote(id);
   return { title: note ? `Edit ${note.title}` : 'Not found' };
 }
 
 export default async function EditNotePage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const [note, items] = await Promise.all([getNote(id), listAllItemsForAutocomplete()]);
   if (!note) notFound();

@@ -1,22 +1,21 @@
-import { redirect } from 'next/navigation';
 import { ServiceWorkerRegistrar } from '@/components/notifications/ServiceWorkerRegistrar';
 import { SearchBar } from '@/components/search/SearchBar';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth-guard';
 import { APP_GIT_SHA } from '@/lib/git-sha';
 import { countUntriagedInbox } from '@/lib/incoming-email/queries';
 import { AppSidebar } from './_components/AppSidebar';
 
-// SOLE AUTH GATE for the application. middleware.ts was deleted in Task 12 to
-// avoid an Auth.js v5 JWE-vs-database-session incompatibility, so authenticated
-// pages must live under this route group `app/(app)/` to inherit the redirect
-// below. New protected routes belong here — putting them at the top level (e.g.
-// `app/items/`) ships them publicly. If we add more protected groups, switch
-// the session strategy to JWT and re-introduce middleware.ts.
+// This redirect is UX, not the auth boundary. Next renders the layout and its
+// page segments in parallel, so a page's queries run (and its RSC payload is
+// serialized) even when this redirect fires. Every page and generateMetadata
+// under `app/(app)/` gates itself with requireUser()/requireAdmin() from
+// `lib/auth-guard.ts`; `tests/unit/app-auth-gate.test.ts` enforces it.
+// middleware.ts was deleted (Auth.js v5 JWE-vs-database-session
+// incompatibility), and a page created outside this group is still public.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect('/api/auth/signin');
+  const session = await requireUser();
   // Fail-soft: a stale schema or DB blip shouldn't take the whole sidebar down.
   let inboxCount = 0;
   try {

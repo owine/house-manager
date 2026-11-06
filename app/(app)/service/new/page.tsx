@@ -5,6 +5,7 @@ export const metadata: Metadata = { title: 'new service record' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { createServiceRecord } from '@/lib/service-records/actions';
@@ -20,6 +21,7 @@ export default async function NewServiceRecordPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireUser();
   const sp = await searchParams;
   const prefillItemId = typeof sp.itemId === 'string' ? sp.itemId : undefined;
   const prefillSystemId = typeof sp.systemId === 'string' ? sp.systemId : undefined;

@@ -10,12 +10,14 @@ import { EmptyState } from '@/components/EmptyState';
 import { NoteCardGrid } from '@/components/notes/NoteCardGrid';
 import { NotesFilterBar } from '@/components/notes/NotesFilterBar';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllItemsForAutocomplete, listNotes } from '@/lib/notes/queries';
 import { parseListParams } from '@/lib/url-params';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function NotesPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v);

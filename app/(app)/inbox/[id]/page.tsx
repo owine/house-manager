@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
 import { Separator } from '@/components/ui/separator';
+import { requireUser } from '@/lib/auth-guard';
 import {
   getInboxEmail,
   loadLinkPickerOptions,
@@ -25,6 +26,7 @@ function formatBytes(n: number | null): string {
 }
 
 export default async function InboxDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireUser();
   const { id } = await params;
   const [email, options] = await Promise.all([getInboxEmail(id), loadLinkPickerOptions()]);
   if (!email) notFound();

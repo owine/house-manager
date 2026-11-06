@@ -6,6 +6,7 @@ import { AttachmentUploader } from '@/components/attachments/AttachmentUploader'
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent } from '@/components/ui/card';
 import { WarrantyStatusBadge } from '@/components/warranties/WarrantyStatusBadge';
+import { requireUser } from '@/lib/auth-guard';
 import { formatCalendarDate } from '@/lib/format/date';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { getWarranty } from '@/lib/warranties/queries';
@@ -19,6 +20,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const warranty = await getWarranty(id);
   if (!warranty) return { title: 'Not found' };
@@ -26,6 +28,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 export default async function WarrantyDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const warranty = await getWarranty(id);
   if (!warranty) notFound();

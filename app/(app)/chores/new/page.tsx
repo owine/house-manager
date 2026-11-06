@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { createReminder } from '@/lib/reminders/actions';
@@ -14,6 +15,7 @@ export const metadata: Metadata = { title: 'new chore' };
 type SearchParams = Promise<{ itemId?: string; systemId?: string; partId?: string }>;
 
 export default async function NewChorePage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const [availableItems, availableSystems, availableParts] = await Promise.all([
     listAllActiveItemsForPicker(),

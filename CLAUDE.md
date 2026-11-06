@@ -339,14 +339,26 @@ Related: rrule numbers weekdays Mon=0..Sun=6 while JS uses Sun=0..Sat=6. Use the
 `RRULE_WEEKDAY` map in `lib/reminders/recurrence.ts`; never pass a raw JS weekday to
 `byweekday`.
 
-### `app/(app)/` is the only auth boundary
+### Every page gates itself; a layout is not an auth boundary
 
-`app/(app)/layout.tsx` does the `auth()` check and redirect. `middleware.ts` was removed
-due to an Auth.js v5 JWE-vs-database-session incompatibility, so **a page created at top
-level (e.g. `app/items/`) ships publicly with no auth and nothing will error.** New
-protected routes must go under the `(app)` route group. Route handlers in `app/api/`
-carry their own inline gate; the token-scoped `calendar/[token]` and
-`inbound-email/[token]` routes are deliberately public.
+**The first statement of every page default export and every `generateMetadata` under
+`app/(app)/` is `await requireUser()` (or `requireAdmin()` under `admin/`), from
+`lib/auth-guard.ts`.** The `(app)` and `admin` layouts redirect too, but that is UX only:
+Next renders a route's layout and page segments in parallel, so a page with no gate of
+its own runs its queries and serializes them into the response while the layout is busy
+redirecting. A cookieless `GET /items` received every item name that way, and a MEMBER
+received `/admin/ai`, for as long as the layout was the only gate.
+`tests/unit/app-auth-gate.test.ts` fails on a page whose first statement is not the gate,
+and `tests/e2e/auth-gate.spec.ts` (`@critical`) asserts on response bodies, not on the
+status: a 307 is exactly what the leaky version returned too. Both helpers are
+`cache()`d, so the layout, metadata and page share one session read per request.
+
+`middleware.ts` was removed due to an Auth.js v5 JWE-vs-database-session incompatibility,
+so nothing gates by URL either: **a page created outside the group (e.g. `app/items/`)
+ships publicly.** The unit test also pins the set of pages outside `(app)` (today only
+`app/page.tsx`, which just redirects). Route handlers in `app/api/` carry their own inline
+gate; the token-scoped `calendar/[token]` and `inbound-email/[token]` routes are
+deliberately public.
 
 ### Inbound email is hostile input; the file route is the XSS boundary
 

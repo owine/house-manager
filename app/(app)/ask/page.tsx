@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ChatThread } from '@/components/chat/ChatThread';
+import { requireUser } from '@/lib/auth-guard';
 import { applyProposal, chatTurn, refreshProposal, rejectProposal } from '@/lib/chat/actions';
 
 export const metadata: Metadata = { title: 'ask' };
@@ -10,7 +11,8 @@ export const metadata: Metadata = { title: 'ask' };
 // deployment must still render.
 const ASK_ENABLED = process.env.ASK_ENABLED === 'true' || process.env.ASK_ENABLED === '1';
 
-export default function AskPage() {
+export default async function AskPage() {
+  await requireUser();
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-8">
       <header className="space-y-1">

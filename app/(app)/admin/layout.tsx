@@ -1,10 +1,7 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth-guard';
 
+// UX only — each admin page calls requireAdmin() itself (see lib/auth-guard.ts).
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if ((session?.user as { role?: string } | undefined)?.role !== 'ADMIN') {
-    redirect('/');
-  }
+  await requireAdmin();
   return <>{children}</>;
 }
