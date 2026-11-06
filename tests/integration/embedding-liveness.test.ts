@@ -106,6 +106,8 @@ beforeEach(async () => {
   process.env.ASK_ENABLED = 'true';
   await ctx.prisma.$executeRaw`DELETE FROM embeddings`;
   await ctx.prisma.attachment.deleteMany();
+  await ctx.prisma.incomingEmail.deleteMany();
+  await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.checklistItem.deleteMany();
   await ctx.prisma.checklist.deleteMany();
   await ctx.prisma.note.deleteMany();
@@ -152,6 +154,41 @@ describe('retrieveTopK only returns chunks whose source is live (Q-H2)', () => {
     expect(await retrieve.retrieveTopK(QUERY, { k: 10 })).toEqual([]);
     // The rows are still there. Removing them is the sweep's job (Task 5).
     expect(await ctx.prisma.embedding.count()).toBe(2);
+  });
+
+  it('an email attachment unlinked from its service record leaves Ask', async () => {
+    // Deleting a drafted record detaches (not deletes) the email's files. The
+    // attachment is inbox-only again: untriaged sender content, which Ask must
+    // not see, even though it was extracted and embedded while linked.
+    const email = await ctx.prisma.incomingEmail.create({
+      data: {
+        messageId: '<detached@a>',
+        fromAddress: 'billing@acme.example',
+        subject: 'Invoice',
+        receivedAt: new Date(),
+        headersJson: {},
+      },
+    });
+    const sr = await ctx.prisma.serviceRecord.create({
+      data: { summary: 'From email', performedOn: todayUtcMidnight() },
+    });
+    const att = await seedAttachment({});
+    await ctx.prisma.attachment.update({
+      where: { id: att.id },
+      data: { incomingEmailId: email.id, serviceRecordId: sr.id },
+    });
+    await seedEmbedding('ATTACHMENT', att.id);
+    expect(await retrieve.retrieveTopK(QUERY, { k: 10 })).toHaveLength(1); // linked: live
+
+    await ctx.prisma.attachment.update({
+      where: { id: att.id },
+      data: { serviceRecordId: null },
+    });
+
+    // Gone from retrieval at once, and the re-embed the detach queues
+    // tombstones it rather than re-embedding it without the parent.
+    expect(await retrieve.retrieveTopK(QUERY, { k: 10 })).toEqual([]);
+    expect(await embedding.currentContentHash('ATTACHMENT', att.id)).toBeNull();
   });
 
   it('still honours k and the entityTypes filter', async () => {
@@ -347,6 +384,77 @@ describe('embed.backfill re-extracts attachments OCR could not reach', () => {
     await backfill.handleEmbedBackfill();
 
     expect(extractJobs()).toEqual([]);
+  });
+});
+
+describe('embed.backfill extracts attachments that were never extracted', () => {
+  const HOUR = 60 * 60 * 1000;
+  function extractJobs(): unknown[] {
+    return enqueued.filter((e) => e.queue === 'attachment.extract-text').map((e) => e.data);
+  }
+
+  async function seed(opts: {
+    inbound?: 'inbox' | 'linked';
+    extracted?: boolean;
+    aiIndexable?: boolean;
+    ageMs?: number;
+  }): Promise<string> {
+    const email = opts.inbound
+      ? await ctx.prisma.incomingEmail.create({
+          data: {
+            messageId: `<${randomUUID()}@a>`,
+            fromAddress: 'billing@acme.example',
+            subject: 'Invoice',
+            receivedAt: new Date(),
+            headersJson: {},
+          },
+        })
+      : null;
+    const sr =
+      opts.inbound === 'linked'
+        ? await ctx.prisma.serviceRecord.create({
+            data: { summary: 'From email', performedOn: todayUtcMidnight() },
+          })
+        : null;
+    const item = email ? null : await ctx.prisma.item.create({ data: { name: 'X', categoryId } });
+    const id = randomUUID();
+    await ctx.prisma.attachment.create({
+      data: {
+        id,
+        filename: 'invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100,
+        storagePath: `${id}/original.pdf`,
+        uploadedById: 'u1',
+        aiIndexable: opts.aiIndexable ?? true,
+        extractedText: opts.extracted ? 'text' : null,
+        extractedAt: opts.extracted ? new Date() : null,
+        createdAt: new Date(Date.now() - (opts.ageMs ?? 2 * HOUR)),
+        incomingEmailId: email?.id ?? null,
+        serviceRecordId: sr?.id ?? null,
+        itemId: item?.id ?? null,
+      },
+    });
+    return id;
+  }
+
+  it('enqueues never-extracted member uploads and LINKED email attachments only', async () => {
+    const upload = await seed({});
+    const linked = await seed({ inbound: 'linked' });
+    await seed({ inbound: 'inbox' }); // untriaged sender content: never
+    await seed({ extracted: true }); // already done
+    await seed({ aiIndexable: false }); // opted out
+    await seed({ ageMs: 5 * 60 * 1000 }); // fresh: its upload job is still queued
+
+    await backfill.handleEmbedBackfill();
+
+    expect(extractJobs()).toEqual(
+      expect.arrayContaining([
+        { attachmentId: upload, onlyIfUnextracted: true },
+        { attachmentId: linked, onlyIfUnextracted: true },
+      ]),
+    );
+    expect(extractJobs()).toHaveLength(2);
   });
 });
 

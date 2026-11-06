@@ -37,3 +37,22 @@ export async function enqueueEmbed(
     log.warn({ err, entityType, entityId }, 'embedding.enqueue: failed (non-fatal)');
   }
 }
+
+/**
+ * Queue text extraction for an attachment; the extract job chains the embed
+ * once there is text. Fire-and-forget like enqueueEmbed: a failure is logged,
+ * never thrown, and embed.backfill re-queues any attachment never extracted.
+ * Not gated on ASK_ENABLED, matching the upload path: the worker no-ops when
+ * Ask is off.
+ */
+export async function enqueueAttachmentExtraction(
+  attachmentId: string,
+  opts: { onlyIfUnextracted?: boolean } = {},
+): Promise<void> {
+  try {
+    const boss = await getBoss();
+    await boss.send(Queue.ExtractAttachmentText, { attachmentId, ...opts });
+  } catch (err) {
+    log.warn({ err, attachmentId }, 'embedding.enqueue: extraction enqueue failed (non-fatal)');
+  }
+}

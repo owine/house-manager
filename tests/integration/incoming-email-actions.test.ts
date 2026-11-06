@@ -401,6 +401,12 @@ describe('createServiceRecordFromEmail', () => {
     expect(after?.incomingEmailId).toBe(e.id);
     expect(after?.serviceRecordId).toBe(r.data.serviceRecordId);
     expect(after?.storagePath).toBe('fake/invoice.pdf');
+    // Linking is what makes an email's file the member's: extract its text so
+    // Ask can see it (the extract job chains the embed).
+    expect(enqueued).toContainEqual({
+      queue: 'attachment.extract-text',
+      data: { attachmentId: att.id, onlyIfUnextracted: true },
+    });
   });
 });
 

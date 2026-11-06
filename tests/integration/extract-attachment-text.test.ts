@@ -12,7 +12,7 @@ const enqueueEmbedMock = vi.fn(
 );
 const ocrMock = vi.fn(async (_buf: Buffer) => 'OCR_TEXT');
 const renderMock = vi.fn(async (_buf: Buffer) => [Buffer.from('png-page')]);
-const extractPdfTextMock = vi.fn(async (_buf: Buffer) => ({ text: '' }));
+const extractPdfTextMock = vi.fn(async (_buf: Buffer, _opts?: unknown) => ({ text: '' }));
 const normalizeMock = vi.fn(async (_buf: Buffer) => Buffer.from('normalized-png') as Buffer | null);
 
 vi.mock('@/lib/env', () => ({
@@ -24,7 +24,9 @@ vi.mock('@/lib/ocr/tesseract', () => ({
   ensureOcrAvailable: () => ensureOcrMock(),
 }));
 vi.mock('@/lib/pdf/render', () => ({ renderPdfPagesToPng: (b: Buffer) => renderMock(b) }));
-vi.mock('@/lib/pdf/text', () => ({ extractPdfText: (b: Buffer) => extractPdfTextMock(b) }));
+vi.mock('@/lib/pdf/text', () => ({
+  extractPdfText: (b: Buffer, o?: unknown) => extractPdfTextMock(b, o),
+}));
 vi.mock('@/lib/ocr/normalize-image', () => ({
   normalizeImageForOcr: (b: Buffer) => normalizeMock(b),
 }));
@@ -64,6 +66,8 @@ beforeEach(async () => {
   normalizeMock.mockResolvedValue(Buffer.from('normalized-png'));
   ensureOcrMock.mockResolvedValue(undefined);
   await ctx.prisma.attachment.deleteMany();
+  await ctx.prisma.incomingEmail.deleteMany();
+  await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.session.deleteMany();
   await ctx.prisma.account.deleteMany();
@@ -91,6 +95,114 @@ async function seedAttachment(
     },
   });
 }
+
+/**
+ * An attachment that arrived by email: sender-controlled bytes. `linked` hangs
+ * it off a service record too, as drafting one (auto-stub or the button) does.
+ */
+async function seedInboundAttachment(
+  id: string,
+  mimeType: string,
+  { linked }: { linked: boolean },
+): Promise<void> {
+  await atomicWrite(filesDirRef, id, 'original', Buffer.from('placeholder'));
+  const email = await ctx.prisma.incomingEmail.create({
+    data: {
+      messageId: `<${id}@a>`,
+      fromAddress: 'billing@acme.example',
+      subject: 'Invoice',
+      receivedAt: new Date(),
+      headersJson: {},
+    },
+  });
+  const sr = linked
+    ? await ctx.prisma.serviceRecord.create({
+        data: { summary: 'From email', performedOn: new Date(Date.UTC(2026, 10, 1)) },
+      })
+    : null;
+  await ctx.prisma.attachment.create({
+    data: {
+      id,
+      filename: 'f',
+      mimeType,
+      sizeBytes: 11,
+      storagePath: `${id}/original`,
+      uploadedById: 'u1',
+      incomingEmailId: email.id,
+      serviceRecordId: sr?.id ?? null,
+    },
+  });
+}
+
+describe('handleExtractAttachmentText — email-sourced attachments', () => {
+  it('an inbox-only attachment (untriaged sender content) is never extracted', async () => {
+    const id = 'inbound-inbox-only';
+    await seedInboundAttachment(id, 'application/pdf', { linked: false });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(extractPdfTextMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedAt).toBeNull(); // left for when it is linked
+  });
+
+  it('a linked PDF uses its text layer under inbound caps, and is never rasterized', async () => {
+    extractPdfTextMock.mockResolvedValue({ text: 'Invoice 5512 total 185.00' }); // short
+    const id = 'inbound-linked-pdf';
+    await seedInboundAttachment(id, 'application/pdf', { linked: true });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(extractPdfTextMock).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      expect.objectContaining({ maxPages: 50, timeoutMs: 30_000 }),
+    );
+    // Short text would send a member upload to render + OCR; sender bytes
+    // never reach the (unbounded, native) renderer.
+    expect(renderMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedText).toBe('Invoice 5512 total 185.00');
+    expect(row?.ocrUsed).toBe(false);
+    expect(enqueueEmbedMock).toHaveBeenCalledWith('ATTACHMENT', id, undefined);
+  });
+
+  it('a linked PDF with no text layer is marked, not rasterized', async () => {
+    extractPdfTextMock.mockResolvedValue({ text: '' });
+    const id = 'inbound-linked-scan';
+    await seedInboundAttachment(id, 'application/pdf', { linked: true });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(renderMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('inbound_pdf_no_text_layer');
+    expect(row?.extractedAt).not.toBeNull(); // done: not re-tried every night
+  });
+
+  it("a linked image is OCR'd like any other", async () => {
+    const id = 'inbound-linked-photo';
+    await seedInboundAttachment(id, 'image/jpeg', { linked: true });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(ocrMock).toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedText).toBe('OCR_TEXT');
+  });
+
+  it('a backfill job for a row extracted meanwhile is skipped', async () => {
+    const id = 'img-extracted-meanwhile';
+    await seedAttachment(id, 'image/jpeg');
+    await ctx.prisma.attachment.update({
+      where: { id },
+      data: { extractedText: 'done', extractedAt: new Date() },
+    });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id, onlyIfUnextracted: true } }]);
+
+    expect(ocrMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('handleExtractAttachmentText', () => {
   it('text-layer PDF: uses extracted text without OCR', async () => {

@@ -291,6 +291,8 @@ async function buildCanonical(
           filename: true,
           extractedText: true,
           aiIndexable: true,
+          incomingEmailId: true,
+          serviceRecordId: true,
           item: { select: { name: true } },
           warranty: { select: { provider: true } },
           serviceRecord: { select: { summary: true } },
@@ -300,6 +302,9 @@ async function buildCanonical(
       });
       if (!a) return null;
       if (a.aiIndexable === false) return null; // user opted out
+      // Back in the inbox (its drafted record was deleted): untriaged sender
+      // content again, so tombstone it. Same rule as SOURCE_IS_LIVE.
+      if (a.incomingEmailId !== null && a.serviceRecordId === null) return null;
       // Nothing enforces that this ladder covers every parent FK — a missing
       // branch just yields `parent: null`, and canonicalizeAttachment omits the
       // line silently. Adding a parent type to lib/attachments/schema.ts means

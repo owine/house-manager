@@ -5,8 +5,8 @@ import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
 import { classifyAnthropicError } from '@/lib/ai/suggest/_shared';
 import { parseCalendarDate } from '@/lib/chat/dates';
 import { prisma } from '@/lib/db';
-import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
+import { enqueueDraftFollowUps } from '@/lib/incoming-email/after-draft';
 import {
   aiClassifyExtract,
   shouldAutoStub,
@@ -21,7 +21,6 @@ import {
 import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
-import { enqueueSearchIndex } from '@/lib/search/client';
 import { startOfDayUtc } from '@/lib/time/tz';
 
 export type ClassifyIncomingEmailJob = { id: string };
@@ -390,12 +389,7 @@ async function autoStub(input: {
         onlyIfStateIn: WORKER_OWNED_STATES,
       }),
     );
-    await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
-    await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
-    // The linked attachments now read "Linked to serviceRecord: …".
-    for (const attachmentId of created.linkedAttachmentIds) {
-      await enqueueEmbed('ATTACHMENT', attachmentId);
-    }
+    await enqueueDraftFollowUps(created);
     log.info(
       {
         id: input.rowId,

@@ -58,6 +58,21 @@ vi.mock('@/lib/ai/client', () => ({
   }),
 }));
 
+// What reaches pg-boss from the job's post-commit side effects.
+const enqueued: Array<{ queue: string; data: unknown }> = [];
+vi.mock('@/lib/queue', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@/lib/queue')>();
+  return {
+    ...orig,
+    getBoss: vi.fn(async () => ({
+      send: vi.fn(async (queue: string, data: unknown) => {
+        enqueued.push({ queue, data });
+        return 'fake-job-id';
+      }),
+    })),
+  };
+});
+
 const sentryCaptured: unknown[] = [];
 vi.mock('@sentry/node', () => ({
   captureException: vi.fn((e: unknown) => {
@@ -133,6 +148,7 @@ afterAll(async () => {
 beforeEach(async () => {
   sentMessages.length = 0;
   sentryCaptured.length = 0;
+  enqueued.length = 0;
   duringModelCall = null;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
@@ -284,6 +300,15 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
       select: { filename: true, serviceRecordId: true },
     });
     expect(attachments.map((a) => a.serviceRecordId)).toEqual([srId, srId]);
+    // And both are queued for text extraction, so Ask can see them.
+    const ids = await ctx.prisma.attachment.findMany({
+      where: { incomingEmailId: e.id },
+      select: { id: true },
+    });
+    const extractJobs = enqueued
+      .filter((j) => j.queue === 'attachment.extract-text')
+      .map((j) => (j.data as { attachmentId: string }).attachmentId);
+    expect(extractJobs.sort()).toEqual(ids.map((a) => a.id).sort());
 
     // Drafting the record graduates the row: LINKED drops out of the Untriaged
     // tab and the sidebar badge.
