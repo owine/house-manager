@@ -58,7 +58,14 @@ const QUEUE_POLICY: Partial<Record<QueueName, QueueOptions>> = {
   // Classify retries on a DB error after the model call (the model failing is
   // handled inside the job, by the heuristic). That is a Postgres blip, and
   // every attempt re-pays the model: wait a minute rather than retrying at once.
-  [Queue.ClassifyIncomingEmail]: { retryLimit: 2, retryDelay: 60 },
+  //
+  // Expiry is sized to one job's worst case, not the 15-min default. With
+  // batchSize 1 (worker/index.ts), a job is at most 3 inbound PDFs at 10s each
+  // (INBOUND_PDF_TIMEOUT_MS), one model call at 30s plus one SDK retry
+  // (lib/ai/client.ts), and a few DB writes: about 100s. 300s leaves 3x
+  // margin. Shorter matters because an expired job is retried: a wedge past
+  // this is caught in 5 min, not 15.
+  [Queue.ClassifyIncomingEmail]: { retryLimit: 2, retryDelay: 60, expireInSeconds: 300 },
 };
 
 let bossInstance: PgBoss | null = null;

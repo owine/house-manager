@@ -18,6 +18,12 @@ const MAX_CONCAT_CHARS = 5000; // hard cap on returned text length
 // textless pages, which `MAX_CONCAT_CHARS` never cuts short. The classifier
 // only regex-matches the opening of the document anyway.
 const MAX_PAGES_PER_PDF = 5;
+/**
+ * Wall-clock limit per PDF. Page and char caps cannot reach inside one hostile
+ * page, which can still burn CPU in a single decode (nested Form XObjects, a
+ * flate bomb). A legitimate 5-page invoice decodes in well under a second.
+ */
+export const INBOUND_PDF_TIMEOUT_MS = 10_000;
 
 /**
  * Read the email's PDF attachments off disk and return their concatenated
@@ -73,6 +79,7 @@ export async function loadPdfTextForEmail(emailId: string): Promise<string> {
       const { text } = await extractPdfText(buf, {
         maxChars: remaining,
         maxPages: MAX_PAGES_PER_PDF,
+        timeoutMs: INBOUND_PDF_TIMEOUT_MS,
       });
       if (text.length > 0) {
         chunks.push(text);
