@@ -7,6 +7,10 @@ export type SuggestionKind =
   | 'checklist'
   | 'incoming-email-extract'
   | 'incoming-email-classify'
+  // A member's Re-run classify click. Budgeted to the member (the worker's own
+  // 'incoming-email-classify' row is attributed to the system user, so it
+  // cannot carry a per-member limit).
+  | 'incoming-email-reclassify'
   | 'ask'
   // The chat turn's SECOND model call (lib/chat/parts-extract.ts). Its own
   // kind, not 'chat': the hourly budget in lib/ai/rate-limit.ts counts 'chat'
