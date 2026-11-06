@@ -13,6 +13,11 @@ const log = getLogger('incoming-email.pdf-text');
 const MAX_PDFS = 3;
 const MAX_PER_PDF_BYTES = 2 * 1024 * 1024; // 2 MB — skip enormous PDFs
 const MAX_CONCAT_CHARS = 5000; // hard cap on returned text length
+// Pages decoded per PDF. The sender controls these bytes, and the decode — not
+// the returned text — is the cost: a small PDF can declare thousands of
+// textless pages, which `MAX_CONCAT_CHARS` never cuts short. The classifier
+// only regex-matches the opening of the document anyway.
+const MAX_PAGES_PER_PDF = 5;
 
 /**
  * Read the email's PDF attachments off disk and return their concatenated
@@ -55,9 +60,20 @@ export async function loadPdfTextForEmail(emailId: string): Promise<string> {
     try {
       const abs = resolveStoragePath(env.FILES_DIR, a.storagePath);
       const buf = await readFile(abs);
+      // `sizeBytes` is what ingest recorded; check the bytes actually read too.
+      if (buf.length > MAX_PER_PDF_BYTES) {
+        log.info(
+          { emailId, filename: a.filename, bytes: buf.length },
+          'pdf-text: skipping PDF over per-file cap',
+        );
+        continue;
+      }
       const remaining = MAX_CONCAT_CHARS - runningChars;
       if (remaining <= 0) break;
-      const { text } = await extractPdfText(buf, { maxChars: remaining });
+      const { text } = await extractPdfText(buf, {
+        maxChars: remaining,
+        maxPages: MAX_PAGES_PER_PDF,
+      });
       if (text.length > 0) {
         chunks.push(text);
         runningChars += text.length;
