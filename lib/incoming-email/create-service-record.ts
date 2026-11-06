@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { IncomingEmailState, Prisma } from '@prisma/client';
 import type { TransactionClient } from '@/lib/db';
 
 /**
@@ -28,7 +28,26 @@ export type CreateServiceRecordFromEmailInput = {
   summary: string;
   notes: string;
   targets: Array<{ itemId: string | null; systemId: string | null }>;
+  /**
+   * Draft only while the email is still in one of these states and not
+   * archived. The worker passes its own states (UNTRIAGED / AUTO_LINKED), so a
+   * member's archive or triage that lands while the model call is in flight
+   * wins. Omit it for the member's own button, which may draft from any state.
+   */
+  onlyIfStateIn?: IncomingEmailState[];
 };
+
+/**
+ * The email already has a draft, or left the states the caller required.
+ * Thrown inside the transaction, so the `ServiceRecord` it just created rolls
+ * back with it.
+ */
+export class DraftAlreadyClaimedError extends Error {
+  constructor(readonly incomingEmailId: string) {
+    super(`incoming email ${incomingEmailId} is no longer draftable`);
+    this.name = 'DraftAlreadyClaimedError';
+  }
+}
 
 export type CreateServiceRecordFromEmailResult = {
   serviceRecordId: string;
@@ -67,10 +86,21 @@ export async function createServiceRecordForEmail(
   // `LINKED` is what drops the row out of the Untriaged tab and the sidebar
   // badge (see `listInboxEmails` / `countUntriagedInbox`). A drafted record is
   // the completion of triage, however it was drafted.
-  await tx.incomingEmail.update({
-    where: { id: input.incomingEmailId },
+  //
+  // The back-link is a claim, not a blind write: both callers read the row
+  // well before this point (the worker across a model call), so an
+  // unconditional update overwrote a draft made in between and resurrected an
+  // email the member had archived. Losing the claim throws, which rolls back
+  // the record created above.
+  const claimed = await tx.incomingEmail.updateMany({
+    where: {
+      id: input.incomingEmailId,
+      createdServiceRecordId: null,
+      ...(input.onlyIfStateIn ? { state: { in: input.onlyIfStateIn }, archivedAt: null } : {}),
+    },
     data: { createdServiceRecordId: sr.id, state: 'LINKED' },
   });
+  if (claimed.count !== 1) throw new DraftAlreadyClaimedError(input.incomingEmailId);
 
   // Multi-parent attachments: the same PDF/photo now shows on both the inbox
   // detail (via incomingEmailId) and the service record. Single copy on disk.
