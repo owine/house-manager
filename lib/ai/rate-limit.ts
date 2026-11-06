@@ -95,3 +95,13 @@ export async function reserveRateLimit(
     };
   });
 }
+
+/**
+ * Give back a reservation whose call will not happen (for example a re-run
+ * that pg-boss deduplicated), so the member is not charged for nothing.
+ */
+export async function releaseReservation(reservationId: string): Promise<void> {
+  await prisma.aISuggestionLog.deleteMany({
+    where: { id: reservationId, errorReason: IN_FLIGHT },
+  });
+}

@@ -12,14 +12,18 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 const enqueued: Array<{ queue: string; data: unknown; options?: unknown }> = [];
+// What the mocked boss.send returns next: a job id, or null when pg-boss
+// deduplicated the send.
+let nextSendResult: string | null = 'fake-job-id';
 vi.mock('@/lib/queue', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/lib/queue')>();
   return {
     ...orig,
     getBoss: vi.fn(async () => ({
       send: vi.fn(async (queue: string, data: unknown, options?: unknown) => {
+        if (nextSendResult === null) return null;
         enqueued.push({ queue, data, ...(options ? { options } : {}) });
-        return 'fake-job-id';
+        return nextSendResult;
       }),
     })),
   };
@@ -58,6 +62,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   enqueued.length = 0;
+  nextSendResult = 'fake-job-id';
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmailTarget.deleteMany();
@@ -409,7 +414,13 @@ describe('reclassifyIncomingEmail', () => {
         queue: 'incoming-email.classify',
         data: { id: e.id },
         // Repeat clicks on one email collapse into the queued job.
-        options: { singletonKey: `reclassify:${e.id}`, singletonSeconds: 300 },
+        options: {
+          singletonKey: `reclassify:${e.id}`,
+          singletonSeconds: 300,
+          // A finished re-run still holds its slot; queue into the next one
+          // instead of silently dropping the click.
+          singletonNextSlot: true,
+        },
       },
     ]);
   });
@@ -435,6 +446,18 @@ describe('reclassifyIncomingEmail', () => {
     expect(rows.filter((r) => r.errorReason === 'user_rate_limit')).toHaveLength(1);
     // Every allowed reservation was filled in, none left in flight.
     expect(rows.filter((r) => r.errorReason === 'in_flight')).toHaveLength(0);
+  });
+
+  it('a deduplicated re-run says so and gives the budget back', async () => {
+    const e = await makeEmail();
+    nextSendResult = null;
+    const r = await actions.reclassifyIncomingEmail({ id: e.id });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error();
+    expect(r.formError).toMatch(/already queued/);
+    expect(
+      await ctx.prisma.aISuggestionLog.count({ where: { kind: 'incoming-email-reclassify' } }),
+    ).toBe(0);
   });
 
   it('rejects when the email does not exist', async () => {

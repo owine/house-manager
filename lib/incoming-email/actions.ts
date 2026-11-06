@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { ANTHROPIC_MODEL } from '@/lib/ai/client';
 import { createSuggestionLog } from '@/lib/ai/log';
-import { reserveRateLimit } from '@/lib/ai/rate-limit';
+import { releaseReservation, reserveRateLimit } from '@/lib/ai/rate-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
@@ -216,12 +216,23 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
 
   const boss = await getBoss();
   // singletonSeconds is what makes the key dedup on a standard queue: pg-boss
-  // allows one job per key per time slot, in any state but cancelled.
+  // allows one job per key per time slot, in ANY state but cancelled, so a
+  // finished re-run still holds its slot. singletonNextSlot then queues the
+  // click into the next slot (delayed to its start) rather than dropping it;
+  // null means both slots are taken, i.e. a re-run is already pending.
   const jobId = await boss.send(
     Queue.ClassifyIncomingEmail,
     { id: parsed.data.id },
-    { singletonKey: `reclassify:${parsed.data.id}`, singletonSeconds: RECLASSIFY_DEDUP_SECONDS },
+    {
+      singletonKey: `reclassify:${parsed.data.id}`,
+      singletonSeconds: RECLASSIFY_DEDUP_SECONDS,
+      singletonNextSlot: true,
+    },
   );
+  if (jobId === null) {
+    if (rl.reservationId) await releaseReservation(rl.reservationId);
+    return { ok: false, formError: 'A re-run for this email is already queued.' };
+  }
   // The reservation is the member's budget row. The model call's own usage is
   // logged by the worker under 'incoming-email-classify'.
   await createSuggestionLog({
@@ -230,13 +241,10 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
     kind: 'incoming-email-reclassify',
     userPrompt: parsed.data.id,
     inventorySnapshotIds: [],
-    response: { jobId, deduplicated: jobId === null },
+    response: { jobId },
     model: ANTHROPIC_MODEL,
   });
-  log.info(
-    { id: parsed.data.id, by: u.id, deduplicated: jobId === null },
-    'incoming-email: reclassify enqueued',
-  );
+  log.info({ id: parsed.data.id, by: u.id, jobId }, 'incoming-email: reclassify enqueued');
   // No revalidate yet — the worker writes async. The UI will pick up changes
   // on the user's next navigation, same pattern as the initial classify pass.
   return { ok: true, data: undefined };
