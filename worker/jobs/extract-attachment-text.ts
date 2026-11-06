@@ -8,7 +8,7 @@ import { OCR_UNAVAILABLE, OcrUnavailableError } from '@/lib/ocr/errors';
 import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
 import { ensureOcrAvailable, ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
-import { extractPdfText } from '@/lib/pdf/text';
+import { extractPdfText, PdfMemoryError, PdfTimeoutError } from '@/lib/pdf/text';
 import { enqueueSearchIndex } from '@/lib/search/client';
 
 const log = getLogger('worker.extract-attachment-text');
@@ -27,6 +27,15 @@ export type ExtractAttachmentTextJob = {
    */
   onlyIfUnextracted?: boolean;
 };
+
+/**
+ * Stored before the decode and overwritten when it finishes, with `extractedAt`
+ * still null. A decode that never returns (a native crash in sharp/libvips, an
+ * OOM kill) leaves it behind: pg-boss still retries the job, since the row is
+ * unextracted, but embed.backfill skips the row instead of re-queuing it at
+ * every boot, which would crash-loop the worker on the same file.
+ */
+const EXTRACT_INTERRUPTED = 'extract_interrupted';
 
 /**
  * Caps for an email-sourced PDF's text layer. Its bytes are the sender's, so
@@ -135,6 +144,11 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
     return;
   }
 
+  await prisma.attachment.update({
+    where: { id: attachmentId },
+    data: { extractedError: EXTRACT_INTERRUPTED },
+  });
+
   const mime = row.mimeType ?? '';
   let extractedText = '';
   let ocrUsed = false;
@@ -208,6 +222,14 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
       await mark(attachmentId, { extractedError: OCR_UNAVAILABLE, ocrUsed: false });
       return;
     }
+    if (fromEmail && mime === 'application/pdf') {
+      // Sender bytes that hit the inbound caps or do not parse: expected, so
+      // warn (not reported), as classify does for the same PDFs.
+      const code = inboundPdfErrorCode(err);
+      log.warn({ err, attachmentId, code }, 'extract-attachment-text: inbound PDF not decoded');
+      await mark(attachmentId, { extractedError: code, ocrUsed: false });
+      return;
+    }
     log.error({ err, attachmentId, mime }, 'extract-attachment-text: failed');
     await mark(attachmentId, { extractedError: 'extract_threw', ocrUsed });
     return;
@@ -234,6 +256,12 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
     },
     'extract-attachment-text: complete',
   );
+}
+
+function inboundPdfErrorCode(err: unknown): string {
+  if (err instanceof PdfTimeoutError) return 'inbound_pdf_timeout';
+  if (err instanceof PdfMemoryError) return 'inbound_pdf_too_large';
+  return 'inbound_pdf_unreadable';
 }
 
 async function mark(

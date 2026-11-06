@@ -398,6 +398,7 @@ describe('embed.backfill extracts attachments that were never extracted', () => 
     extracted?: boolean;
     aiIndexable?: boolean;
     ageMs?: number;
+    extractedError?: string;
   }): Promise<string> {
     const email = opts.inbound
       ? await ctx.prisma.incomingEmail.create({
@@ -429,6 +430,7 @@ describe('embed.backfill extracts attachments that were never extracted', () => 
         aiIndexable: opts.aiIndexable ?? true,
         extractedText: opts.extracted ? 'text' : null,
         extractedAt: opts.extracted ? new Date() : null,
+        extractedError: opts.extractedError ?? null,
         createdAt: new Date(Date.now() - (opts.ageMs ?? 2 * HOUR)),
         incomingEmailId: email?.id ?? null,
         serviceRecordId: sr?.id ?? null,
@@ -445,6 +447,9 @@ describe('embed.backfill extracts attachments that were never extracted', () => 
     await seed({ extracted: true }); // already done
     await seed({ aiIndexable: false }); // opted out
     await seed({ ageMs: 5 * 60 * 1000 }); // fresh: its upload job is still queued
+    // A decode that took the worker down with it. Queuing it at every boot
+    // would crash-loop the worker; pg-boss's own retries already had a go.
+    await seed({ extractedError: 'extract_interrupted' });
 
     await backfill.handleEmbedBackfill();
 

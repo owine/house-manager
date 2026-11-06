@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { atomicWrite } from '@/lib/attachments/storage';
 import { OcrUnavailableError } from '@/lib/ocr/errors';
+import { PdfMemoryError, PdfTimeoutError } from '@/lib/pdf/text';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 // Mutable so the env mock can read the runtime tmpdir set in beforeAll.
@@ -24,9 +25,22 @@ vi.mock('@/lib/ocr/tesseract', () => ({
   ensureOcrAvailable: () => ensureOcrMock(),
 }));
 vi.mock('@/lib/pdf/render', () => ({ renderPdfPagesToPng: (b: Buffer) => renderMock(b) }));
-vi.mock('@/lib/pdf/text', () => ({
+vi.mock('@/lib/pdf/text', async (importOriginal) => ({
+  // The real error classes, so the job's instanceof checks see what it will in prod.
+  ...(await importOriginal<typeof import('@/lib/pdf/text')>()),
   extractPdfText: (b: Buffer, o?: unknown) => extractPdfTextMock(b, o),
 }));
+// The job's own logger, captured: its level decides whether the Pino -> Sentry
+// bridge reports a failure. Every other module keeps the real logger.
+const jobLog = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+vi.mock('@/lib/logger', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/logger')>();
+  return {
+    ...real,
+    getLogger: (name: string) =>
+      name === 'worker.extract-attachment-text' ? jobLog : real.getLogger(name),
+  };
+});
 vi.mock('@/lib/ocr/normalize-image', () => ({
   normalizeImageForOcr: (b: Buffer) => normalizeMock(b),
 }));
@@ -179,6 +193,43 @@ describe('handleExtractAttachmentText — email-sourced attachments', () => {
     expect(row?.extractedAt).not.toBeNull(); // done: not re-tried every night
   });
 
+  it.each([
+    [
+      'timeout',
+      new PdfTimeoutError('PDF text extraction exceeded 30000ms; aborted'),
+      'inbound_pdf_timeout',
+    ],
+    [
+      'memory',
+      new PdfMemoryError('PDF text extraction grew RSS by 400 MB; aborted'),
+      'inbound_pdf_too_large',
+    ],
+    [
+      'parse',
+      Object.assign(new Error('Invalid PDF structure.'), { name: 'InvalidPDFException' }),
+      'inbound_pdf_unreadable',
+    ],
+  ])(
+    'a linked PDF that fails its bounded decode (%s) is marked and logged at warn, not reported',
+    async (_case, err, code) => {
+      extractPdfTextMock.mockRejectedValue(err);
+      const id = `inbound-linked-pdf-${code}`;
+      await seedInboundAttachment(id, 'application/pdf', { linked: true });
+
+      await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+      const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+      expect(row?.extractedError).toBe(code);
+      expect(row?.extractedAt).not.toBeNull();
+      // Hostile sender bytes hitting a cap is expected, not something to page on.
+      expect(jobLog.error).not.toHaveBeenCalled();
+      expect(jobLog.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ err, attachmentId: id }),
+        expect.any(String),
+      );
+    },
+  );
+
   it("a linked image is OCR'd like any other", async () => {
     const id = 'inbound-linked-photo';
     await seedInboundAttachment(id, 'image/jpeg', { linked: true });
@@ -292,6 +343,42 @@ describe('handleExtractAttachmentText', () => {
     expect(row?.extractedError).toBe('ocr_unavailable');
     expect(row?.extractedText).toBeNull();
     expect(enqueueEmbedMock).not.toHaveBeenCalled();
+  });
+
+  it('a decode that never returns (the process died) leaves the row marked interrupted', async () => {
+    // A native crash or OOM inside the decode never reaches the catch, so the
+    // row must already say so: embed.backfill skips interrupted rows, where it
+    // would otherwise re-queue the file at every boot and crash-loop the worker.
+    let during: { extractedAt: Date | null; extractedError: string | null } | null = null;
+    const id = 'img-interrupted';
+    normalizeMock.mockImplementation(async () => {
+      during = await ctx.prisma.attachment.findUniqueOrThrow({
+        where: { id },
+        select: { extractedAt: true, extractedError: true },
+      });
+      return null;
+    });
+    await seedAttachment(id, 'image/png');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(during).toEqual({ extractedAt: null, extractedError: 'extract_interrupted' });
+    // Finishing overwrites the marker.
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('image_decode_failed');
+    expect(row?.extractedAt).not.toBeNull();
+  });
+
+  it('a member-upload PDF failure is still reported at error', async () => {
+    extractPdfTextMock.mockRejectedValue(new PdfTimeoutError('exceeded 120000ms'));
+    const id = 'pdf-upload-timeout';
+    await seedAttachment(id, 'application/pdf');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('extract_threw');
+    expect(jobLog.error).toHaveBeenCalled();
   });
 
   it('any other OCR failure is still extract_threw (it may be this file)', async () => {

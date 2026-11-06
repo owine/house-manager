@@ -43,7 +43,10 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
  *      Covers a dropped enqueue, and the email attachments linked before
  *      linking queued extraction. Rows younger than an hour are left to their
  *      own upload job; inbox-only email attachments are never extracted
- *      (extract-attachment-text.ts). One attempt per row per run.
+ *      (extract-attachment-text.ts). One attempt per row per run. A row whose
+ *      decode took the process down (`extract_interrupted`) is skipped: it had
+ *      pg-boss's retries already, and re-queuing it at every boot would
+ *      crash-loop the worker on the same file.
  *
  * Fired at worker boot, nightly at 03:30 UTC, and by the admin Rebuild button.
  * Bounded: at most MAX_ENQUEUE_PER_KIND per entity type for step 2, and the
@@ -86,6 +89,7 @@ async function enqueueUnextracted(boss: Awaited<ReturnType<typeof getBoss>>): Pr
   const rows = await prisma.attachment.findMany({
     where: {
       extractedAt: null,
+      extractedError: null, // excludes extract_interrupted: see step 5 above
       aiIndexable: true,
       createdAt: { lt: new Date(Date.now() - UNEXTRACTED_MIN_AGE_MS) },
       OR: [{ incomingEmailId: null }, { serviceRecordId: { not: null } }],
