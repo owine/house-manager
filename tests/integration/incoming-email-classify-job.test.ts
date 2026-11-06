@@ -794,6 +794,26 @@ describe('handleClassifyIncomingEmail — member triage wins over auto-stub', ()
     expect(await ctx.prisma.serviceRecord.count()).toBe(0);
   });
 
+  it("a member's vendor link made during the model call is kept", async () => {
+    const { e } = await arrange('<vendor-during@a>');
+    const memberVendor = await ctx.prisma.vendor.create({ data: { name: 'Other Plumbing' } });
+    duringModelCall = async () => {
+      await ctx.prisma.incomingEmail.update({
+        where: { id: e.id },
+        data: { state: 'LINKED', vendorId: memberVendor.id },
+      });
+    };
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.state).toBe('LINKED');
+    // The model chose the Acme vendor; the member's choice stands.
+    expect(after?.vendorId).toBe(memberVendor.id);
+    expect(after?.kind).toBe('INVOICE');
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+
   it("a member's draft made during the model call is not overwritten", async () => {
     const { e, v } = await arrange('<drafted-during@a>');
     const { createServiceRecordForEmail } = await import(

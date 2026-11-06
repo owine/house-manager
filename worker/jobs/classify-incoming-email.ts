@@ -251,15 +251,17 @@ async function persistClassification(
   },
   targets: ClassifyTarget[],
 ): Promise<boolean> {
+  const { vendorId, ...metadata } = fields;
   return prisma.$transaction(async (tx) => {
-    const state: IncomingEmailState =
-      fields.vendorId || targets.length > 0 ? 'AUTO_LINKED' : 'UNTRIAGED';
+    const state: IncomingEmailState = vendorId || targets.length > 0 ? 'AUTO_LINKED' : 'UNTRIAGED';
     const { count } = await tx.incomingEmail.updateMany({
       where: { id, state: { in: WORKER_OWNED_STATES }, archivedAt: null },
-      data: { ...fields, state },
+      data: { ...metadata, vendorId, state },
     });
     if (count === 0) {
-      await tx.incomingEmail.update({ where: { id }, data: fields });
+      // Not ours: the vendor link is the member's, like state and targets.
+      // Only the classification metadata (kind, extraction) refreshes.
+      await tx.incomingEmail.update({ where: { id }, data: metadata });
       return false;
     }
     await tx.incomingEmailTarget.deleteMany({ where: { incomingEmailId: id } });

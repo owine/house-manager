@@ -63,6 +63,11 @@ export async function attachIncomingEmail(input: unknown): Promise<ActionResult<
   const { id, vendorId, targets } = parsed.data;
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Lock the email row before touching its targets: the classify worker
+    // takes the same row lock first (persistClassification), so both sides
+    // queue on it instead of each holding half (targets vs row) and deadlocking,
+    // or interleaving their target sets.
+    await tx.$executeRaw`SELECT 1 FROM "incoming_emails" WHERE "id" = ${id} FOR UPDATE`;
     if (targets !== undefined) {
       // Replace-set semantics: nuke existing rows and recreate. Cheaper than
       // a per-row diff at the volumes we're dealing with (single digits).
