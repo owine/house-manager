@@ -29,7 +29,12 @@ let webpush: {
 };
 let sendPush: typeof import('./push').sendPush;
 
-const SUB = { id: 'sub-1', endpoint: 'https://push.example/abc', p256dh: 'p256', auth: 'authtok' };
+const SUB = {
+  id: 'sub-1',
+  endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+  p256dh: 'p256',
+  auth: 'authtok',
+};
 const PAYLOAD = { title: 'Due soon', body: 'Replace filter', url: '/reminders' };
 
 beforeEach(async () => {
@@ -53,7 +58,38 @@ describe('sendPush', () => {
     expect(webpush.sendNotification).toHaveBeenCalledWith(
       { endpoint: SUB.endpoint, keys: { p256dh: SUB.p256dh, auth: SUB.auth } },
       JSON.stringify(PAYLOAD),
+      { timeout: 10_000 },
     );
+  });
+
+  // Without a timeout, a peer that accepted the connection and never answered
+  // held the notify worker, and every user's reminders behind it.
+  it('bounds every send with a socket timeout', async () => {
+    webpush.sendNotification.mockResolvedValueOnce(undefined);
+    await sendPush(SUB, PAYLOAD);
+    const opts = webpush.sendNotification.mock.calls[0]?.[2] as { timeout?: number } | undefined;
+    expect(opts?.timeout).toBeGreaterThan(0);
+  });
+
+  // Rows stored before subscribe validated the endpoint. Skipped, but not
+  // "gone": gone deletes the row, which an allowlist gap would make permanent.
+  it('never connects to a stored endpoint outside the push services', async () => {
+    const result = await sendPush({ ...SUB, endpoint: 'https://attacker.example/hold' }, PAYLOAD);
+    expect(result).toEqual({ ok: false, reason: 'endpoint-not-allowed' });
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
+  // The socket timeout is an idle timeout; a peer trickling bytes resets it.
+  it('gives up on a send that never settles, at the overall deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      webpush.sendNotification.mockReturnValueOnce(new Promise(() => {}));
+      const pending = sendPush(SUB, PAYLOAD);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await pending).toEqual({ ok: false, reason: 'push send deadline exceeded' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('maps a 410 Gone to subscription-gone', async () => {
