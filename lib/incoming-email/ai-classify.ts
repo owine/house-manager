@@ -163,7 +163,8 @@ export function validateCandidateIds(
 /**
  * Confidence floor for auto-stubbing a ServiceRecord from an inbound email:
  * a high-confidence INVOICE or TICKET with a matched vendor AND a matched
- * target (item or system), from a sender that passed DMARC. Anything weaker
+ * target (item or system), from a sender that passed DMARC and whose address
+ * belongs to that vendor (`senderBoundToVendor`). Anything weaker
  * stays in the triage queue.
  */
 export function shouldAutoStub(input: {
@@ -179,9 +180,17 @@ export function shouldAutoStub(input: {
    * real vendor writes a service record with no human in the loop.
    */
   dmarcPassed: boolean;
+  /**
+   * `senderBoundToVendor(fromAddress, vendor.email)` (./auth-results). DMARC
+   * proves the From domain, not that it is THIS vendor's — and `vendorId` is
+   * a model output. Without this, a DMARC pass from any domain the sender
+   * owns, plus the vendor's name in the body, auto-stubbed against the vendor.
+   */
+  senderBound: boolean;
 }): boolean {
   return (
     input.dmarcPassed &&
+    input.senderBound &&
     (input.kind === 'TICKET' || input.kind === 'INVOICE') &&
     input.confidence === 'high' &&
     !!input.vendorId &&

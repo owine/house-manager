@@ -12,7 +12,7 @@ import {
   shouldAutoStub,
   validateCandidateIds,
 } from '@/lib/incoming-email/ai-classify';
-import { dmarcPassed, dmarcResult } from '@/lib/incoming-email/auth-results';
+import { dmarcPassed, dmarcResult, senderBoundToVendor } from '@/lib/incoming-email/auth-results';
 import { classifyEmail } from '@/lib/incoming-email/classify';
 import {
   createServiceRecordForEmail,
@@ -165,6 +165,11 @@ async function classifyOne(id: string): Promise<void> {
       targets,
     );
 
+    // DMARC proves the From domain; this proves the domain is the vendor's.
+    const senderBound = senderBoundToVendor(
+      row.fromAddress,
+      vendors.find((v) => v.id === vendorId)?.email,
+    );
     if (
       owned &&
       shouldAutoStub({
@@ -173,7 +178,8 @@ async function classifyOne(id: string): Promise<void> {
         targetItemId,
         targetSystemId,
         confidence: result.confidence,
-        dmarcPassed: dmarcPassed(row.authResultsJson),
+        dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
+        senderBound,
       }) &&
       !row.createdServiceRecordId
     ) {
@@ -198,6 +204,7 @@ async function classifyOne(id: string): Promise<void> {
           triageOwned: owned,
           // Anything but 'pass' here is enough on its own to withhold the draft.
           dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
+          senderBound,
         },
         'classify-incoming-email: AI classified (no auto-stub)',
       );
@@ -374,7 +381,7 @@ async function heuristicFallback(
     systems: candidates.systems,
     // An attacker can force this path by making the AI call fail, and its
     // vendor match trusts From: exactly. Same gate as the AI path.
-    dmarcPassed: dmarcPassed(row.authResultsJson),
+    dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
   });
 
   const owned = await persistClassification(
@@ -400,6 +407,10 @@ async function heuristicFallback(
         vendorMatched: result.vendorId !== null,
         triageOwned: owned,
         dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
+        senderBound: senderBoundToVendor(
+          row.fromAddress,
+          candidates.vendors.find((v) => v.id === result.vendorId)?.email,
+        ),
       },
       'classify-incoming-email: heuristic classified (no auto-stub)',
     );

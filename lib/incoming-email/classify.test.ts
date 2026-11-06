@@ -411,6 +411,40 @@ describe('classifyEmail — auto-stub gating', () => {
     expect(r.shouldAutoStubServiceRecord).toBe(false);
   });
 
+  // Vendor matching is deliberately permissive so triage gets suggestions; a
+  // DMARC pass from the sender's OWN domain must not turn those into records.
+  it.each([
+    ['display name', { fromAddress: 'noreply@elsewhere.example', fromName: 'Acme HVAC' }],
+    [
+      'subject',
+      { fromAddress: 'noreply@elsewhere.example', subject: 'Acme HVAC service report — Heat Pump' },
+    ],
+  ])('does NOT fire on a %s-only vendor match', (_, o) => {
+    const r = classifyEmail(input({ subject: 'Service report — Heat Pump', ...o }));
+    expect(r.vendorId).toBe('v_acme');
+    expect(r.kind).toBe('TICKET');
+    expect(r.targets[0]?.itemId).toBe('i_hp');
+    expect(r.shouldAutoStubServiceRecord).toBe(false);
+  });
+
+  it('does NOT fire on a notes-domain match (the vendor has no stored address)', () => {
+    const r = classifyEmail(
+      input({
+        fromAddress: 'ops@gamma-services.example',
+        subject: 'Service report — Heat Pump',
+      }),
+    );
+    expect(r.vendorId).toBe('v_domain');
+    expect(r.shouldAutoStubServiceRecord).toBe(false);
+  });
+
+  it("fires for another address on the vendor's own domain", () => {
+    const r = classifyEmail(
+      input({ fromAddress: 'tech7@acme.example', subject: 'Service report — Heat Pump' }),
+    );
+    expect(r.shouldAutoStubServiceRecord).toBe(true);
+  });
+
   // The heuristic fallback is reachable by making the AI call fail, and its
   // vendor match is an exact From: match, which spoofing satisfies.
   it('does NOT fire when the sender did not pass DMARC', () => {

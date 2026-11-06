@@ -95,7 +95,7 @@ describe('POST /api/inbound-email/[token]', () => {
     expect(row?.messageId).toBe('<inv-001@acme.example>');
     // Ingest stores ForwardEmail's auth results where the classify job's
     // DMARC gate reads them.
-    expect(dmarcPassed(row?.authResultsJson)).toBe(true);
+    expect(dmarcPassed(row?.authResultsJson, row?.fromAddress ?? '')).toBe(true);
     expect(row?.attachments).toHaveLength(0);
     expect(enqueued).toEqual([{ queue: 'incoming-email.classify', data: { id: json.id } }]);
   });

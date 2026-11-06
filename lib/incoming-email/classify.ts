@@ -7,9 +7,13 @@
  * in at the worker layer without touching this code.
  *
  * Confidence floor for auto-stubbing a ServiceRecord: all four of
- * (kind=TICKET, vendor matched, item-or-system matched, sender passed DMARC).
- * Anything weaker stays in the triage queue for the user.
+ * (kind=TICKET, vendor matched, item-or-system matched, sender passed DMARC),
+ * plus the sender's address belonging to the matched vendor
+ * (`senderBoundToVendor`) — the looser match paths below may pre-fill triage
+ * but never auto-stub. Anything weaker stays in the triage queue for the user.
  */
+
+import { senderBoundToVendor } from './auth-results';
 
 export type ClassifyVendor = {
   id: string;
@@ -268,7 +272,11 @@ export function classifyEmail(input: ClassifyInput): ClassifyResult {
   }
 
   const shouldAutoStubServiceRecord =
-    input.dmarcPassed && kind === 'TICKET' && vendor !== null && targets.length > 0;
+    input.dmarcPassed &&
+    kind === 'TICKET' &&
+    vendor !== null &&
+    senderBoundToVendor(input.fromAddress, vendor.email) &&
+    targets.length > 0;
 
   return {
     kind,
