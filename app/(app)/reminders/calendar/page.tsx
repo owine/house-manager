@@ -5,6 +5,7 @@ import { ListPageShell } from '@/app/(app)/_components/ListPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { MonthGrid } from '@/components/calendar/MonthGrid';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listCalendarEventsInRange } from '@/lib/calendar/queries';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { startOfDayUtc } from '@/lib/time/tz';
@@ -40,6 +41,7 @@ function monthName(d: Date): string {
 }
 
 export default async function CalendarPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const { month } = await searchParams;
 
   // "Today" is the current day in the HOUSE, not in UTC. Derived from a raw

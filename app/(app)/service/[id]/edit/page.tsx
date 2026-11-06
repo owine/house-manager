@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ServiceRecordForm } from '@/components/service-records/ServiceRecordForm';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { updateServiceRecord } from '@/lib/service-records/actions';
@@ -16,6 +17,7 @@ type Params = Promise<{ id: string }>;
 export const metadata: Metadata = { title: 'edit service record' };
 
 export default async function EditServiceRecordPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const [record, availableItems, availableSystems, availableParts, { vendors }] = await Promise.all(
     [

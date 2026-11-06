@@ -10,11 +10,13 @@ import { ChecklistCard } from '@/components/checklists/ChecklistCard';
 import { ChecklistCreateMenu } from '@/components/checklists/ChecklistCreateMenu';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listChecklists } from '@/lib/checklists/queries';
 
 type SearchParams = Promise<{ archived?: string }>;
 
 export default async function ChecklistsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const { archived } = await searchParams;
   const showArchived = archived === '1' || archived === 'true';
   const checklists = await listChecklists({ includeArchived: showArchived });

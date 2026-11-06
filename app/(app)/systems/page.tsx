@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireUser } from '@/lib/auth-guard';
 import { formatCalendarDate } from '@/lib/format/date';
 import { listSystems } from '@/lib/systems/queries';
 
@@ -16,6 +17,7 @@ export const metadata: Metadata = { title: 'systems' };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function SystemsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const showArchived = sp.archived === 'true';
 

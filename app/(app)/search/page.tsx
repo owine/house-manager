@@ -9,6 +9,7 @@ import { SearchResults } from '@/components/search/SearchResults';
 import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { requireUser } from '@/lib/auth-guard';
 import { type SearchResult, searchAll } from '@/lib/search/queries';
 import { SEARCH_KINDS, type SearchKind, searchQuerySchema } from '@/lib/search/schema';
 import { cn } from '@/lib/utils';
@@ -33,6 +34,7 @@ const KIND_LABELS: Record<SearchKind, string> = {
 };
 
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const parsed = searchQuerySchema.safeParse({

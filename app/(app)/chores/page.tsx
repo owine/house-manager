@@ -6,6 +6,7 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { ReminderTable } from '@/components/reminders/ReminderTable';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { getHouseProfile } from '@/lib/house-profile/queries';
 import { listReminders } from '@/lib/reminders/queries';
 import { parseListParams } from '@/lib/url-params';
@@ -19,6 +20,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 // This page is a filtered view; the table itself is the same component as
 // /reminders to keep markup in lockstep.
 export default async function ChoresPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) if (typeof v === 'string') sp.set(k, v);
   const params = parseListParams(sp);

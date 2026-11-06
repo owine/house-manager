@@ -5,12 +5,14 @@ export const metadata: Metadata = { title: 'new note' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { NoteForm } from '@/components/notes/NoteForm';
+import { requireUser } from '@/lib/auth-guard';
 import { createNote } from '@/lib/notes/actions';
 import { listAllItemsForAutocomplete } from '@/lib/notes/queries';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function NewNotePage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const prefillItemId = typeof sp.itemId === 'string' ? sp.itemId : undefined;
 

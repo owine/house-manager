@@ -11,6 +11,7 @@ import { PushSubscribeButton } from '@/components/notifications/PushSubscribeBut
 import { RebuildIndexButton } from '@/components/search/RebuildIndexButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireUser } from '@/lib/auth-guard';
 import { getEnv } from '@/lib/env';
 import { getHouseProfile } from '@/lib/house-profile/queries';
 import type { HouseProfileInput } from '@/lib/house-profile/schema';
@@ -19,6 +20,7 @@ import { getCurrentUserSettings } from '@/lib/notifications/queries';
 import { HOUSE_DEFAULT_TIMEZONE } from '@/lib/time/timezones';
 
 export default async function SettingsPage() {
+  await requireUser();
   const profile = await getHouseProfile();
   const userSettings = await getCurrentUserSettings();
   const env = getEnv();

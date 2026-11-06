@@ -3,18 +3,21 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { VendorForm } from '@/components/vendors/VendorForm';
+import { requireUser } from '@/lib/auth-guard';
 import { updateVendor } from '@/lib/vendors/actions';
 import { getVendor } from '@/lib/vendors/queries';
 
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const vendor = await getVendor(id);
   return { title: vendor ? `Edit ${vendor.name}` : 'Not found' };
 }
 
 export default async function EditVendorPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const vendor = await getVendor(id);
   if (!vendor) notFound();

@@ -307,7 +307,7 @@ together.
 
 ## Architecture notes
 
-- **Auth gate**: `app/(app)/layout.tsx` is the sole authentication boundary. Protected routes must live under that route group. `middleware.ts` was removed in Task 12 due to an Auth.js v5 JWE-vs-database-session incompatibility; if Plan 2+ adds many protected route groups, switch to JWT sessions and re-introduce middleware.
+- **Auth gate**: every page and `generateMetadata` under `app/(app)/` calls `requireUser()` / `requireAdmin()` (`lib/auth-guard.ts`) as its first statement. The group layouts redirect as well, but a layout is not an auth boundary — Next renders layout and page segments in parallel, so an ungated page still serializes its data into the response. `tests/unit/app-auth-gate.test.ts` enforces the gate. Protected routes must live under the `(app)` route group. `middleware.ts` was removed in Task 12 due to an Auth.js v5 JWE-vs-database-session incompatibility, so there is no URL-level gate.
 - **Worker**: runs via `tsx` directly in both dev and prod (no compile step). Avoids the path-alias / ESM-extension friction between tsc-emitted JS and Node ESM.
 - **Env validation**: `lib/env.ts` exports a lazy `getEnv()` (Zod-validated). Eager validation would break tests on import; the lazy pattern fails fast at first call but doesn't fire during module load.
 - **Dependency pinning**: exact-pinned (`x.y.z`, no range prefix), including `engines` and `packageManager`; `pnpm-workspace.yaml` enforces `savePrefix: ""`. Renovate (`renovate.json`, extending `github>owine/renovate-config`) drives updates with `rangeStrategy: pin`, and owns the release-age soak — pnpm's `minimumReleaseAge` is deliberately unset to avoid double-gating.

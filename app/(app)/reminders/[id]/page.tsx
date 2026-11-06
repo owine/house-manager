@@ -9,6 +9,7 @@ import { ReminderOverflowMenu } from '@/components/reminders/ReminderOverflowMen
 import { ReminderStatusBadge } from '@/components/reminders/ReminderStatusBadge';
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireUser } from '@/lib/auth-guard';
 import { formatCalendarDate } from '@/lib/format/date';
 import { getHouseProfile } from '@/lib/house-profile/queries';
 import { Markdown } from '@/lib/markdown';
@@ -20,12 +21,14 @@ import { parseRecurrence } from '@/lib/reminders/schema';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const r = await getReminder(id);
   return { title: r?.title ?? 'Not found' };
 }
 
 export default async function ReminderDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const r = await getReminder(id);
   if (!r) notFound();

@@ -8,6 +8,7 @@ import { ServiceRecordOverflowMenu } from '@/components/service-records/ServiceR
 import { TargetsChips } from '@/components/targets/TargetsChips';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { requireUser } from '@/lib/auth-guard';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getServiceRecord } from '@/lib/service-records/queries';
@@ -15,6 +16,7 @@ import { getServiceRecord } from '@/lib/service-records/queries';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const record = await getServiceRecord(id);
   return { title: record?.summary ?? 'Not found' };
@@ -27,6 +29,7 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 });
 
 export default async function ServiceRecordDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const record = await getServiceRecord(id);
   if (!record) notFound();

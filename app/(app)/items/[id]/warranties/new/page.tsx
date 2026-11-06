@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { WarrantyForm } from '@/components/warranties/WarrantyForm';
+import { requireUser } from '@/lib/auth-guard';
 import { getItem, listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listSystemsWithItemsForPicker } from '@/lib/systems/queries';
 import { createWarranty } from '@/lib/warranties/actions';
@@ -8,12 +9,14 @@ import { createWarranty } from '@/lib/warranties/actions';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const item = await getItem(id);
   return { title: item ? `New warranty for ${item.name}` : 'Not found' };
 }
 
 export default async function NewWarrantyPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const [item, availableItems, availableSystems] = await Promise.all([
     getItem(id),

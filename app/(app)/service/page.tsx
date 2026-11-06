@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ServiceRecordFilterBar } from '@/components/service-records/ServiceRecordFilterBar';
 import { ServiceRecordTable } from '@/components/service-records/ServiceRecordTable';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listItems } from '@/lib/items/queries';
 import { listServiceRecords } from '@/lib/service-records/queries';
 import { parseListParams } from '@/lib/url-params';
@@ -18,6 +19,7 @@ import { listVendors } from '@/lib/vendors/queries';
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function ServicePage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v);

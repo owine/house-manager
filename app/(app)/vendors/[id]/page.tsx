@@ -18,6 +18,7 @@ import { DeleteVendorButton } from '@/components/vendors/DeleteVendorButton';
 import { VendorLinksSection } from '@/components/vendors/VendorLinksSection';
 import { VendorMetaCard } from '@/components/vendors/VendorMetaCard';
 import { VendorOverflowMenu } from '@/components/vendors/VendorOverflowMenu';
+import { requireUser } from '@/lib/auth-guard';
 import { formatCalendarDate } from '@/lib/format/date';
 import { Markdown } from '@/lib/markdown';
 import { getVendor, getVendorWithLinks } from '@/lib/vendors/queries';
@@ -25,12 +26,14 @@ import { getVendor, getVendorWithLinks } from '@/lib/vendors/queries';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const vendor = await getVendor(id);
   return { title: vendor?.name ?? 'Not found' };
 }
 
 export default async function VendorDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const [vendor, links] = await Promise.all([getVendor(id), getVendorWithLinks(id)]);
   if (!vendor || !links) notFound();

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = { title: 'dashboard' };
 
 import { seasonForDate } from '@/lib/ai/prompts';
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth-guard';
 import { listChecklists } from '@/lib/checklists/queries';
 import { quickStats, recentActivity, upcomingReminders } from '@/lib/dashboard/queries';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
@@ -19,12 +19,12 @@ import { SeasonalChecklistCard } from './SeasonalChecklistCard';
 import { UpcomingRemindersCard } from './UpcomingRemindersCard';
 
 export default async function Dashboard() {
+  const session = await requireUser();
   // Resolved once, up front: quickStats needs it as an argument and the two
   // date-rendering children need it as a prop, and every consumer on this page
   // must agree on which day "today" is.
   const tz = await getHouseTimezone();
-  const [session, stats, activity, reminders, checklists, inbox] = await Promise.all([
-    auth(),
+  const [stats, activity, reminders, checklists, inbox] = await Promise.all([
     quickStats(tz),
     recentActivity(10),
     upcomingReminders(5),
@@ -34,7 +34,7 @@ export default async function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <DashboardGreeting name={session?.user?.name ?? 'there'} />
+      <DashboardGreeting name={session.user.name ?? 'there'} />
 
       {/* Launchpad band — primary CTAs as a wide strip at the top so the
           dashboard doubles as a "what do I want to do next" shortcut. */}

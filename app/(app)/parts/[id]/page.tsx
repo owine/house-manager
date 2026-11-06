@@ -5,6 +5,7 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { PartOverflowMenu } from '@/components/parts/PartOverflowMenu';
 import { Badge } from '@/components/ui/badge';
 import { LocalDate } from '@/components/ui/LocalDate';
+import { requireUser } from '@/lib/auth-guard';
 import { archivePart, restorePart } from '@/lib/parts/actions';
 import { PART_KIND_LABELS } from '@/lib/parts/kind-labels';
 import { getPart } from '@/lib/parts/queries';
@@ -17,12 +18,14 @@ import { ServiceTab } from './tabs/ServiceTab';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const part = await getPart(id);
   return { title: part?.name ?? 'Not found' };
 }
 
 export default async function PartDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const part = await getPart(id);
   if (!part) notFound();

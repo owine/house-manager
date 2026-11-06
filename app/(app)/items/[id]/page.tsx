@@ -7,6 +7,7 @@ import { ItemTabs, type TabSlug } from '@/components/items/ItemTabs';
 import { ItemVendorsSection } from '@/components/items/ItemVendorsSection';
 import { PartsForParent } from '@/components/parts/PartsForParent';
 import type { VendorLinkRow } from '@/components/vendor-links/VendorLinkChips';
+import { requireUser } from '@/lib/auth-guard';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
 import { archiveItem, restoreItem } from '@/lib/items/actions';
 import { getItem } from '@/lib/items/queries';
@@ -23,6 +24,7 @@ type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const item = await getItem(id);
   return { title: item?.name ?? 'Not found' };
@@ -49,6 +51,7 @@ export default async function ItemDetailPage({
   params: Params;
   searchParams: SearchParams;
 }) {
+  await requireUser();
   const { id } = await params;
   const sp = await searchParams;
   const tab = parseTab(sp.tab);

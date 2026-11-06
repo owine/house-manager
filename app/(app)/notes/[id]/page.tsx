@@ -8,18 +8,21 @@ import { NoteOverflowMenu } from '@/components/notes/NoteOverflowMenu';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { LocalDate } from '@/components/ui/LocalDate';
+import { requireUser } from '@/lib/auth-guard';
 import { Markdown } from '@/lib/markdown';
 import { getNote } from '@/lib/notes/queries';
 
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const note = await getNote(id);
   return { title: note?.title ?? 'Not found' };
 }
 
 export default async function NoteDetailPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const note = await getNote(id);
   if (!note) notFound();

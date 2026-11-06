@@ -6,11 +6,13 @@ export const metadata: Metadata = { title: 'ai suggestions' };
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { RebuildEmbeddingsButton } from '@/components/admin/RebuildEmbeddingsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { requireAdmin } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminAIPage() {
+  await requireAdmin();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const rows = await prisma.aISuggestionLog.findMany({
     where: { createdAt: { gte: since } },

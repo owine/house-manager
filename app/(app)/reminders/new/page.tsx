@@ -5,6 +5,7 @@ export const metadata: Metadata = { title: 'new reminder' };
 
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { ReminderForm } from '@/components/reminders/ReminderForm';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listPartsForPicker } from '@/lib/parts/queries';
 import { createReminder } from '@/lib/reminders/actions';
@@ -15,6 +16,7 @@ import type { PartTargetInput } from '@/lib/targets/schema';
 type SearchParams = Promise<{ itemId?: string; systemId?: string; partId?: string }>;
 
 export default async function NewReminderPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const [availableItems, availableSystems, availableParts] = await Promise.all([
     listAllActiveItemsForPicker(),

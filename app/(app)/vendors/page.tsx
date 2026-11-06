@@ -9,12 +9,14 @@ import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Button } from '@/components/ui/button';
 import { VendorTable } from '@/components/vendors/VendorTable';
+import { requireUser } from '@/lib/auth-guard';
 import { parseListParams } from '@/lib/url-params';
 import { listVendors } from '@/lib/vendors/queries';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function VendorsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v);

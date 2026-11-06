@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { FormPageShell } from '@/app/(app)/_components/FormPageShell';
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { PartForm } from '@/components/parts/PartForm';
+import { requireUser } from '@/lib/auth-guard';
 import { updatePart } from '@/lib/parts/actions';
 import { getPart } from '@/lib/parts/queries';
 import type { CreatePartInput } from '@/lib/parts/schema';
@@ -10,12 +11,14 @@ import type { CreatePartInput } from '@/lib/parts/schema';
 type Params = Promise<{ id: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  await requireUser();
   const { id } = await params;
   const part = await getPart(id);
   return { title: part ? `Edit ${part.name}` : 'Not found' };
 }
 
 export default async function EditPartPage({ params }: { params: Params }) {
+  await requireUser();
   const { id } = await params;
   const part = await getPart(id);
   if (!part) notFound();

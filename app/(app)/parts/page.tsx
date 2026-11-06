@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { PartsFilterBar } from '@/components/parts/PartsFilterBar';
 import { PartTable } from '@/components/parts/PartTable';
 import { Button } from '@/components/ui/button';
+import { requireUser } from '@/lib/auth-guard';
 import { listAllActiveItemsForPicker } from '@/lib/items/queries';
 import { listParts } from '@/lib/parts/queries';
 import { listSystemsForPicker } from '@/lib/systems/queries';
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: 'parts' };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function PartsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireUser();
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v);
