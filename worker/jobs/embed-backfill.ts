@@ -4,6 +4,7 @@ import { currentContentHash } from '@/lib/embedding';
 import { sweepOrphanEmbeddings } from '@/lib/embedding/live-source';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { OCR_UNAVAILABLE } from '@/lib/ocr/errors';
 import { getBoss, Queue } from '@/lib/queue';
 
 const log = getLogger('worker.embed-backfill');
@@ -26,6 +27,13 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
  *      only) and re-enqueue it when the hash differs from the stored one. This
  *      catches an edit whose embed job failed or was never sent, and renames no
  *      cascade reaches. Voyage is only called for the mismatches.
+ *   4. OCR retry: re-enqueue text extraction for attachments that needed OCR
+ *      while it was unavailable (`extractedError = 'ocr_unavailable'`). Bounded
+ *      pg-boss retries could not cover this: OCR can stay down indefinitely
+ *      (no egress to the language-data CDN), and every retry inside the init
+ *      cooldown fails instantly. Running at every boot means "fix it, restart"
+ *      recovers every row. It cannot loop on a bad file, because an init
+ *      failure never involves the input.
  *
  * Fired at worker boot, nightly at 03:30 UTC, and by the admin Rebuild button.
  * Bounded: at most MAX_ENQUEUE_PER_KIND per entity type for step 2, and the
@@ -54,9 +62,23 @@ export async function handleEmbedBackfill(): Promise<void> {
     enqueueMissing('PART', () => partIdsMissingEmbeddings(), boss),
   ]);
   const stale = await enqueueStale(boss);
+  const ocrRetries = await enqueueOcrRetries(boss);
 
   const total = counts.reduce((s, c) => s + c, 0);
-  log.info({ total, perKind: counts, stale }, 'embed-backfill: complete');
+  log.info({ total, perKind: counts, stale, ocrRetries }, 'embed-backfill: complete');
+}
+
+async function enqueueOcrRetries(boss: Awaited<ReturnType<typeof getBoss>>): Promise<number> {
+  const rows = await prisma.attachment.findMany({
+    where: { extractedError: OCR_UNAVAILABLE, aiIndexable: true },
+    select: { id: true },
+    take: MAX_ENQUEUE_PER_KIND,
+  });
+  for (const { id } of rows) {
+    await boss.send(Queue.ExtractAttachmentText, { attachmentId: id });
+  }
+  if (rows.length > 0) log.info({ count: rows.length }, 'embed-backfill: re-enqueued OCR retries');
+  return rows.length;
 }
 
 async function enqueueStale(boss: Awaited<ReturnType<typeof getBoss>>): Promise<number> {

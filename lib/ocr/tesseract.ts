@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { OcrUnavailableError } from './errors';
 
 const log = getLogger('ocr.tesseract');
 
@@ -151,6 +152,13 @@ function getLive(): Promise<Live> {
     (e: unknown) => {
       if (livePromise === p) livePromise = null;
       initFailure = { err: asError(e), retryAt: Date.now() + INIT_RETRY_COOLDOWN_MS };
+      // Reported once per failed init, here, rather than once per attachment
+      // by the caller: every OCR call in the cooldown reuses this failure, and
+      // the extract job logs those at warn (the rows are re-extracted later).
+      log.error(
+        { err: initFailure.err },
+        'tesseract: init failed; OCR unavailable during cooldown',
+      );
     },
   );
   return p;
@@ -165,11 +173,18 @@ function getLive(): Promise<Live> {
  *
  * Rejects (never crashes the process, never hangs on a dead thread) when
  * tesseract fails; the caller's catch decides what that means for the job.
+ * An init failure, including one reused during the cooldown, rejects with
+ * OcrUnavailableError.
  */
 export async function ocrImageBuffer(buf: Buffer): Promise<string> {
   const { OCR_BACKEND } = getEnv();
   if (OCR_BACKEND === 'none') return '';
-  const { worker, died } = await getLive();
+  // Typed so the caller can tell "OCR is down" from "this input broke OCR".
+  // Only init is wrapped: init never sees the input, while a recognize that
+  // fails or kills the thread may be this file's doing.
+  const { worker, died } = await getLive().catch((e: unknown) => {
+    throw new OcrUnavailableError(`OCR unavailable: ${asError(e).message}`, { cause: e });
+  });
   const { data } = await Promise.race([worker.recognize(buf), died]);
   return (data.text ?? '').trim();
 }

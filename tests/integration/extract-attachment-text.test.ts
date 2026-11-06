@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { atomicWrite } from '@/lib/attachments/storage';
+import { OcrUnavailableError } from '@/lib/ocr/errors';
 import { type IntegrationContext, setupIntegration, teardownIntegration } from './helpers';
 
 // Mutable so the env mock can read the runtime tmpdir set in beforeAll.
@@ -161,5 +162,29 @@ describe('handleExtractAttachmentText', () => {
 
     const row = await ctx.prisma.attachment.findUnique({ where: { id } });
     expect(row?.extractedError).toMatch(/^unsupported_mime:/);
+  });
+
+  it('OCR unavailable: marks ocr_unavailable (re-extracted later), not extract_threw', async () => {
+    ocrMock.mockRejectedValue(new OcrUnavailableError('tesseract init failed: ENOENT'));
+    const id = 'img-ocr-unavailable';
+    await seedAttachment(id, 'image/png');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('ocr_unavailable');
+    expect(row?.extractedText).toBeNull();
+    expect(enqueueEmbedMock).not.toHaveBeenCalled();
+  });
+
+  it('any other OCR failure is still extract_threw (it may be this file)', async () => {
+    ocrMock.mockRejectedValue(new Error('tesseract thread exited (code 1)'));
+    const id = 'img-ocr-threw';
+    await seedAttachment(id, 'image/png');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('extract_threw');
   });
 });

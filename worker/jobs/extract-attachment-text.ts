@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { OCR_UNAVAILABLE, OcrUnavailableError } from '@/lib/ocr/errors';
 import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
 import { ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
@@ -143,6 +144,15 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
       extractedError = `unsupported_mime:${mime || 'unknown'}`;
     }
   } catch (err) {
+    if (err instanceof OcrUnavailableError) {
+      // OCR is down (init failed, or its cooldown is running), not broken by
+      // this file. embed.backfill re-enqueues these rows at every boot and
+      // nightly. warn, not error: tesseract.ts reports the init failure once,
+      // and this fires for every attachment that arrives during the outage.
+      log.warn({ err, attachmentId, mime }, 'extract-attachment-text: OCR unavailable; will retry');
+      await mark(attachmentId, { extractedError: OCR_UNAVAILABLE, ocrUsed: false });
+      return;
+    }
     log.error({ err, attachmentId, mime }, 'extract-attachment-text: failed');
     await mark(attachmentId, { extractedError: 'extract_threw', ocrUsed });
     return;

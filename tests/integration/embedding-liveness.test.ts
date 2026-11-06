@@ -267,6 +267,49 @@ describe('embed.backfill reconciles the embeddings table', () => {
   });
 });
 
+describe('embed.backfill re-extracts attachments OCR could not reach', () => {
+  function extractJobs(): string[] {
+    return enqueued
+      .filter((e) => e.queue === 'attachment.extract-text')
+      .map((e) => (e.data as { attachmentId: string }).attachmentId);
+  }
+
+  async function seedFailedExtract(
+    note: { id: string },
+    extractedError: string,
+    aiIndexable = true,
+  ): Promise<string> {
+    const a = await seedAttachment({ noteId: note.id }, aiIndexable);
+    await ctx.prisma.attachment.update({
+      where: { id: a.id },
+      data: { extractedText: null, extractedAt: new Date(), extractedError },
+    });
+    return a.id;
+  }
+
+  it('re-enqueues ocr_unavailable rows, and only those', async () => {
+    const note = await ctx.prisma.note.create({ data: { title: 'Receipts', body: 'r' } });
+    const unavailable = await seedFailedExtract(note, 'ocr_unavailable');
+    await seedFailedExtract(note, 'extract_threw'); // may be the file's fault: never looped
+    await seedFailedExtract(note, 'image_decode_failed');
+    await seedFailedExtract(note, 'ocr_unavailable', false); // opted out of AI
+
+    await backfill.handleEmbedBackfill();
+
+    expect(extractJobs()).toEqual([unavailable]);
+  });
+
+  it('does not re-extract with Ask off (the extract job would no-op anyway)', async () => {
+    process.env.ASK_ENABLED = 'false';
+    const note = await ctx.prisma.note.create({ data: { title: 'Receipts', body: 'r' } });
+    await seedFailedExtract(note, 'ocr_unavailable');
+
+    await backfill.handleEmbedBackfill();
+
+    expect(extractJobs()).toEqual([]);
+  });
+});
+
 function todayUtcMidnight(): Date {
   const d = new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
