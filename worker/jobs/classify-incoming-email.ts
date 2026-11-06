@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { IncomingEmailState, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/node';
 import { ANTHROPIC_MODEL } from '@/lib/ai/client';
 import { createSuggestionLog, usageLogFields } from '@/lib/ai/log';
@@ -14,7 +14,10 @@ import {
 } from '@/lib/incoming-email/ai-classify';
 import { dmarcPassed, dmarcResult } from '@/lib/incoming-email/auth-results';
 import { classifyEmail } from '@/lib/incoming-email/classify';
-import { createServiceRecordForEmail } from '@/lib/incoming-email/create-service-record';
+import {
+  createServiceRecordForEmail,
+  DraftAlreadyClaimedError,
+} from '@/lib/incoming-email/create-service-record';
 import { loadPdfAttachments } from '@/lib/incoming-email/pdf-attachments';
 import { loadPdfTextForEmail } from '@/lib/incoming-email/pdf-text';
 import { getLogger } from '@/lib/logger';
@@ -59,7 +62,6 @@ async function classifyOne(id: string): Promise<void> {
       subject: true,
       bodyText: true,
       receivedAt: true,
-      state: true,
       createdServiceRecordId: true,
       // ForwardEmail's SPF/DKIM/DMARC verdicts, as stored at ingest. The DMARC
       // result is the one auto-stub input the email's author can't steer.
@@ -100,12 +102,6 @@ async function classifyOne(id: string): Promise<void> {
     log.warn({ id: row.id }, 'classify-incoming-email: no user to attribute log to; skipping');
     return;
   }
-
-  // `state` is user-meaningful: if the user has already triaged (LINKED) or
-  // dismissed (ARCHIVED) this email, don't reset to AUTO_LINKED/UNTRIAGED and
-  // don't touch their targets either. Only transition when state is still
-  // UNTRIAGED or a prior AUTO_LINKED (which a re-run is allowed to refresh).
-  const ownsRow = row.state === 'UNTRIAGED' || row.state === 'AUTO_LINKED';
 
   const start = Date.now();
   try {
@@ -155,43 +151,22 @@ async function classifyOne(id: string): Promise<void> {
     // `new Date('2026-02-30T00:00:00Z')` silently rolls over to Mar 2.
     const aiPerformedOn = result.performedOn ? parseCalendarDate(result.performedOn) : null;
 
-    await prisma.$transaction(async (tx) => {
-      if (ownsRow) {
-        await tx.incomingEmailTarget.deleteMany({ where: { incomingEmailId: id } });
-        if (targets.length > 0) {
-          await tx.incomingEmailTarget.createMany({
-            data: targets.map((t) => ({
-              incomingEmailId: id,
-              itemId: t.itemId,
-              systemId: t.systemId,
-            })),
-          });
-        }
-      }
-
-      await tx.incomingEmail.update({
-        where: { id },
-        data: {
-          kind: result.kind,
-          vendorId,
-          aiExtractedSummary: result.summary,
-          aiExtractedCost: result.cost,
-          aiExtractedPerformedOn: aiPerformedOn,
-          aiExtractedScope: result.scope,
-          aiExtractedAt: new Date(),
-          ...(ownsRow
-            ? {
-                state:
-                  vendorId || targets.length > 0
-                    ? ('AUTO_LINKED' as const)
-                    : ('UNTRIAGED' as const),
-              }
-            : {}),
-        },
-      });
-    });
+    const owned = await persistClassification(
+      id,
+      {
+        kind: result.kind,
+        vendorId,
+        aiExtractedSummary: result.summary,
+        aiExtractedCost: result.cost,
+        aiExtractedPerformedOn: aiPerformedOn,
+        aiExtractedScope: result.scope,
+        aiExtractedAt: new Date(),
+      },
+      targets,
+    );
 
     if (
+      owned &&
       shouldAutoStub({
         kind: result.kind,
         vendorId,
@@ -220,6 +195,7 @@ async function classifyOne(id: string): Promise<void> {
           confidence: result.confidence,
           vendorMatched: vendorId !== null,
           targetMatched: targets.length > 0,
+          triageOwned: owned,
           // Anything but 'pass' here is enough on its own to withhold the draft.
           dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
         },
@@ -243,11 +219,60 @@ async function classifyOne(id: string): Promise<void> {
       { err: aiErr, id: row.id, errorReason },
       'classify-incoming-email: AI call failed; falling back to heuristic',
     );
-    await heuristicFallback(row, { vendors, items, systems }, augmentedBody, ownsRow);
+    await heuristicFallback(row, { vendors, items, systems }, augmentedBody);
   }
 }
 
 const AUTO_NOTE = '[Auto-created from inbound email — review and edit.]';
+
+/**
+ * The states a classify run may move a row out of. LINKED and ARCHIVED are the
+ * member's decisions: a re-run refreshes kind/vendor/extraction on them, never
+ * their state or targets, and never drafts a record from them.
+ */
+const WORKER_OWNED_STATES: IncomingEmailState[] = ['UNTRIAGED', 'AUTO_LINKED'];
+
+/**
+ * Write the classification, and the state + targets only while the row is
+ * still worker-owned. Returns whether it was.
+ *
+ * Ownership is decided by the conditional update itself, not by the state read
+ * at the top of `classifyOne`: that read is a model call (seconds, minutes under
+ * a backlog) old, and a member who archived or triaged the email meanwhile
+ * must win. The update takes the row lock, so a member write that commits
+ * first is seen here, and one that comes later waits for this transaction.
+ * The result gates auto-stub, which re-checks the same states when it claims
+ * the draft (`onlyIfStateIn`).
+ */
+async function persistClassification(
+  id: string,
+  fields: Omit<Prisma.IncomingEmailUncheckedUpdateManyInput, 'vendorId' | 'state'> & {
+    vendorId: string | null;
+  },
+  targets: ClassifyTarget[],
+): Promise<boolean> {
+  const { vendorId, ...metadata } = fields;
+  return prisma.$transaction(async (tx) => {
+    const state: IncomingEmailState = vendorId || targets.length > 0 ? 'AUTO_LINKED' : 'UNTRIAGED';
+    const { count } = await tx.incomingEmail.updateMany({
+      where: { id, state: { in: WORKER_OWNED_STATES }, archivedAt: null },
+      data: { ...metadata, vendorId, state },
+    });
+    if (count === 0) {
+      // Not ours: the vendor link is the member's, like state and targets.
+      // Only the classification metadata (kind, extraction) refreshes.
+      await tx.incomingEmail.update({ where: { id }, data: metadata });
+      return false;
+    }
+    await tx.incomingEmailTarget.deleteMany({ where: { incomingEmailId: id } });
+    if (targets.length > 0) {
+      await tx.incomingEmailTarget.createMany({
+        data: targets.map((t) => ({ incomingEmailId: id, itemId: t.itemId, systemId: t.systemId })),
+      });
+    }
+    return true;
+  });
+}
 
 function fallbackSummary(subject: string): string {
   const trimmed = subject.trim();
@@ -263,6 +288,8 @@ function fallbackSummary(subject: string): string {
  * Failure is non-fatal: classification metadata is already persisted, so we
  * log + report to Sentry and do not rethrow. The row then stays AUTO_LINKED,
  * which is the correct outcome — no draft exists, so it still needs triage.
+ * Losing the claim (the member archived, triaged or drafted it first) is not a
+ * failure: the record rolls back and we log it at info.
  */
 async function autoStub(input: {
   rowId: string;
@@ -281,6 +308,7 @@ async function autoStub(input: {
         summary: input.summary,
         notes: input.notes,
         targets: input.targets,
+        onlyIfStateIn: WORKER_OWNED_STATES,
       }),
     );
     await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
@@ -298,6 +326,13 @@ async function autoStub(input: {
       'classify-incoming-email: auto-stubbed service record',
     );
   } catch (err) {
+    if (err instanceof DraftAlreadyClaimedError) {
+      log.info(
+        { id: input.rowId },
+        'classify-incoming-email: email was triaged during classify; no auto-stub',
+      );
+      return;
+    }
     Sentry.captureException(err);
     log.error(
       { err, id: input.rowId },
@@ -309,8 +344,8 @@ async function autoStub(input: {
 
 /**
  * Heuristic fallback used when the AI call fails. Persists kind / vendor /
- * targets through the same ownsRow transaction (no aiExtracted*), and honors
- * the heuristic's own auto-stub rule.
+ * targets through the same `persistClassification` (no aiExtracted*), and
+ * honors the heuristic's own auto-stub rule.
  */
 async function heuristicFallback(
   row: {
@@ -328,7 +363,6 @@ async function heuristicFallback(
     systems: Array<{ id: string; name: string }>;
   },
   augmentedBody: string,
-  ownsRow: boolean,
 ): Promise<void> {
   const result = classifyEmail({
     fromAddress: row.fromAddress,
@@ -343,37 +377,13 @@ async function heuristicFallback(
     dmarcPassed: dmarcPassed(row.authResultsJson),
   });
 
-  await prisma.$transaction(async (tx) => {
-    if (ownsRow) {
-      await tx.incomingEmailTarget.deleteMany({ where: { incomingEmailId: row.id } });
-      if (result.targets.length > 0) {
-        await tx.incomingEmailTarget.createMany({
-          data: result.targets.map((t) => ({
-            incomingEmailId: row.id,
-            itemId: t.itemId,
-            systemId: t.systemId,
-          })),
-        });
-      }
-    }
-    await tx.incomingEmail.update({
-      where: { id: row.id },
-      data: {
-        kind: result.kind,
-        vendorId: result.vendorId,
-        ...(ownsRow
-          ? {
-              state:
-                result.vendorId || result.targets.length > 0
-                  ? ('AUTO_LINKED' as const)
-                  : ('UNTRIAGED' as const),
-            }
-          : {}),
-      },
-    });
-  });
+  const owned = await persistClassification(
+    row.id,
+    { kind: result.kind, vendorId: result.vendorId },
+    result.targets,
+  );
 
-  if (result.shouldAutoStubServiceRecord && !row.createdServiceRecordId) {
+  if (owned && result.shouldAutoStubServiceRecord && !row.createdServiceRecordId) {
     await autoStub({
       rowId: row.id,
       vendorId: result.vendorId,
@@ -388,6 +398,7 @@ async function heuristicFallback(
         id: row.id,
         kind: result.kind,
         vendorMatched: result.vendorId !== null,
+        triageOwned: owned,
         dmarc: dmarcResult(row.authResultsJson) ?? 'unreadable',
       },
       'classify-incoming-email: heuristic classified (no auto-stub)',

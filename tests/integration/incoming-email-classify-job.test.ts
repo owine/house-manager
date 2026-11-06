@@ -21,6 +21,9 @@ vi.mock('@/lib/env', () => ({
 const sentMessages: Array<{ system: unknown; messages: unknown }> = [];
 type MockResp = { parsed_output: unknown; usage?: Record<string, number> } | (() => never);
 let mockResponse: MockResp;
+// Runs inside the mocked model call, before it returns: what a member does
+// while the classifier is waiting on Anthropic.
+let duringModelCall: (() => Promise<void>) | null = null;
 
 function happyPath(): MockResp {
   return {
@@ -47,6 +50,7 @@ vi.mock('@/lib/ai/client', () => ({
     messages: {
       parse: vi.fn(async (input: { system: unknown; messages: unknown }) => {
         sentMessages.push(input);
+        if (duringModelCall) await duringModelCall();
         if (typeof mockResponse === 'function') return (mockResponse as () => never)();
         return mockResponse;
       }),
@@ -129,6 +133,7 @@ afterAll(async () => {
 beforeEach(async () => {
   sentMessages.length = 0;
   sentryCaptured.length = 0;
+  duringModelCall = null;
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmailTarget.deleteMany();
@@ -688,6 +693,205 @@ describe('handleClassifyIncomingEmail — DMARC gate on auto-stub', () => {
     expect(after?.targets[0].itemId).toBe(item.id);
     expect(after?.state).toBe('AUTO_LINKED');
     expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+});
+
+// The classifier reads the row, then waits on the model. Whatever a member does
+// with the email in that window is the newer decision, and auto-stub must not
+// override it: no draft from an archived or triaged email, and never a second
+// draft over the member's own.
+describe('handleClassifyIncomingEmail — member triage wins over auto-stub', () => {
+  async function arrange(messageId: string) {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'billing@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        kind: 'INVOICE',
+        vendorId: v.id,
+        targetItemId: item.id,
+        targetSystemId: null,
+        confidence: 'high',
+        summary: 'Heat pump spring tune-up',
+        cost: 185.0,
+        performedOn: '2026-04-15',
+        scope: 'Replaced air filter; cleaned coils.',
+        rationale: 'Clear invoice from known vendor.',
+      },
+      usage: {},
+    };
+    const e = await makeEmail({
+      messageId,
+      subject: 'Invoice #5512 for Heat Pump service',
+      bodyText: 'Amount due $185.',
+    });
+    return { e, v, item };
+  }
+
+  const archive = (id: string) =>
+    ctx.prisma.incomingEmail.update({
+      where: { id },
+      data: { state: 'ARCHIVED', archivedAt: new Date() },
+    });
+
+  it('an email archived before the job runs is not drafted', async () => {
+    const { e } = await arrange('<archived-before@a>');
+    await archive(e.id);
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
+    expect(after?.state).toBe('ARCHIVED');
+    expect(after?.kind).toBe('INVOICE'); // metadata still refreshes
+    expect(after?.targets).toHaveLength(0);
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+
+  it('an email archived while the model call is in flight is not drafted', async () => {
+    const { e } = await arrange('<archived-during@a>');
+    duringModelCall = async () => {
+      await archive(e.id);
+    };
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
+    expect(after?.state).toBe('ARCHIVED');
+    expect(after?.archivedAt).not.toBeNull();
+    expect(after?.targets).toHaveLength(0);
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+
+  it("a member's link made during the model call keeps its state and targets", async () => {
+    const { e } = await arrange('<linked-during@a>');
+    const other = await ctx.prisma.item.create({ data: { name: 'Water Heater', categoryId } });
+    duringModelCall = async () => {
+      await ctx.prisma.incomingEmail.update({
+        where: { id: e.id },
+        data: { state: 'LINKED', targets: { create: [{ itemId: other.id }] } },
+      });
+    };
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({
+      where: { id: e.id },
+      include: { targets: true },
+    });
+    expect(after?.state).toBe('LINKED');
+    expect(after?.targets.map((t) => t.itemId)).toEqual([other.id]);
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+
+  it("a member's vendor link made during the model call is kept", async () => {
+    const { e } = await arrange('<vendor-during@a>');
+    const memberVendor = await ctx.prisma.vendor.create({ data: { name: 'Other Plumbing' } });
+    duringModelCall = async () => {
+      await ctx.prisma.incomingEmail.update({
+        where: { id: e.id },
+        data: { state: 'LINKED', vendorId: memberVendor.id },
+      });
+    };
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.state).toBe('LINKED');
+    // The model chose the Acme vendor; the member's choice stands.
+    expect(after?.vendorId).toBe(memberVendor.id);
+    expect(after?.kind).toBe('INVOICE');
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+  });
+
+  it("a member's draft made during the model call is not overwritten", async () => {
+    const { e, v } = await arrange('<drafted-during@a>');
+    const { createServiceRecordForEmail } = await import(
+      '@/lib/incoming-email/create-service-record'
+    );
+    let memberDraftId = '';
+    duringModelCall = async () => {
+      const created = await ctx.prisma.$transaction((tx) =>
+        createServiceRecordForEmail(tx, {
+          incomingEmailId: e.id,
+          vendorId: v.id,
+          performedOn: todayCal(),
+          summary: 'member draft',
+          notes: '',
+          targets: [],
+        }),
+      );
+      memberDraftId = created.serviceRecordId;
+    };
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.createdServiceRecordId).toBe(memberDraftId);
+    const records = await ctx.prisma.serviceRecord.findMany({ select: { id: true } });
+    expect(records.map((r) => r.id)).toEqual([memberDraftId]);
+  });
+});
+
+describe('createServiceRecordForEmail — the draft claim', () => {
+  it('a second draft for the same email throws and rolls its record back', async () => {
+    const { createServiceRecordForEmail, DraftAlreadyClaimedError } = await import(
+      '@/lib/incoming-email/create-service-record'
+    );
+    const e = await makeEmail({ messageId: '<double-draft@a>', subject: 'Invoice' });
+    const draft = (summary: string) =>
+      ctx.prisma.$transaction((tx) =>
+        createServiceRecordForEmail(tx, {
+          incomingEmailId: e.id,
+          vendorId: null,
+          performedOn: todayCal(),
+          summary,
+          notes: '',
+          targets: [],
+        }),
+      );
+
+    const first = await draft('first');
+    await expect(draft('second')).rejects.toBeInstanceOf(DraftAlreadyClaimedError);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.createdServiceRecordId).toBe(first.serviceRecordId);
+    expect(await ctx.prisma.serviceRecord.count()).toBe(1);
+  });
+
+  it('onlyIfStateIn refuses an archived email', async () => {
+    const { createServiceRecordForEmail, DraftAlreadyClaimedError } = await import(
+      '@/lib/incoming-email/create-service-record'
+    );
+    const e = await makeEmail({ messageId: '<archived-claim@a>', subject: 'Invoice' });
+    await ctx.prisma.incomingEmail.update({
+      where: { id: e.id },
+      data: { state: 'ARCHIVED', archivedAt: new Date() },
+    });
+
+    await expect(
+      ctx.prisma.$transaction((tx) =>
+        createServiceRecordForEmail(tx, {
+          incomingEmailId: e.id,
+          vendorId: null,
+          performedOn: todayCal(),
+          summary: 'auto',
+          notes: '',
+          targets: [],
+          onlyIfStateIn: ['UNTRIAGED', 'AUTO_LINKED'],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(DraftAlreadyClaimedError);
     expect(await ctx.prisma.serviceRecord.count()).toBe(0);
   });
 });

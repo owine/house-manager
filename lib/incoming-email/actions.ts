@@ -5,7 +5,10 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
-import { createServiceRecordForEmail } from '@/lib/incoming-email/create-service-record';
+import {
+  createServiceRecordForEmail,
+  DraftAlreadyClaimedError,
+} from '@/lib/incoming-email/create-service-record';
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
@@ -60,6 +63,11 @@ export async function attachIncomingEmail(input: unknown): Promise<ActionResult<
   const { id, vendorId, targets } = parsed.data;
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Lock the email row before touching its targets: the classify worker
+    // takes the same row lock first (persistClassification), so both sides
+    // queue on it instead of each holding half (targets vs row) and deadlocking,
+    // or interleaving their target sets.
+    await tx.$executeRaw`SELECT 1 FROM "incoming_emails" WHERE "id" = ${id} FOR UPDATE`;
     if (targets !== undefined) {
       // Replace-set semantics: nuke existing rows and recreate. Cheaper than
       // a per-row diff at the volumes we're dealing with (single digits).
@@ -262,17 +270,26 @@ export async function createServiceRecordFromEmail(
     email.aiExtractedPerformedOn ?? startOfDayUtc(email.receivedAt, await getHouseTimezone());
   const notes = email.aiExtractedScope ?? '[Created from inbound email — review and edit.]';
 
-  const created = await prisma.$transaction((tx) =>
-    createServiceRecordForEmail(tx, {
-      incomingEmailId: email.id,
-      vendorId: email.vendorId,
-      performedOn,
-      cost: email.aiExtractedCost,
-      summary,
-      notes,
-      targets: email.targets,
-    }),
-  );
+  let created: Awaited<ReturnType<typeof createServiceRecordForEmail>>;
+  try {
+    created = await prisma.$transaction((tx) =>
+      createServiceRecordForEmail(tx, {
+        incomingEmailId: email.id,
+        vendorId: email.vendorId,
+        performedOn,
+        cost: email.aiExtractedCost,
+        summary,
+        notes,
+        targets: email.targets,
+      }),
+    );
+  } catch (err) {
+    // A draft landed after the check above (a double submit, or auto-stub).
+    if (err instanceof DraftAlreadyClaimedError) {
+      return { ok: false, formError: 'A service record draft already exists for this email' };
+    }
+    throw err;
+  }
   await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
   await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
   // The linked attachments now read "Linked to serviceRecord: …".
