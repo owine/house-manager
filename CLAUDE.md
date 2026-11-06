@@ -362,11 +362,17 @@ declared `Content-Type`, and can forge `From:`.
 - **Ingest trusts neither the declared type nor the name**
   (`lib/incoming-email/normalize-attachment.ts`): magic-byte sniff to an
   allow-listed type or octet-stream; on-disk name always `original.<ext>`.
-- **Auto-stub needs a DMARC pass** (`lib/incoming-email/auth-results.ts`), read
-  fail-closed from mailauth's `dmarc.status.result` in `authResultsJson`. It
-  gates *both* the AI and the heuristic path. Every other input is a model output
-  the email can steer. A vendor with no DMARC record never auto-stubs, by design.
-  DMARC proves the From *domain*, not that it is the vendor's.
+- **Auto-stub needs a DMARC pass AND a sender bound to the vendor**
+  (`lib/incoming-email/auth-results.ts`). DMARC is read fail-closed from
+  mailauth's `dmarc.status.result` in `authResultsJson`. It proves the From
+  *domain*, not that it is the vendor's, so `senderBoundToVendor` also requires
+  the From address to be the vendor's stored `email`, or on its exact domain
+  when that domain isn't a shared mailbox provider (gmail.com etc.). Both gate
+  *both* the AI and the heuristic path. Every other input, the AI's `vendorId`
+  included, is a model output the email can steer, and the heuristic vendor
+  match is deliberately loose (notes, display name, subject): those may pre-fill
+  triage, never auto-stub. A vendor with no DMARC record or no stored email
+  never auto-stubs, by design.
 - **A `next.config.ts` `headers()` entry beats a route handler's header of the
   same name.** Next writes config headers first and drops the handler's
   (`send-response.js`), which is why the global CSP skips `/api/files/`. No

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dmarcPassed, dmarcResult } from './auth-results';
+import { dmarcPassed, dmarcResult, senderBoundToVendor } from './auth-results';
 
 // Trimmed from mailauth docs/dmarc.md "DMARC Pass". ForwardEmail copies
 // mailauth's `results.dmarc` into the webhook's `dmarc` field verbatim, and
@@ -77,5 +77,38 @@ describe('the invoice-plain fixture', () => {
     );
     const fixture = JSON.parse(readFileSync(path, 'utf8')) as { dmarc: unknown };
     expect(dmarcPassed({ dmarc: fixture.dmarc })).toBe(true);
+  });
+});
+
+describe('senderBoundToVendor', () => {
+  it('binds the exact stored address, case- and whitespace-insensitively', () => {
+    expect(senderBoundToVendor('Dispatch@Acme.Example', ' dispatch@acme.example ')).toBe(true);
+  });
+
+  it('binds another address on the vendor’s own domain', () => {
+    expect(senderBoundToVendor('billing@acme.example', 'dispatch@acme.example')).toBe(true);
+  });
+
+  it('does not bind a different domain, including look-alikes and subdomains', () => {
+    expect(senderBoundToVendor('x@acme-hvac.example', 'dispatch@acme.example')).toBe(false);
+    expect(senderBoundToVendor('x@mail.acme.example', 'dispatch@acme.example')).toBe(false);
+    expect(senderBoundToVendor('x@acme.example.evil', 'dispatch@acme.example')).toBe(false);
+  });
+
+  it('binds a shared mailbox provider only by the exact address', () => {
+    expect(senderBoundToVendor('acmehvac@gmail.com', 'acmehvac@gmail.com')).toBe(true);
+    expect(senderBoundToVendor('someone@gmail.com', 'acmehvac@gmail.com')).toBe(false);
+    expect(senderBoundToVendor('someone@outlook.com', 'acme@outlook.com')).toBe(false);
+  });
+
+  it('never binds a vendor with no stored address', () => {
+    expect(senderBoundToVendor('ops@gamma-services.example', null)).toBe(false);
+    expect(senderBoundToVendor('ops@gamma-services.example', undefined)).toBe(false);
+    expect(senderBoundToVendor('ops@gamma-services.example', '')).toBe(false);
+  });
+
+  it('does not bind malformed addresses', () => {
+    expect(senderBoundToVendor('no-at-sign', 'no-at-sign@acme.example')).toBe(false);
+    expect(senderBoundToVendor('trailing@', 'dispatch@acme.example')).toBe(false);
   });
 });

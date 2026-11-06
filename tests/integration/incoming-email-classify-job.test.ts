@@ -585,6 +585,7 @@ describe('handleClassifyIncomingEmail — DMARC gate on auto-stub', () => {
   async function arrangeHighConfidenceInvoice(
     messageId: string,
     authResults: Prisma.InputJsonValue | null,
+    fromAddress?: string,
   ) {
     const v = await ctx.prisma.vendor.create({
       data: { name: 'Acme HVAC', email: 'billing@acme.example' },
@@ -607,6 +608,7 @@ describe('handleClassifyIncomingEmail — DMARC gate on auto-stub', () => {
     };
     const e = await makeEmail({
       messageId,
+      fromAddress,
       subject: 'Invoice #5512 for Heat Pump service',
       bodyText: 'Amount due $185.',
       authResults,
@@ -657,6 +659,58 @@ describe('handleClassifyIncomingEmail — DMARC gate on auto-stub', () => {
     });
     await handle([{ data: { id: e.id } }]);
     await expectClassifiedButNotStubbed(e.id, v.id, item.id);
+  });
+
+  // DMARC proves the From DOMAIN. Whoever owns any domain passes DMARC for it,
+  // and the vendor on the AI path is a model output the body can steer.
+  it("DMARC pass from a domain that is not the vendor's -> does NOT auto-stub", async () => {
+    const { e, v, item } = await arrangeHighConfidenceInvoice(
+      '<dmarc-pass-unbound@a>',
+      DMARC_PASS,
+      'billing@acme-hvac-invoices.example',
+    );
+    await handle([{ data: { id: e.id } }]);
+    await expectClassifiedButNotStubbed(e.id, v.id, item.id);
+  });
+
+  it("DMARC pass from another address on the vendor's own domain -> auto-stubs", async () => {
+    const { e } = await arrangeHighConfidenceInvoice(
+      '<dmarc-pass-same-domain@a>',
+      DMARC_PASS,
+      'accounts@acme.example',
+    );
+    await handle([{ data: { id: e.id } }]);
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.createdServiceRecordId).not.toBeNull();
+  });
+
+  it('the heuristic fallback does not auto-stub on a name-only vendor match', async () => {
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'dispatch@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = () => {
+      throw Object.assign(new Error('rate limited'), { status: 429 });
+    };
+    const e = await makeEmail({
+      messageId: '<dmarc-pass-name-only@a>',
+      fromAddress: 'noreply@elsewhere.example', // passes DMARC for its OWN domain
+      fromName: 'Acme HVAC',
+      subject: 'Service ticket — visit complete',
+      bodyText: 'Performed maintenance on the Heat Pump today.',
+      authResults: DMARC_PASS,
+    });
+
+    await handle([{ data: { id: e.id } }]);
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    // Still a useful triage suggestion...
+    expect(after?.vendorId).toBe(v.id);
+    expect(after?.state).toBe('AUTO_LINKED');
+    // ...but no record written on a display name.
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+    expect(item.id).toBeTruthy();
   });
 
   it('the heuristic fallback honours the gate too', async () => {
