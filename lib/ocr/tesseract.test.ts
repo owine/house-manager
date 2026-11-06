@@ -22,11 +22,20 @@ vi.mock('tesseract.js', async (importOriginal) => {
 vi.mock('@/lib/env', () => ({ getEnv: () => ({ OCR_BACKEND: 'tesseract' }) }));
 
 const { INIT_RETRY_COOLDOWN_MS, ocrImageBuffer } = await import('./tesseract');
+const { OcrUnavailableError } = await import('./errors');
 
 describe('ocrImageBuffer when tesseract cannot load its language data', () => {
   it("rejects the caller's promise instead of crashing the process", async () => {
     await expect(ocrImageBuffer(Buffer.from('not an image'))).rejects.toThrow(/ENOENT/);
   }, 30_000);
+
+  it('types the failure as OCR being unavailable, not as a bad input', async () => {
+    // Init never sees the input, so the extract job can safely retry it later.
+    // Inside the cooldown, so this is the reused failure.
+    await expect(ocrImageBuffer(Buffer.from('not an image'))).rejects.toBeInstanceOf(
+      OcrUnavailableError,
+    );
+  });
 
   it('reuses the failure during the cooldown, then retries init', async () => {
     const before = createWorkerCalls.n;
