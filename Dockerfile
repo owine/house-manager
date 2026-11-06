@@ -10,7 +10,7 @@ FROM node:26.13.0-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3
 # Must match package.json "packageManager" exactly. On a mismatch pnpm does not
 # fail — it silently switches to the packageManager version, downloading it
 # mid-build, so this ARG would name a pnpm that never actually runs.
-ARG PNPM_VERSION=12.16.1
+ARG PNPM_VERSION=12.17.0
 RUN npm install --global pnpm@$PNPM_VERSION
 WORKDIR /app
 # Set here, not just in the runtime stage: `next build` runs in the build stage
