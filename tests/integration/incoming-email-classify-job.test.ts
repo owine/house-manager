@@ -438,6 +438,103 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     expect(sentryCaptured).toHaveLength(1);
   });
 
+  it('a DB failure after a successful model call propagates; it is not an AI failure', async () => {
+    // Fixture where the two paths disagree: the model says medium confidence
+    // (no draft), while the heuristic would auto-stub (TICKET + the vendor's
+    // own address + an item named in the body). Falling back here would file a
+    // service record on weaker evidence than the answer we just paid for.
+    const v = await ctx.prisma.vendor.create({
+      data: { name: 'Acme HVAC', email: 'dispatch@acme.example' },
+    });
+    const item = await ctx.prisma.item.create({ data: { name: 'Heat Pump', categoryId } });
+    mockResponse = {
+      parsed_output: {
+        ...(happyPath() as { parsed_output: Record<string, unknown> }).parsed_output,
+        kind: 'TICKET',
+        vendorId: v.id,
+        targetItemId: item.id,
+        confidence: 'medium',
+      },
+      usage: { input_tokens: 100, output_tokens: 50 },
+    };
+    const e = await makeEmail({
+      messageId: '<db-blip@a>',
+      fromAddress: 'dispatch@acme.example',
+      subject: 'Service ticket — visit complete',
+      bodyText: 'Performed maintenance on the Heat Pump today.',
+    });
+
+    // The first write after the model call is persistClassification's
+    // transaction. Fail it the way a Postgres blip would.
+    const { prisma } = await import('@/lib/db');
+    const blip = new Error('Connection terminated unexpectedly');
+    const spy = vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(blip);
+    try {
+      // A first attempt, with retries left: pg-boss will run it again.
+      await expect(handle([{ data: { id: e.id }, retryCount: 0, retryLimit: 2 }])).rejects.toBe(
+        blip,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(sentMessages).toHaveLength(1);
+    // No heuristic fallback: nothing persisted, nothing drafted.
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.kind).toBe('UNKNOWN');
+    expect(after?.createdServiceRecordId).toBeNull();
+    expect(await ctx.prisma.serviceRecord.count()).toBe(0);
+    // Only the successful call's log row, no second "AI failed" row.
+    const logs = await ctx.prisma.aISuggestionLog.findMany({
+      where: { kind: 'incoming-email-classify' },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].errorReason).toBeNull();
+    // Not reported as an AI failure, and not yet at all: retries remain.
+    expect(sentryCaptured).toHaveLength(0);
+  });
+
+  it('the LAST attempt failing is reported, since pg-boss reports nothing', async () => {
+    const e = await makeEmail({ messageId: '<db-final@a>', subject: 'Invoice' });
+    const { prisma } = await import('@/lib/db');
+    const blip = new Error('Connection terminated unexpectedly');
+    const spy = vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(blip);
+    try {
+      await expect(handle([{ data: { id: e.id }, retryCount: 2, retryLimit: 2 }])).rejects.toBe(
+        blip,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(sentryCaptured).toEqual([blip]);
+  });
+
+  it('a model-reported cost the column cannot hold is dropped, not a poison job', async () => {
+    // aiExtractedCost is Decimal(10,2); the schema's `cost` has no maximum
+    // (it is also the model's grammar), and the sender can steer the number.
+    mockResponse = {
+      parsed_output: {
+        ...(happyPath() as { parsed_output: Record<string, unknown> }).parsed_output,
+        cost: 123_456_789,
+        summary: 'Tune\u0000up',
+        scope: 'Filter\u0000swap',
+      },
+      usage: { input_tokens: 100, output_tokens: 50 },
+    };
+    const e = await makeEmail({ messageId: '<huge-cost@a>', subject: 'Invoice' });
+
+    await expect(
+      handle([{ data: { id: e.id }, retryCount: 0, retryLimit: 2 }]),
+    ).resolves.toBeUndefined();
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.aiExtractedCost).toBeNull();
+    // Postgres text rejects NUL; the rest of the extraction is kept.
+    expect(after?.aiExtractedSummary).toBe('Tuneup');
+    expect(after?.aiExtractedScope).toBe('Filterswap');
+    expect(after?.kind).toBe('INVOICE');
+  });
+
   it('skips a missing row without throwing', async () => {
     await expect(handle([{ data: { id: 'does-not-exist' } }])).resolves.toBeUndefined();
     expect(sentMessages).toHaveLength(0);

@@ -55,6 +55,10 @@ const QUEUE_POLICY: Partial<Record<QueueName, QueueOptions>> = {
   },
   // DB-only work, so a failure is a Postgres blip. Give it a minute, not 0s.
   [Queue.EmbedBackfill]: { retryLimit: 2, retryDelay: 60 },
+  // Classify retries on a DB error after the model call (the model failing is
+  // handled inside the job, by the heuristic). That is a Postgres blip, and
+  // every attempt re-pays the model: wait a minute rather than retrying at once.
+  [Queue.ClassifyIncomingEmail]: { retryLimit: 2, retryDelay: 60 },
 };
 
 let bossInstance: PgBoss | null = null;
