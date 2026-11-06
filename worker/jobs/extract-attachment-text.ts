@@ -6,14 +6,22 @@ import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 import { OCR_UNAVAILABLE, OcrUnavailableError } from '@/lib/ocr/errors';
 import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
-import { ocrImageBuffer } from '@/lib/ocr/tesseract';
+import { ensureOcrAvailable, ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
 import { extractPdfText } from '@/lib/pdf/text';
 import { enqueueSearchIndex } from '@/lib/search/client';
 
 const log = getLogger('worker.extract-attachment-text');
 
-export type ExtractAttachmentTextJob = { attachmentId: string };
+export type ExtractAttachmentTextJob = {
+  attachmentId: string;
+  /**
+   * Set by embed.backfill's OCR retry. Boot, the nightly run and an admin
+   * Rebuild can enqueue the same row before the queue drains; only the first
+   * job should find it still `ocr_unavailable`.
+   */
+  onlyIfOcrUnavailable?: boolean;
+};
 
 // PDFs with a text layer below this threshold get OCR'd page-by-page. Most
 // invoices / inspection reports clear it on page 1; scanned docs trigger
@@ -54,11 +62,12 @@ export async function handleExtractAttachmentText(
   }
 
   for (const { data } of jobs) {
-    await extractOne(data.attachmentId, env.FILES_DIR);
+    await extractOne(data, env.FILES_DIR);
   }
 }
 
-async function extractOne(attachmentId: string, filesDir: string): Promise<void> {
+async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Promise<void> {
+  const { attachmentId } = job;
   const row = await prisma.attachment.findUnique({
     where: { id: attachmentId },
     select: {
@@ -67,10 +76,15 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
       storagePath: true,
       aiIndexable: true,
       filename: true,
+      extractedError: true,
     },
   });
   if (!row) {
     log.warn({ attachmentId }, 'extract-attachment-text: row not found');
+    return;
+  }
+  if (job.onlyIfOcrUnavailable && row.extractedError !== OCR_UNAVAILABLE) {
+    log.debug({ attachmentId }, 'extract-attachment-text: OCR retry already done; skipping');
     return;
   }
   if (row.aiIndexable === false) {
@@ -111,6 +125,8 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
         // manual doesn't monopolize a worker tick. OCR'd pages get joined
         // with a form-feed-ish separator so downstream chunking knows
         // where one page ends and another begins.
+        // Before rasterizing: during an OCR outage this throws at once.
+        await ensureOcrAvailable();
         const pages = await renderPdfPagesToPng(buf);
         if (pages.length === 0) {
           extractedError = 'pdf_render_failed';
@@ -131,6 +147,8 @@ async function extractOne(attachmentId: string, filesDir: string): Promise<void>
         }
       }
     } else if (mime.startsWith('image/')) {
+      // Before the sharp decode: during an OCR outage this throws at once.
+      await ensureOcrAvailable();
       const normalized = await normalizeImageForOcr(buf);
       if (!normalized) {
         extractedError = 'image_decode_failed';

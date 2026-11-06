@@ -22,6 +22,18 @@ vi.mock('@/lib/queue', async (importOriginal) => {
   };
 });
 
+// OCR's availability, as the backfill's retry step probes it.
+const ocr = vi.hoisted(() => ({ available: true, probes: 0 }));
+vi.mock('@/lib/ocr/tesseract', async () => {
+  const { OcrUnavailableError } = await import('@/lib/ocr/errors');
+  return {
+    ensureOcrAvailable: async () => {
+      ocr.probes++;
+      if (!ocr.available) throw new OcrUnavailableError('still down');
+    },
+  };
+});
+
 type EmbedJob = { entityType: EmbeddingEntityType; entityId: string };
 
 function embedJobs(): EmbedJob[] {
@@ -89,6 +101,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   enqueued.length = 0;
+  ocr.available = true;
+  ocr.probes = 0;
   process.env.ASK_ENABLED = 'true';
   await ctx.prisma.$executeRaw`DELETE FROM embeddings`;
   await ctx.prisma.attachment.deleteMany();
@@ -297,6 +311,32 @@ describe('embed.backfill re-extracts attachments OCR could not reach', () => {
     await backfill.handleEmbedBackfill();
 
     expect(extractJobs()).toEqual([unavailable]);
+  });
+
+  it('marks its jobs so a duplicate that runs after a successful retry is skipped', async () => {
+    const note = await ctx.prisma.note.create({ data: { title: 'Receipts', body: 'r' } });
+    const id = await seedFailedExtract(note, 'ocr_unavailable');
+
+    await backfill.handleEmbedBackfill();
+
+    expect(enqueued.filter((e) => e.queue === 'attachment.extract-text')).toEqual([
+      { queue: 'attachment.extract-text', data: { attachmentId: id, onlyIfOcrUnavailable: true } },
+    ]);
+  });
+
+  it('enqueues nothing while OCR is still down (no nightly re-decode of every file)', async () => {
+    ocr.available = false;
+    const note = await ctx.prisma.note.create({ data: { title: 'Receipts', body: 'r' } });
+    await seedFailedExtract(note, 'ocr_unavailable');
+
+    await backfill.handleEmbedBackfill();
+
+    expect(extractJobs()).toEqual([]);
+  });
+
+  it('does not probe OCR when there is nothing to retry', async () => {
+    await backfill.handleEmbedBackfill();
+    expect(ocr.probes).toBe(0);
   });
 
   it('does not re-extract with Ask off (the extract job would no-op anyway)', async () => {

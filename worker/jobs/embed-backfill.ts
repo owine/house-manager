@@ -4,8 +4,10 @@ import { currentContentHash } from '@/lib/embedding';
 import { sweepOrphanEmbeddings } from '@/lib/embedding/live-source';
 import { getEnv } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
-import { OCR_UNAVAILABLE } from '@/lib/ocr/errors';
+import { OCR_UNAVAILABLE, OcrUnavailableError } from '@/lib/ocr/errors';
+import { ensureOcrAvailable } from '@/lib/ocr/tesseract';
 import { getBoss, Queue } from '@/lib/queue';
+import type { ExtractAttachmentTextJob } from './extract-attachment-text';
 
 const log = getLogger('worker.embed-backfill');
 
@@ -16,7 +18,7 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
 
 /**
  * The embedding pipeline's reconciliation pass, and the thing that makes
- * "eventually consistent" true. Three steps, in order:
+ * "eventually consistent" true. Four steps, in order:
  *
  *   1. Sweep: delete embeddings whose source is gone, archived or opted out
  *      (lib/embedding/live-source.ts). This runs even with ASK_ENABLED=false.
@@ -32,8 +34,10 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
  *      pg-boss retries could not cover this: OCR can stay down indefinitely
  *      (no egress to the language-data CDN), and every retry inside the init
  *      cooldown fails instantly. Running at every boot means "fix it, restart"
- *      recovers every row. It cannot loop on a bad file, because an init
- *      failure never involves the input.
+ *      recovers every row. Each row gets at most one attempt per run, and an
+ *      init failure never involves the input. While OCR is still down the
+ *      step enqueues nothing: it probes once, so an outage does not re-decode
+ *      every waiting file at every boot and night.
  *
  * Fired at worker boot, nightly at 03:30 UTC, and by the admin Rebuild button.
  * Bounded: at most MAX_ENQUEUE_PER_KIND per entity type for step 2, and the
@@ -74,8 +78,17 @@ async function enqueueOcrRetries(boss: Awaited<ReturnType<typeof getBoss>>): Pro
     select: { id: true },
     take: MAX_ENQUEUE_PER_KIND,
   });
+  if (rows.length === 0) return 0;
+  try {
+    await ensureOcrAvailable();
+  } catch (err) {
+    if (!(err instanceof OcrUnavailableError)) throw err;
+    log.info({ waiting: rows.length }, 'embed-backfill: OCR still unavailable; retries deferred');
+    return 0;
+  }
   for (const { id } of rows) {
-    await boss.send(Queue.ExtractAttachmentText, { attachmentId: id });
+    const job: ExtractAttachmentTextJob = { attachmentId: id, onlyIfOcrUnavailable: true };
+    await boss.send(Queue.ExtractAttachmentText, job);
   }
   if (rows.length > 0) log.info({ count: rows.length }, 'embed-backfill: re-enqueued OCR retries');
   return rows.length;

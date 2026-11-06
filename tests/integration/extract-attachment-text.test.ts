@@ -18,7 +18,11 @@ const normalizeMock = vi.fn(async (_buf: Buffer) => Buffer.from('normalized-png'
 vi.mock('@/lib/env', () => ({
   getEnv: vi.fn(() => ({ ASK_ENABLED: true, OCR_BACKEND: 'none', FILES_DIR: filesDirRef })),
 }));
-vi.mock('@/lib/ocr/tesseract', () => ({ ocrImageBuffer: (b: Buffer) => ocrMock(b) }));
+const ensureOcrMock = vi.fn(async () => {});
+vi.mock('@/lib/ocr/tesseract', () => ({
+  ocrImageBuffer: (b: Buffer) => ocrMock(b),
+  ensureOcrAvailable: () => ensureOcrMock(),
+}));
 vi.mock('@/lib/pdf/render', () => ({ renderPdfPagesToPng: (b: Buffer) => renderMock(b) }));
 vi.mock('@/lib/pdf/text', () => ({ extractPdfText: (b: Buffer) => extractPdfTextMock(b) }));
 vi.mock('@/lib/ocr/normalize-image', () => ({
@@ -58,6 +62,7 @@ beforeEach(async () => {
   renderMock.mockResolvedValue([Buffer.from('png-page')]);
   extractPdfTextMock.mockResolvedValue({ text: '' });
   normalizeMock.mockResolvedValue(Buffer.from('normalized-png'));
+  ensureOcrMock.mockResolvedValue(undefined);
   await ctx.prisma.attachment.deleteMany();
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.session.deleteMany();
@@ -186,5 +191,50 @@ describe('handleExtractAttachmentText', () => {
 
     const row = await ctx.prisma.attachment.findUnique({ where: { id } });
     expect(row?.extractedError).toBe('extract_threw');
+  });
+
+  it('OCR unavailable: fails before decoding the image, not after', async () => {
+    // During an outage the backfill re-enqueues these rows every boot and
+    // night; each must cost a DB read, not a sharp decode.
+    ensureOcrMock.mockRejectedValue(new OcrUnavailableError('cooldown'));
+    const id = 'img-ocr-down-early';
+    await seedAttachment(id, 'image/jpeg');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(normalizeMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('ocr_unavailable');
+  });
+
+  it('OCR unavailable: a scanned PDF fails before rasterizing its pages', async () => {
+    ensureOcrMock.mockRejectedValue(new OcrUnavailableError('cooldown'));
+    extractPdfTextMock.mockResolvedValue({ text: 'short' });
+    const id = 'pdf-ocr-down-early';
+    await seedAttachment(id, 'application/pdf');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    expect(renderMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedError).toBe('ocr_unavailable');
+  });
+
+  it('a backfill retry for a row that is no longer ocr_unavailable is skipped', async () => {
+    // Boot and an admin Rebuild can both enqueue the same row before the
+    // queue drains; the second job must not redo a now-successful extract.
+    const id = 'img-already-retried';
+    await seedAttachment(id, 'image/jpeg');
+    await ctx.prisma.attachment.update({
+      where: { id },
+      data: { extractedText: 'done', extractedAt: new Date(), extractedError: null },
+    });
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id, onlyIfOcrUnavailable: true } }]);
+
+    expect(normalizeMock).not.toHaveBeenCalled();
+    expect(ocrMock).not.toHaveBeenCalled();
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedText).toBe('done');
   });
 });

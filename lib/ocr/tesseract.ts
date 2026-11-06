@@ -137,6 +137,29 @@ async function startWorker(gen: number): Promise<Live> {
   return { worker, died };
 }
 
+/**
+ * The live worker, or OcrUnavailableError. Typed so a caller can tell "OCR is
+ * down" from "this input broke OCR": only init is wrapped, because init never
+ * sees the input, while a recognize that fails or kills the thread may be the
+ * file's doing.
+ */
+function liveOrUnavailable(): Promise<Live> {
+  return getLive().catch((e: unknown) => {
+    throw new OcrUnavailableError(`OCR unavailable: ${asError(e).message}`, { cause: e });
+  });
+}
+
+/**
+ * Resolves once OCR can run (initializing it if needed); rejects with
+ * OcrUnavailableError if it cannot, instantly during the init cooldown. For
+ * callers that should not do expensive prep (decode, rasterize) for an OCR
+ * call that is bound to fail. A no-op with OCR_BACKEND=none.
+ */
+export async function ensureOcrAvailable(): Promise<void> {
+  if (getEnv().OCR_BACKEND === 'none') return;
+  await liveOrUnavailable();
+}
+
 function getLive(): Promise<Live> {
   if (livePromise) return livePromise;
   if (initFailure && Date.now() < initFailure.retryAt) return Promise.reject(initFailure.err);
@@ -179,12 +202,7 @@ function getLive(): Promise<Live> {
 export async function ocrImageBuffer(buf: Buffer): Promise<string> {
   const { OCR_BACKEND } = getEnv();
   if (OCR_BACKEND === 'none') return '';
-  // Typed so the caller can tell "OCR is down" from "this input broke OCR".
-  // Only init is wrapped: init never sees the input, while a recognize that
-  // fails or kills the thread may be this file's doing.
-  const { worker, died } = await getLive().catch((e: unknown) => {
-    throw new OcrUnavailableError(`OCR unavailable: ${asError(e).message}`, { cause: e });
-  });
+  const { worker, died } = await liveOrUnavailable();
   const { data } = await Promise.race([worker.recognize(buf), died]);
   return (data.text ?? '').trim();
 }
