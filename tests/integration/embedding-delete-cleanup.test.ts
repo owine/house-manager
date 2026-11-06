@@ -272,7 +272,11 @@ describe('re-parenting an email attachment re-embeds it (handed over from PR C)'
     expect(await embeddedTextOfJobs()).toContain('Linked to serviceRecord: Spring HVAC tune-up');
   });
 
-  it('deleteAttachment on an email-owned attachment unlinks it and re-embeds it', async () => {
+  // Unlinked, an email's attachment is inbox-only again: untriaged sender
+  // content, which Ask must not see (lib/embedding/live-source.ts). So the
+  // re-embed the unlink queues tombstones it rather than re-embedding it
+  // without the parent.
+  it('deleteAttachment on an email-owned attachment unlinks it and drops it from Ask', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: { summary: 'Tune-up', performedOn: todayCal(), targets: { create: [{ itemId }] } },
     });
@@ -289,13 +293,11 @@ describe('re-parenting an email attachment re-embeds it (handed over from PR C)'
       expect.objectContaining({ entityType: 'ATTACHMENT', entityId: att.id }),
     );
 
-    const text = await embeddedTextOfJobs();
-    expect(text).toContain('Invoice #456');
-    expect(text).not.toContain('Linked to serviceRecord');
-    expect(await count('ATTACHMENT', att.id)).toBeGreaterThan(0);
+    expect(await embeddedTextOfJobs()).toBe('');
+    expect(await count('ATTACHMENT', att.id)).toBe(0);
   });
 
-  it('deleteServiceRecord re-embeds the email attachments it detaches', async () => {
+  it('deleteServiceRecord drops the email attachments it detaches from Ask', async () => {
     const sr = await ctx.prisma.serviceRecord.create({
       data: { summary: 'Tune-up', performedOn: todayCal(), targets: { create: [{ itemId }] } },
     });
@@ -307,8 +309,7 @@ describe('re-parenting an email attachment re-embeds it (handed over from PR C)'
       expect.objectContaining({ entityType: 'ATTACHMENT', entityId: att.id }),
     );
 
-    const text = await embeddedTextOfJobs();
-    expect(text).not.toContain('Linked to serviceRecord');
-    expect(await count('ATTACHMENT', att.id)).toBeGreaterThan(0);
+    expect(await embeddedTextOfJobs()).toBe('');
+    expect(await count('ATTACHMENT', att.id)).toBe(0);
   });
 });

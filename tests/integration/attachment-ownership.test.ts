@@ -27,7 +27,10 @@ vi.mock('@/lib/search/client', () => ({
     searchCalls.push({ kind, id, op });
   }),
 }));
-vi.mock('@/lib/embedding/enqueue', () => ({ enqueueEmbed: vi.fn(async () => {}) }));
+vi.mock('@/lib/embedding/enqueue', () => ({
+  enqueueEmbed: vi.fn(async () => {}),
+  enqueueAttachmentExtraction: vi.fn(async () => {}),
+}));
 
 let ctx: IntegrationContext;
 let attachments: typeof import('@/lib/attachments/actions');

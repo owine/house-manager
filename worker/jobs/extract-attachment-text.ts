@@ -8,7 +8,7 @@ import { OCR_UNAVAILABLE, OcrUnavailableError } from '@/lib/ocr/errors';
 import { normalizeImageForOcr } from '@/lib/ocr/normalize-image';
 import { ensureOcrAvailable, ocrImageBuffer } from '@/lib/ocr/tesseract';
 import { renderPdfPagesToPng } from '@/lib/pdf/render';
-import { extractPdfText } from '@/lib/pdf/text';
+import { extractPdfText, PdfMemoryError, PdfTimeoutError } from '@/lib/pdf/text';
 import { enqueueSearchIndex } from '@/lib/search/client';
 
 const log = getLogger('worker.extract-attachment-text');
@@ -21,7 +21,27 @@ export type ExtractAttachmentTextJob = {
    * job should find it still `ocr_unavailable`.
    */
   onlyIfOcrUnavailable?: boolean;
+  /**
+   * Set by embed.backfill's never-extracted pass, for the same reason: skip a
+   * row some other job has extracted since it was queued.
+   */
+  onlyIfUnextracted?: boolean;
 };
+
+/**
+ * Stored before the decode and overwritten when it finishes, with `extractedAt`
+ * still null. A decode that never returns (a native crash in sharp/libvips, an
+ * OOM kill) leaves it behind: pg-boss still retries the job, since the row is
+ * unextracted, but embed.backfill skips the row instead of re-queuing it at
+ * every boot, which would crash-loop the worker on the same file.
+ */
+const EXTRACT_INTERRUPTED = 'extract_interrupted';
+
+/**
+ * Caps for an email-sourced PDF's text layer. Its bytes are the sender's, so
+ * tighter than a member upload's, but a whole invoice still fits easily.
+ */
+const INBOUND_PDF_CAPS = { maxPages: 50, timeoutMs: 30_000 } as const;
 
 // PDFs with a text layer below this threshold get OCR'd page-by-page. Most
 // invoices / inspection reports clear it on page 1; scanned docs trigger
@@ -77,6 +97,9 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
       aiIndexable: true,
       filename: true,
       extractedError: true,
+      extractedAt: true,
+      incomingEmailId: true,
+      serviceRecordId: true,
     },
   });
   if (!row) {
@@ -85,6 +108,19 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
   }
   if (job.onlyIfOcrUnavailable && row.extractedError !== OCR_UNAVAILABLE) {
     log.debug({ attachmentId }, 'extract-attachment-text: OCR retry already done; skipping');
+    return;
+  }
+  if (job.onlyIfUnextracted && row.extractedAt !== null) {
+    log.debug({ attachmentId }, 'extract-attachment-text: already extracted; skipping');
+    return;
+  }
+  // The Ask boundary for email-sourced files, enforced here so every enqueuer
+  // inherits it: an attachment that is still only in the inbox is untriaged
+  // sender content, and its text must not reach Ask's prompt. It is queued
+  // again when a service record is drafted from the email (after-draft.ts).
+  const fromEmail = row.incomingEmailId !== null;
+  if (fromEmail && row.serviceRecordId === null) {
+    log.debug({ attachmentId }, 'extract-attachment-text: inbox-only email attachment; skipping');
     return;
   }
   if (row.aiIndexable === false) {
@@ -108,13 +144,28 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
     return;
   }
 
+  await prisma.attachment.update({
+    where: { id: attachmentId },
+    data: { extractedError: EXTRACT_INTERRUPTED },
+  });
+
   const mime = row.mimeType ?? '';
   let extractedText = '';
   let ocrUsed = false;
   let extractedError: string | null = null;
 
   try {
-    if (mime === 'application/pdf') {
+    if (mime === 'application/pdf' && fromEmail) {
+      // Sender bytes: the bounded text layer only, never the render + OCR
+      // fallback (lib/pdf/render.ts has no deadline and runs native canvas
+      // code). Whatever text there is, however short, is kept.
+      const { text } = await extractPdfText(buf, {
+        maxChars: MAX_TEXT_LENGTH,
+        ...INBOUND_PDF_CAPS,
+      });
+      extractedText = text;
+      if (text.length === 0) extractedError = 'inbound_pdf_no_text_layer';
+    } else if (mime === 'application/pdf') {
       // maxChars lets a long text-layer PDF stop decoding at what we keep.
       const { text } = await extractPdfText(buf, { maxChars: MAX_TEXT_LENGTH });
       if (text.length >= TEXT_LAYER_FALLBACK_THRESHOLD) {
@@ -171,6 +222,14 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
       await mark(attachmentId, { extractedError: OCR_UNAVAILABLE, ocrUsed: false });
       return;
     }
+    if (fromEmail && mime === 'application/pdf') {
+      // Sender bytes that hit the inbound caps or do not parse: expected, so
+      // warn (not reported), as classify does for the same PDFs.
+      const code = inboundPdfErrorCode(err);
+      log.warn({ err, attachmentId, code }, 'extract-attachment-text: inbound PDF not decoded');
+      await mark(attachmentId, { extractedError: code, ocrUsed: false });
+      return;
+    }
     log.error({ err, attachmentId, mime }, 'extract-attachment-text: failed');
     await mark(attachmentId, { extractedError: 'extract_threw', ocrUsed });
     return;
@@ -197,6 +256,12 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
     },
     'extract-attachment-text: complete',
   );
+}
+
+function inboundPdfErrorCode(err: unknown): string {
+  if (err instanceof PdfTimeoutError) return 'inbound_pdf_timeout';
+  if (err instanceof PdfMemoryError) return 'inbound_pdf_too_large';
+  return 'inbound_pdf_unreadable';
 }
 
 async function mark(

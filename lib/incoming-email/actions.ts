@@ -6,8 +6,8 @@ import { createSuggestionLog } from '@/lib/ai/log';
 import { releaseReservation, reserveRateLimit } from '@/lib/ai/rate-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { enqueueEmbed } from '@/lib/embedding/enqueue';
 import { getHouseTimezone } from '@/lib/house-profile/queries';
+import { enqueueDraftFollowUps } from '@/lib/incoming-email/after-draft';
 import {
   createServiceRecordForEmail,
   DraftAlreadyClaimedError,
@@ -15,7 +15,6 @@ import {
 import { getLogger } from '@/lib/logger';
 import { getBoss, Queue } from '@/lib/queue';
 import type { ActionResult } from '@/lib/result';
-import { enqueueSearchIndex } from '@/lib/search/client';
 import { targetSchema } from '@/lib/targets/schema';
 import { startOfDayUtc } from '@/lib/time/tz';
 
@@ -341,12 +340,7 @@ export async function createServiceRecordFromEmail(
     }
     throw err;
   }
-  await enqueueSearchIndex('service', created.serviceRecordId, 'upsert');
-  await enqueueEmbed('SERVICE_RECORD', created.serviceRecordId);
-  // The linked attachments now read "Linked to serviceRecord: …".
-  for (const attachmentId of created.linkedAttachmentIds) {
-    await enqueueEmbed('ATTACHMENT', attachmentId);
-  }
+  await enqueueDraftFollowUps(created);
   log.info(
     {
       incomingEmailId: email.id,

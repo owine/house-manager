@@ -12,7 +12,8 @@ import { prisma } from '@/lib/db';
  * It must agree with `buildCanonical` in ./index.ts: the rows that function
  * returns null for are exactly the rows that are not live here.
  *   - ITEM / PART: the row exists and is not archived
- *   - ATTACHMENT: the row exists and aiIndexable (the user's opt-out)
+ *   - ATTACHMENT: the row exists and aiIndexable (the user's opt-out), and an
+ *     email's attachment is still linked to a service record
  *   - everything else: the row exists
  *
  * It is a Record over the enum, so adding an EmbeddingEntityType fails typecheck
@@ -36,7 +37,9 @@ const SOURCE_IS_LIVE: Record<EmbeddingEntityType, Prisma.Sql> = {
   SERVICE_RECORD: Prisma.sql`EXISTS (SELECT 1 FROM service_records s WHERE s.id = e."entityId")`,
   CHECKLIST_ITEM: Prisma.sql`EXISTS (SELECT 1 FROM "ChecklistItem" s WHERE s.id = e."entityId")`,
   WARRANTY: Prisma.sql`EXISTS (SELECT 1 FROM warranties s WHERE s.id = e."entityId")`,
-  ATTACHMENT: Prisma.sql`EXISTS (SELECT 1 FROM attachments s WHERE s.id = e."entityId" AND s."aiIndexable" = true)`,
+  // An email's attachment counts only while linked to a service record: an
+  // inbox-only one is untriaged sender content (extract-attachment-text.ts).
+  ATTACHMENT: Prisma.sql`EXISTS (SELECT 1 FROM attachments s WHERE s.id = e."entityId" AND s."aiIndexable" = true AND (s."incomingEmailId" IS NULL OR s."serviceRecordId" IS NOT NULL))`,
   PART: Prisma.sql`EXISTS (SELECT 1 FROM parts s WHERE s.id = e."entityId" AND s."archivedAt" IS NULL)`,
 };
 

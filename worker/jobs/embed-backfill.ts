@@ -18,7 +18,7 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
 
 /**
  * The embedding pipeline's reconciliation pass, and the thing that makes
- * "eventually consistent" true. Four steps, in order:
+ * "eventually consistent" true. Five steps, in order:
  *
  *   1. Sweep: delete embeddings whose source is gone, archived or opted out
  *      (lib/embedding/live-source.ts). This runs even with ASK_ENABLED=false.
@@ -38,6 +38,15 @@ const MAX_ENQUEUE_PER_KIND = 5_000;
  *      init failure never involves the input. While OCR is still down the
  *      step enqueues nothing: it probes once, so an outage does not re-decode
  *      every waiting file at every boot and night.
+ *   5. Never extracted: re-queue extraction for attachments that have none,
+ *      member uploads and email attachments linked to a service record alike.
+ *      Covers a dropped enqueue, and the email attachments linked before
+ *      linking queued extraction. Rows younger than an hour are left to their
+ *      own upload job; inbox-only email attachments are never extracted
+ *      (extract-attachment-text.ts). One attempt per row per run. A row whose
+ *      decode took the process down (`extract_interrupted`) is skipped: it had
+ *      pg-boss's retries already, and re-queuing it at every boot would
+ *      crash-loop the worker on the same file.
  *
  * Fired at worker boot, nightly at 03:30 UTC, and by the admin Rebuild button.
  * Bounded: at most MAX_ENQUEUE_PER_KIND per entity type for step 2, and the
@@ -67,9 +76,33 @@ export async function handleEmbedBackfill(): Promise<void> {
   ]);
   const stale = await enqueueStale(boss);
   const ocrRetries = await enqueueOcrRetries(boss);
+  const unextracted = await enqueueUnextracted(boss);
 
   const total = counts.reduce((s, c) => s + c, 0);
-  log.info({ total, perKind: counts, stale, ocrRetries }, 'embed-backfill: complete');
+  log.info({ total, perKind: counts, stale, ocrRetries, unextracted }, 'embed-backfill: complete');
+}
+
+/** Leave a fresh upload to the extract job its upload already queued. */
+const UNEXTRACTED_MIN_AGE_MS = 60 * 60_000;
+
+async function enqueueUnextracted(boss: Awaited<ReturnType<typeof getBoss>>): Promise<number> {
+  const rows = await prisma.attachment.findMany({
+    where: {
+      extractedAt: null,
+      extractedError: null, // excludes extract_interrupted: see step 5 above
+      aiIndexable: true,
+      createdAt: { lt: new Date(Date.now() - UNEXTRACTED_MIN_AGE_MS) },
+      OR: [{ incomingEmailId: null }, { serviceRecordId: { not: null } }],
+    },
+    select: { id: true },
+    take: MAX_ENQUEUE_PER_KIND,
+  });
+  for (const { id } of rows) {
+    const job: ExtractAttachmentTextJob = { attachmentId: id, onlyIfUnextracted: true };
+    await boss.send(Queue.ExtractAttachmentText, job);
+  }
+  if (rows.length > 0) log.info({ count: rows.length }, 'embed-backfill: queued unextracted');
+  return rows.length;
 }
 
 async function enqueueOcrRetries(boss: Awaited<ReturnType<typeof getBoss>>): Promise<number> {

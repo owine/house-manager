@@ -53,10 +53,10 @@ export type CreateServiceRecordFromEmailResult = {
   serviceRecordId: string;
   attachmentsLinked: number;
   /**
-   * Attachments this call re-parented onto the new record. Their embedded text
-   * names the parent, so callers must enqueue an ATTACHMENT re-embed for each
-   * after the transaction commits (not inside it, where the job could read the
-   * pre-commit row).
+   * Attachments this call re-parented onto the new record. Callers must queue
+   * their extraction (which chains the embed) after the transaction commits,
+   * not inside it, where the job could read the pre-commit row: use
+   * enqueueDraftFollowUps (./after-draft.ts).
    */
   linkedAttachmentIds: string[];
 };
