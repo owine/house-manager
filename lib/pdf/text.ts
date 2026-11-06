@@ -31,8 +31,11 @@ export type ExtractPdfTextResult = {
   pageCount?: number;
 };
 
-/** Generous: member-uploaded manuals for Ask indexing. Not for hostile input. */
-export const DEFAULT_MAX_PAGES = 300;
+/**
+ * Generous: member-uploaded manuals for Ask indexing, where `maxChars` is what
+ * bounds a normal document. Not for hostile input; pass a small `maxPages`.
+ */
+export const DEFAULT_MAX_PAGES = 2000;
 
 type TextItem = { str?: string; hasEOL?: boolean };
 
@@ -66,7 +69,13 @@ export async function extractPdfText(
       page.cleanup();
       pages.push(text);
       chars += text.length;
-      if (opts.maxChars && chars >= opts.maxChars) break;
+      // Stop on the NORMALIZED length, which is what gets sliced: it only
+      // shrinks relative to the raw count, so stopping on raw could return
+      // less than maxChars where the full extraction would have filled it.
+      // The raw count is a cheap gate before re-normalizing.
+      if (opts.maxChars && chars >= opts.maxChars) {
+        if (normalizeMergedText(pages).length >= opts.maxChars) break;
+      }
     }
     const joined = normalizeMergedText(pages);
     return { text: opts.maxChars ? joined.slice(0, opts.maxChars) : joined, pageCount };

@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pagesDecoded: number[] = [];
+// Per-page text items to serve instead of pdf.js's, for exact whitespace.
+let fakeItems: Array<Array<{ str: string; hasEOL: boolean }>> | null = null;
 
 vi.mock('unpdf', async (importOriginal) => {
   const real = await importOriginal<typeof import('unpdf')>();
@@ -18,6 +20,13 @@ vi.mock('unpdf', async (importOriginal) => {
       const getPage = pdf.getPage.bind(pdf);
       pdf.getPage = (n: number) => {
         pagesDecoded.push(n);
+        const items = fakeItems?.[n - 1];
+        if (items) {
+          return Promise.resolve({
+            getTextContent: async () => ({ items }),
+            cleanup: () => true,
+          }) as unknown as ReturnType<typeof getPage>;
+        }
         return getPage(n);
       };
       return pdf;
@@ -98,5 +107,41 @@ describe('extractPdfText', () => {
     const got = await extractPdfText(makePdf(['first', 'second', 'third']));
     expect(got.text).toBe('first\nsecond\nthird');
     expect(pagesDecoded).toEqual([1, 2, 3]);
+  });
+});
+
+describe('extractPdfText — parity under maxChars', () => {
+  // Early stop must never change the result: for any budget, the output is
+  // the full merged extraction cut to that budget, as unpdf would give it.
+  it.each([1, 7, 40, 120, 500, 2000, 10_000])('maxChars=%i matches unpdf sliced', async (k) => {
+    const { extractText } = await vi.importActual<typeof import('unpdf')>('unpdf');
+    const buf = readFileSync(join(__dirname, '..', '..', 'tests', 'fixtures', 'sample.pdf'));
+    const full = await extractText(new Uint8Array(buf), { mergePages: true });
+    const ours = await extractPdfText(buf, { maxChars: k });
+    expect(ours.text).toBe(String(full.text).slice(0, k));
+  });
+
+  it('a page whose text shrinks when normalized does not end the budget early', async () => {
+    // Page 1 is 10 raw chars, but its run of blank lines collapses to one, so
+    // it normalizes to 8. Stopping on the raw count returned 8 chars where
+    // the full extraction fills all 10 from page 2.
+    fakeItems = [
+      [
+        { str: 'aaaa', hasEOL: true },
+        { str: '', hasEOL: true },
+        { str: '', hasEOL: true },
+        { str: '', hasEOL: true },
+        { str: 'bb', hasEOL: false },
+      ],
+      [{ str: 'cccccccc', hasEOL: false }],
+    ];
+    try {
+      pagesDecoded.length = 0;
+      const ours = await extractPdfText(makePdf(['x', 'y']), { maxChars: 10 });
+      expect(ours.text).toBe('aaaa\n\nbb\nc');
+      expect(pagesDecoded).toEqual([1, 2]);
+    } finally {
+      fakeItems = null;
+    }
   });
 });
