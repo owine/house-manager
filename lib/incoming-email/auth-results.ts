@@ -18,6 +18,9 @@ import { z } from 'zod';
 const storedDmarcSchema = z.object({
   dmarc: z.object({
     status: z.object({ result: z.string() }),
+    // The header-From domain mailauth evaluated. Optional here so dmarcResult
+    // can still log a verdict; dmarcPassed requires it.
+    domain: z.string().optional(),
   }),
 });
 
@@ -27,9 +30,19 @@ export function dmarcResult(authResultsJson: unknown): string | null {
   return parsed.success ? parsed.data.dmarc.status.result : null;
 }
 
-/** True only when ForwardEmail recorded a DMARC pass for this message. */
-export function dmarcPassed(authResultsJson: unknown): boolean {
-  return dmarcResult(authResultsJson) === 'pass';
+/**
+ * True only when ForwardEmail recorded a DMARC pass for this message AND the
+ * domain that pass was evaluated for is `fromAddress`'s domain.
+ *
+ * Ingest stores mailparser's first From mailbox, while mailauth picks its own
+ * header From to evaluate. With two From mailboxes (or headers) they can name
+ * different domains, so a pass for one must not vouch for the other.
+ */
+export function dmarcPassed(authResultsJson: unknown, fromAddress: string): boolean {
+  const parsed = storedDmarcSchema.safeParse(authResultsJson);
+  if (!parsed.success || parsed.data.dmarc.status.result !== 'pass') return false;
+  const evaluated = parsed.data.dmarc.domain?.trim().toLowerCase();
+  return evaluated !== undefined && evaluated === domainOf(fromAddress.trim());
 }
 
 /**
@@ -59,7 +72,84 @@ const SHARED_MAIL_DOMAINS = new Set([
   'zoho.com',
   'fastmail.com',
   'hey.com',
+  'yandex.com',
+  'yandex.ru',
+  'mail.ru',
+  'tuta.com',
+  'tutanota.com',
+  // ISP mailboxes: every subscriber gets one, and small trades often use them.
+  'comcast.net',
+  'xfinity.com',
+  'att.net',
+  'sbcglobal.net',
+  'bellsouth.net',
+  'verizon.net',
+  'cox.net',
+  'charter.net',
+  'spectrum.net',
+  'earthlink.net',
+  'frontier.com',
+  'centurylink.net',
+  'optonline.net',
+  'windstream.net',
+  'juno.com',
+  'netzero.net',
+  'rogers.com',
+  'shaw.ca',
+  'sympatico.ca',
+  'btinternet.com',
+  'sky.com',
+  'virginmedia.com',
+  't-online.de',
+  'web.de',
+  'orange.fr',
+  'free.fr',
+  'laposte.net',
+  'libero.it',
+  'bigpond.com',
+  'optusnet.com.au',
 ]);
+
+/**
+ * Country and regional variants of the big providers (yahoo.co.uk, hotmail.fr,
+ * outlook.de, gmx.de, …): one rule instead of a list that is always missing one.
+ */
+const SHARED_PROVIDER_VARIANT =
+  /^(yahoo|ymail|rocketmail|hotmail|outlook|live|msn|gmx|aol|yandex|mail|zoho)\.[a-z]{2,3}(\.[a-z]{2})?$/;
+
+function isSharedMailDomain(domain: string): boolean {
+  return SHARED_MAIL_DOMAINS.has(domain) || SHARED_PROVIDER_VARIANT.test(domain);
+}
+
+/**
+ * Billing / field-service platforms that send every merchant's mail from the
+ * same addresses (QuickBooks invoices, Square receipts, …). A vendor whose
+ * stored email is one of those addresses is not identified by it: any other
+ * merchant on the platform sends from the identical address. Matched on the
+ * domain and its subdomains, and never binds, even exactly.
+ */
+const PLATFORM_SENDER_DOMAINS = [
+  'intuit.com',
+  'quickbooks.com',
+  'squareup.com',
+  'square.com',
+  'housecallpro.com',
+  'servicetitan.com',
+  'getjobber.com',
+  'jobber.com',
+  'stripe.com',
+  'paypal.com',
+  'bill.com',
+  'freshbooks.com',
+  'waveapps.com',
+  'xero.com',
+  'invoice2go.com',
+  'joist.com',
+];
+
+function isPlatformSender(domain: string): boolean {
+  return PLATFORM_SENDER_DOMAINS.some((p) => domain === p || domain.endsWith(`.${p}`));
+}
 
 function domainOf(addr: string): string | null {
   const at = addr.lastIndexOf('@');
@@ -85,7 +175,8 @@ export function senderBoundToVendor(
   vendorEmail: string | null | undefined,
 ): boolean {
   if (!vendorEmail) return false;
-  if (fromAddress.trim().toLowerCase() === vendorEmail.trim().toLowerCase()) return true;
   const from = domainOf(fromAddress.trim());
-  return from !== null && from === domainOf(vendorEmail.trim()) && !SHARED_MAIL_DOMAINS.has(from);
+  if (from === null || isPlatformSender(from)) return false;
+  if (fromAddress.trim().toLowerCase() === vendorEmail.trim().toLowerCase()) return true;
+  return from === domainOf(vendorEmail.trim()) && !isSharedMailDomain(from);
 }

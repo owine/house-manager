@@ -203,7 +203,7 @@ async function classifyOne(id: string): Promise<void> {
         targetItemId,
         targetSystemId,
         confidence: result.confidence,
-        dmarcPassed: dmarcPassed(row.authResultsJson),
+        dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
         senderBound,
       }) &&
       !row.createdServiceRecordId
@@ -347,7 +347,7 @@ async function heuristicFallback(
     systems: candidates.systems,
     // An attacker can force this path by making the AI call fail, and its
     // vendor match trusts From: exactly. Same gate as the AI path.
-    dmarcPassed: dmarcPassed(row.authResultsJson),
+    dmarcPassed: dmarcPassed(row.authResultsJson, row.fromAddress),
   });
 
   await prisma.$transaction(async (tx) => {

@@ -24,7 +24,25 @@ const stored = (dmarc: unknown) => ({ dkim: null, spf: null, dmarc });
 
 describe('dmarcPassed', () => {
   it('is true for mailauth’s pass shape', () => {
-    expect(dmarcPassed(stored(MAILAUTH_PASS))).toBe(true);
+    expect(dmarcPassed(stored(MAILAUTH_PASS), 'billing@acme.example')).toBe(true);
+  });
+
+  // mailauth evaluates its own pick of header From; ingest stores
+  // mailparser's first From mailbox. A pass for one domain must not vouch for
+  // a From address on another.
+  it('is false when the pass was evaluated for a different domain than From', () => {
+    expect(dmarcPassed(stored(MAILAUTH_PASS), 'billing@attacker.example')).toBe(false);
+  });
+
+  it('is false when the pass carries no evaluated domain', () => {
+    const { domain: _omit, ...noDomain } = MAILAUTH_PASS;
+    expect(dmarcPassed(stored(noDomain), 'billing@acme.example')).toBe(false);
+  });
+
+  it('compares the domain case-insensitively', () => {
+    expect(
+      dmarcPassed(stored({ ...MAILAUTH_PASS, domain: 'ACME.example' }), 'b@Acme.Example'),
+    ).toBe(true);
   });
 
   // Fail-closed: the price of a false negative is one email that waits in
@@ -47,7 +65,7 @@ describe('dmarcPassed', () => {
     ['undefined', undefined],
     ['a non-object column', 'pass'],
   ])('is false for %s', (_label, value) => {
-    expect(dmarcPassed(value)).toBe(false);
+    expect(dmarcPassed(value, 'billing@acme.example')).toBe(false);
   });
 });
 
@@ -76,7 +94,7 @@ describe('the invoice-plain fixture', () => {
       'invoice-plain.json',
     );
     const fixture = JSON.parse(readFileSync(path, 'utf8')) as { dmarc: unknown };
-    expect(dmarcPassed({ dmarc: fixture.dmarc })).toBe(true);
+    expect(dmarcPassed({ dmarc: fixture.dmarc }, 'billing@acme.example')).toBe(true);
   });
 });
 
@@ -93,6 +111,24 @@ describe('senderBoundToVendor', () => {
     expect(senderBoundToVendor('x@acme-hvac.example', 'dispatch@acme.example')).toBe(false);
     expect(senderBoundToVendor('x@mail.acme.example', 'dispatch@acme.example')).toBe(false);
     expect(senderBoundToVendor('x@acme.example.evil', 'dispatch@acme.example')).toBe(false);
+  });
+
+  it('treats ISP mailboxes and regional provider domains as shared', () => {
+    expect(senderBoundToVendor('neighbor@comcast.net', 'acmehvac@comcast.net')).toBe(false);
+    expect(senderBoundToVendor('someone@yahoo.co.uk', 'acme@yahoo.co.uk')).toBe(false);
+    expect(senderBoundToVendor('someone@outlook.de', 'acme@outlook.de')).toBe(false);
+    // The exact address still binds.
+    expect(senderBoundToVendor('acmehvac@comcast.net', 'acmehvac@comcast.net')).toBe(true);
+  });
+
+  // Every merchant on the platform sends from the same address, so even an
+  // exact match identifies the platform, not the vendor.
+  it('never binds a billing-platform sender, even by the exact address', () => {
+    const qb = 'quickbooks@notification.intuit.com';
+    expect(senderBoundToVendor(qb, qb)).toBe(false);
+    expect(
+      senderBoundToVendor('receipts@messaging.squareup.com', 'receipts@messaging.squareup.com'),
+    ).toBe(false);
   });
 
   it('binds a shared mailbox provider only by the exact address', () => {

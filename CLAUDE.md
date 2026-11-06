@@ -364,10 +364,13 @@ declared `Content-Type`, and can forge `From:`.
   allow-listed type or octet-stream; on-disk name always `original.<ext>`.
 - **Auto-stub needs a DMARC pass AND a sender bound to the vendor**
   (`lib/incoming-email/auth-results.ts`). DMARC is read fail-closed from
-  mailauth's `dmarc.status.result` in `authResultsJson`. It proves the From
-  *domain*, not that it is the vendor's, so `senderBoundToVendor` also requires
-  the From address to be the vendor's stored `email`, or on its exact domain
-  when that domain isn't a shared mailbox provider (gmail.com etc.). Both gate
+  mailauth's `dmarc.status.result` in `authResultsJson`, and only counts when
+  mailauth's evaluated `dmarc.domain` is the stored From address's domain. It
+  proves the From *domain*, not that it is the vendor's, so `senderBoundToVendor`
+  also requires the From address to be the vendor's stored `email`, or on its
+  exact domain when that domain isn't shared (mailbox providers, ISPs, their
+  regional variants). Billing-platform senders (Intuit, Square, …) never bind,
+  even exactly: every merchant sends from the same address. Both gate
   *both* the AI and the heuristic path. Every other input, the AI's `vendorId`
   included, is a model output the email can steer, and the heuristic vendor
   match is deliberately loose (notes, display name, subject): those may pre-fill
