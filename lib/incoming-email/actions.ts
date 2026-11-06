@@ -1,6 +1,9 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { ANTHROPIC_MODEL } from '@/lib/ai/client';
+import { createSuggestionLog } from '@/lib/ai/log';
+import { releaseReservation, reserveRateLimit } from '@/lib/ai/rate-limit';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { enqueueEmbed } from '@/lib/embedding/enqueue';
@@ -21,7 +24,7 @@ const log = getLogger('incoming-email.actions');
 async function requireUser() {
   const s = await auth();
   if (!s?.user?.id) return null;
-  return s.user;
+  return s.user as typeof s.user & { id: string };
 }
 
 function revalidateInbox(id: string) {
@@ -176,8 +179,14 @@ export async function unarchiveIncomingEmail(input: unknown): Promise<ActionResu
  * UI gates the button on UNTRIAGED + AUTO_LINKED + !archived, but the action
  * accepts any state — the worker is the source of truth for what a re-run
  * is allowed to mutate.
+ *
+ * Each job is a paid model call (with the email's PDFs), so a re-run spends
+ * the member's own hourly 'incoming-email-reclassify' budget, like every other
+ * member-triggered AI action. Repeat clicks on one email inside
+ * RECLASSIFY_DEDUP_SECONDS collapse into the job already queued.
  */
 const reclassifySchema = z.object({ id: z.string().min(1) });
+const RECLASSIFY_DEDUP_SECONDS = 300;
 
 export async function reclassifyIncomingEmail(input: unknown): Promise<ActionResult<void>> {
   const u = await requireUser();
@@ -191,9 +200,51 @@ export async function reclassifyIncomingEmail(input: unknown): Promise<ActionRes
   });
   if (!exists) return { ok: false, formError: 'Not found' };
 
+  const rl = await reserveRateLimit(u.id, 'incoming-email-reclassify', ANTHROPIC_MODEL);
+  if (!rl.allowed) {
+    await createSuggestionLog({
+      userId: u.id,
+      kind: 'incoming-email-reclassify',
+      userPrompt: parsed.data.id,
+      inventorySnapshotIds: [],
+      response: null,
+      errorReason: 'user_rate_limit',
+      model: ANTHROPIC_MODEL,
+    });
+    return { ok: false, formError: `Hourly limit reached (${rl.used}/${rl.limit}).` };
+  }
+
   const boss = await getBoss();
-  await boss.send(Queue.ClassifyIncomingEmail, { id: parsed.data.id });
-  log.info({ id: parsed.data.id, by: u.id }, 'incoming-email: reclassify enqueued');
+  // singletonSeconds is what makes the key dedup on a standard queue: pg-boss
+  // allows one job per key per time slot, in ANY state but cancelled, so a
+  // finished re-run still holds its slot. singletonNextSlot then queues the
+  // click into the next slot (delayed to its start) rather than dropping it;
+  // null means both slots are taken, i.e. a re-run is already pending.
+  const jobId = await boss.send(
+    Queue.ClassifyIncomingEmail,
+    { id: parsed.data.id },
+    {
+      singletonKey: `reclassify:${parsed.data.id}`,
+      singletonSeconds: RECLASSIFY_DEDUP_SECONDS,
+      singletonNextSlot: true,
+    },
+  );
+  if (jobId === null) {
+    if (rl.reservationId) await releaseReservation(rl.reservationId);
+    return { ok: false, formError: 'A re-run for this email is already queued.' };
+  }
+  // The reservation is the member's budget row. The model call's own usage is
+  // logged by the worker under 'incoming-email-classify'.
+  await createSuggestionLog({
+    reservationId: rl.reservationId,
+    userId: u.id,
+    kind: 'incoming-email-reclassify',
+    userPrompt: parsed.data.id,
+    inventorySnapshotIds: [],
+    response: { jobId },
+    model: ANTHROPIC_MODEL,
+  });
+  log.info({ id: parsed.data.id, by: u.id, jobId }, 'incoming-email: reclassify enqueued');
   // No revalidate yet — the worker writes async. The UI will pick up changes
   // on the user's next navigation, same pattern as the initial classify pass.
   return { ok: true, data: undefined };

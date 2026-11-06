@@ -6,6 +6,7 @@ export const metadata: Metadata = { title: 'ai suggestions' };
 import { PageHeader } from '@/app/(app)/_components/PageHeader';
 import { RebuildEmbeddingsButton } from '@/components/admin/RebuildEmbeddingsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IN_FLIGHT } from '@/lib/ai/rate-limit';
 import { requireAdmin } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
@@ -15,7 +16,15 @@ export default async function AdminAIPage() {
   await requireAdmin();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const rows = await prisma.aISuggestionLog.findMany({
-    where: { createdAt: { gte: since } },
+    where: {
+      createdAt: { gte: since },
+      // Not model calls: a member's Re-run click is a budget row (the call it
+      // triggers logs as 'incoming-email-classify'), and an in_flight row is a
+      // reservation whose call has not reported back. The OR is load-bearing:
+      // `errorReason: { not: … }` alone drops every NULL (successful) row.
+      kind: { not: 'incoming-email-reclassify' },
+      OR: [{ errorReason: null }, { errorReason: { not: IN_FLIGHT } }],
+    },
     select: {
       kind: true,
       errorReason: true,

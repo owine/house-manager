@@ -11,15 +11,19 @@ vi.mock('@/lib/auth', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-const enqueued: Array<{ queue: string; data: unknown }> = [];
+const enqueued: Array<{ queue: string; data: unknown; options?: unknown }> = [];
+// What the mocked boss.send returns next: a job id, or null when pg-boss
+// deduplicated the send.
+let nextSendResult: string | null = 'fake-job-id';
 vi.mock('@/lib/queue', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/lib/queue')>();
   return {
     ...orig,
     getBoss: vi.fn(async () => ({
-      send: vi.fn(async (queue: string, data: unknown) => {
-        enqueued.push({ queue, data });
-        return 'fake-job-id';
+      send: vi.fn(async (queue: string, data: unknown, options?: unknown) => {
+        if (nextSendResult === null) return null;
+        enqueued.push({ queue, data, ...(options ? { options } : {}) });
+        return nextSendResult;
       }),
     })),
   };
@@ -58,6 +62,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   enqueued.length = 0;
+  nextSendResult = 'fake-job-id';
   await ctx.prisma.serviceRecordTarget.deleteMany();
   await ctx.prisma.serviceRecord.deleteMany();
   await ctx.prisma.incomingEmailTarget.deleteMany();
@@ -65,6 +70,7 @@ beforeEach(async () => {
   await ctx.prisma.item.deleteMany();
   await ctx.prisma.system.deleteMany();
   await ctx.prisma.vendor.deleteMany();
+  await ctx.prisma.aISuggestionLog.deleteMany();
   await ctx.prisma.user.deleteMany();
   await ctx.prisma.user.create({ data: { id: 'u1', email: 'u1@example.com', name: 'U1' } });
 });
@@ -403,7 +409,55 @@ describe('reclassifyIncomingEmail', () => {
     const e = await makeEmail();
     const r = await actions.reclassifyIncomingEmail({ id: e.id });
     expect(r.ok).toBe(true);
-    expect(enqueued).toEqual([{ queue: 'incoming-email.classify', data: { id: e.id } }]);
+    expect(enqueued).toEqual([
+      {
+        queue: 'incoming-email.classify',
+        data: { id: e.id },
+        // Repeat clicks on one email collapse into the queued job.
+        options: {
+          singletonKey: `reclassify:${e.id}`,
+          singletonSeconds: 300,
+          // A finished re-run still holds its slot; queue into the next one
+          // instead of silently dropping the click.
+          singletonNextSlot: true,
+        },
+      },
+    ]);
+  });
+
+  // Each re-run is a paid model call over the email and its PDFs. It used to
+  // skip the hourly budget every other member-triggered AI action spends.
+  it("spends the member's hourly budget and refuses past it", async () => {
+    const e = await makeEmail();
+    for (let i = 0; i < 10; i++) {
+      const r = await actions.reclassifyIncomingEmail({ id: e.id });
+      expect(r.ok).toBe(true);
+    }
+    const refused = await actions.reclassifyIncomingEmail({ id: e.id });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error();
+    expect(refused.formError).toMatch(/Hourly limit reached/);
+    expect(enqueued).toHaveLength(10);
+
+    const rows = await ctx.prisma.aISuggestionLog.findMany({
+      where: { userId: 'u1', kind: 'incoming-email-reclassify' },
+    });
+    expect(rows).toHaveLength(11);
+    expect(rows.filter((r) => r.errorReason === 'user_rate_limit')).toHaveLength(1);
+    // Every allowed reservation was filled in, none left in flight.
+    expect(rows.filter((r) => r.errorReason === 'in_flight')).toHaveLength(0);
+  });
+
+  it('a deduplicated re-run says so and gives the budget back', async () => {
+    const e = await makeEmail();
+    nextSendResult = null;
+    const r = await actions.reclassifyIncomingEmail({ id: e.id });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error();
+    expect(r.formError).toMatch(/already queued/);
+    expect(
+      await ctx.prisma.aISuggestionLog.count({ where: { kind: 'incoming-email-reclassify' } }),
+    ).toBe(0);
   });
 
   it('rejects when the email does not exist', async () => {

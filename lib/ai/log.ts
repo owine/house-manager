@@ -7,6 +7,10 @@ export type SuggestionKind =
   | 'checklist'
   | 'incoming-email-extract'
   | 'incoming-email-classify'
+  // A member's Re-run classify click. Budgeted to the member (the worker's own
+  // 'incoming-email-classify' row is attributed to the system user, so it
+  // cannot carry a per-member limit).
+  | 'incoming-email-reclassify'
   | 'ask'
   // The chat turn's SECOND model call (lib/chat/parts-extract.ts). Its own
   // kind, not 'chat': the hourly budget in lib/ai/rate-limit.ts counts 'chat'
@@ -31,6 +35,12 @@ export type CreateLogInput = {
   // Plan 4c — populated only for `kind: 'ask'`. Other kinds leave these null.
   citationCount?: number;
   retrievedChunkIds?: string[];
+  /**
+   * The row `reserveRateLimit` reserved for this call. When set, the outcome
+   * is written into that row instead of a new one: the reservation already
+   * consumed the budget slot, and a second row would consume another.
+   */
+  reservationId?: string | null;
 };
 
 /**
@@ -69,25 +79,29 @@ export function usageLogFields(
 }
 
 export async function createSuggestionLog(input: CreateLogInput) {
-  return prisma.aISuggestionLog.create({
-    data: {
-      userId: input.userId,
-      kind: input.kind,
-      systemPromptVersion: SYSTEM_PROMPT_VERSION,
-      userPrompt: input.userPrompt,
-      inventorySnapshotIds: input.inventorySnapshotIds,
-      response: input.response ?? Prisma.DbNull,
-      errorReason: input.errorReason,
-      model: input.model,
-      inputTokens: input.inputTokens,
-      outputTokens: input.outputTokens,
-      cacheReadTokens: input.cacheReadTokens,
-      cacheCreationTokens: input.cacheCreationTokens,
-      latencyMs: input.latencyMs,
-      citationCount: input.citationCount,
-      retrievedChunkIds: input.retrievedChunkIds ?? [],
-    },
-  });
+  // Every field is explicit (null, not undefined) so that filling a reserved
+  // row overwrites its `in_flight` placeholder rather than leaving it.
+  const data = {
+    userId: input.userId,
+    kind: input.kind,
+    systemPromptVersion: SYSTEM_PROMPT_VERSION,
+    userPrompt: input.userPrompt,
+    inventorySnapshotIds: input.inventorySnapshotIds,
+    response: input.response ?? Prisma.DbNull,
+    errorReason: input.errorReason ?? null,
+    model: input.model,
+    inputTokens: input.inputTokens ?? null,
+    outputTokens: input.outputTokens ?? null,
+    cacheReadTokens: input.cacheReadTokens ?? null,
+    cacheCreationTokens: input.cacheCreationTokens ?? null,
+    latencyMs: input.latencyMs ?? null,
+    citationCount: input.citationCount ?? null,
+    retrievedChunkIds: input.retrievedChunkIds ?? [],
+  };
+  if (input.reservationId) {
+    return prisma.aISuggestionLog.update({ where: { id: input.reservationId }, data });
+  }
+  return prisma.aISuggestionLog.create({ data });
 }
 
 /**
