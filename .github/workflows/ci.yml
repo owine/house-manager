@@ -591,7 +591,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Main only, like the push/export steps below. login-action writes the
+      # token into ~/.docker/config.json for the REST of the job, and the job
+      # then runs scripts/smoke-image.sh -- PR-controlled code. Nothing a PR
+      # build pulls needs it: the Dockerfile's FROMs and the smoke test's
+      # pgvector image are public Docker Hub images, and the image under test
+      # is loaded locally and run with --pull=never.
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: github.ref == 'refs/heads/main'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
