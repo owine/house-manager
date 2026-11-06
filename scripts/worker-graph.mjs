@@ -46,7 +46,9 @@ const INDEXES = EXTS.map((ext) => `index${ext}`);
 // Also `new URL('./rel', import.meta.url)`: a file loaded by path rather than
 // imported, like the worker_thread entry lib/ocr/tesseract.ts hands to
 // tesseract.js. Only relative paths with an `import.meta.url` base count, so
-// `new URL('https://…')` is never mistaken for a package.
+// `new URL('https://…')` is never mistaken for a package. Write such a
+// reference exactly in that form: a template literal, `join(import.meta.dirname,
+// …)` or `import.meta.resolve(…)` is NOT followed, and missing one is silent.
 const SPECIFIER_RE =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+|\bnew\s+URL\s*\(\s*(?=['"]\.[^'"]*['"]\s*,\s*import\.meta\.url\b))['"]([^'"]+)['"]/g;
 
