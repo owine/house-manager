@@ -161,9 +161,11 @@ async function main() {
   // job in a batch when the handler throws: at 4, one email's Postgres blip
   // re-ran (and re-paid the model for) siblings that had already succeeded.
   // The batch never bought parallelism; the handler classifies sequentially.
+  // `includeMetadata` hands the handler retryCount/retryLimit, so it can tell
+  // a retryable failure (warn) from the last one (reported).
   await boss.work<ClassifyIncomingEmailJob>(
     Queue.ClassifyIncomingEmail,
-    { batchSize: 1 },
+    { batchSize: 1, includeMetadata: true },
     handleClassifyIncomingEmail,
   );
 

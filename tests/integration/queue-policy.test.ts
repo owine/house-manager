@@ -63,6 +63,7 @@ describe('getBoss applies its queue policy to a pre-existing database', () => {
     const preexisting = await trackedBoss(db.databaseUrl);
     await preexisting.start();
     await preexisting.createQueue('embed.content');
+    await preexisting.createQueue('incoming-email.classify');
     await preexisting.stop();
 
     // The app's real init path — unmocked, against the same database.
@@ -84,6 +85,11 @@ describe('getBoss applies its queue policy to a pre-existing database', () => {
       retryLimit: 2,
       retryDelay: 60,
     });
+
+    // A DB error now propagates out of classify for a retry; give a Postgres
+    // blip a minute rather than retrying (and re-paying the model) at once.
+    const classify = await appBoss.getQueue(Queue.ClassifyIncomingEmail);
+    expect(classify).toMatchObject({ retryLimit: 2, retryDelay: 60 });
 
     // A queue not in QUEUE_POLICY keeps pg-boss's own defaults: 2 retries,
     // 0s delay, no backoff, 900s (15 min) expiry.

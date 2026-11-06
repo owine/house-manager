@@ -470,7 +470,10 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     const blip = new Error('Connection terminated unexpectedly');
     const spy = vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(blip);
     try {
-      await expect(handle([{ data: { id: e.id } }])).rejects.toBe(blip);
+      // A first attempt, with retries left: pg-boss will run it again.
+      await expect(handle([{ data: { id: e.id }, retryCount: 0, retryLimit: 2 }])).rejects.toBe(
+        blip,
+      );
     } finally {
       spy.mockRestore();
     }
@@ -487,8 +490,49 @@ describe('handleClassifyIncomingEmail (AI-driven)', () => {
     });
     expect(logs).toHaveLength(1);
     expect(logs[0].errorReason).toBeNull();
-    // Not reported as an AI failure; pg-boss owns the retry and its reporting.
+    // Not reported as an AI failure, and not yet at all: retries remain.
     expect(sentryCaptured).toHaveLength(0);
+  });
+
+  it('the LAST attempt failing is reported, since pg-boss reports nothing', async () => {
+    const e = await makeEmail({ messageId: '<db-final@a>', subject: 'Invoice' });
+    const { prisma } = await import('@/lib/db');
+    const blip = new Error('Connection terminated unexpectedly');
+    const spy = vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(blip);
+    try {
+      await expect(handle([{ data: { id: e.id }, retryCount: 2, retryLimit: 2 }])).rejects.toBe(
+        blip,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(sentryCaptured).toEqual([blip]);
+  });
+
+  it('a model-reported cost the column cannot hold is dropped, not a poison job', async () => {
+    // aiExtractedCost is Decimal(10,2); the schema's `cost` has no maximum
+    // (it is also the model's grammar), and the sender can steer the number.
+    mockResponse = {
+      parsed_output: {
+        ...(happyPath() as { parsed_output: Record<string, unknown> }).parsed_output,
+        cost: 123_456_789,
+        summary: 'Tune\u0000up',
+        scope: 'Filter\u0000swap',
+      },
+      usage: { input_tokens: 100, output_tokens: 50 },
+    };
+    const e = await makeEmail({ messageId: '<huge-cost@a>', subject: 'Invoice' });
+
+    await expect(
+      handle([{ data: { id: e.id }, retryCount: 0, retryLimit: 2 }]),
+    ).resolves.toBeUndefined();
+
+    const after = await ctx.prisma.incomingEmail.findUnique({ where: { id: e.id } });
+    expect(after?.aiExtractedCost).toBeNull();
+    // Postgres text rejects NUL; the rest of the extraction is kept.
+    expect(after?.aiExtractedSummary).toBe('Tuneup');
+    expect(after?.aiExtractedScope).toBe('Filterswap');
+    expect(after?.kind).toBe('INVOICE');
   });
 
   it('skips a missing row without throwing', async () => {

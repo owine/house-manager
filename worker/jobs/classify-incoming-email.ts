@@ -46,11 +46,69 @@ type ClassifyTarget = { itemId: string | null; systemId: string | null };
  * A DB failure is not a model failure: it propagates, and pg-boss retries.
  */
 export async function handleClassifyIncomingEmail(
-  jobs: { data: ClassifyIncomingEmailJob }[],
+  jobs: {
+    data: ClassifyIncomingEmailJob;
+    /** From pg-boss with `includeMetadata: true` (worker/index.ts). */
+    retryCount?: number;
+    retryLimit?: number;
+  }[],
 ): Promise<void> {
-  for (const { data } of jobs) {
-    await classifyOne(data.id);
+  for (const job of jobs) {
+    try {
+      await classifyOne(job.data.id);
+    } catch (err) {
+      // pg-boss records a handler failure and retries, but reports nothing:
+      // its 'error' event covers fetch/heartbeat/shutdown, not handlers. So a
+      // failure that outlives its retries would leave the email unclassified
+      // with no signal anywhere. warn while retries remain; report the last
+      // one. Without metadata, assume last.
+      const { retryCount, retryLimit } = job;
+      const last = retryCount === undefined || retryLimit === undefined || retryCount >= retryLimit;
+      if (last) {
+        Sentry.captureException(err);
+        log.error(
+          { err, id: job.data.id, retryCount, retryLimit },
+          'classify-incoming-email: failed on its last attempt; email left unclassified',
+        );
+      } else {
+        log.warn(
+          { err, id: job.data.id, retryCount, retryLimit },
+          'classify-incoming-email: failed; pg-boss will retry',
+        );
+      }
+      throw err;
+    }
   }
+}
+
+/** aiExtractedCost is Decimal(10,2). */
+const MAX_STORABLE_COST = 99_999_999.99;
+
+/**
+ * The model's cost, or null when the column cannot hold it. The schema puts no
+ * ceiling on `cost` (it is also the model's grammar, and the sender can steer
+ * the number), and now that DB errors propagate an overflow would fail every
+ * retry identically, paying for the model call each time.
+ */
+function storableCost(cost: number | null): number | null {
+  if (cost == null || !Number.isFinite(cost)) return null;
+  const cents = Math.round(cost * 100) / 100;
+  return cents > MAX_STORABLE_COST ? null : cents;
+}
+
+/**
+ * Postgres rejects NUL in both text and jsonb (22P05), and the model's output
+ * reaches both (the AISuggestionLog `response`, then the extraction columns).
+ * The sender can put a NUL there, so it would be the same poison: strip it
+ * from every string in the result, once, before any write.
+ */
+function withoutNul<T>(value: T): T {
+  if (typeof value === 'string') return value.replaceAll('\u0000', '') as T;
+  if (Array.isArray(value)) return value.map(withoutNul) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, withoutNul(v)])) as T;
+  }
+  return value;
 }
 
 async function classifyOne(id: string): Promise<void> {
@@ -146,10 +204,13 @@ async function classifyOne(id: string): Promise<void> {
       { err: aiErr, id: row.id, errorReason },
       'classify-incoming-email: AI call failed; falling back to heuristic',
     );
-    await heuristicFallback(row, { vendors, items, systems }, augmentedBody);
+    await heuristicFallback(row, { vendors, items, systems }, augmentedBody, emailDay);
     return;
   }
-  const { result, usage } = classified;
+  // What the DB can hold. Everything after the model call propagates, so a
+  // value Postgres rejects must be cleaned here, not retried.
+  const result = withoutNul(classified.result);
+  const { usage } = classified;
 
   const { vendorId, targetItemId, targetSystemId } = validateCandidateIds(
     {
@@ -187,7 +248,7 @@ async function classifyOne(id: string): Promise<void> {
       kind: result.kind,
       vendorId,
       aiExtractedSummary: result.summary,
-      aiExtractedCost: result.cost,
+      aiExtractedCost: storableCost(result.cost),
       aiExtractedPerformedOn: aiPerformedOn,
       aiExtractedScope: result.scope,
       aiExtractedAt: new Date(),
@@ -381,6 +442,7 @@ async function heuristicFallback(
     systems: Array<{ id: string; name: string }>;
   },
   augmentedBody: string,
+  emailDay: Date,
 ): Promise<void> {
   const result = classifyEmail({
     fromAddress: row.fromAddress,
@@ -406,7 +468,7 @@ async function heuristicFallback(
       rowId: row.id,
       vendorId: result.vendorId,
       targets: result.targets,
-      performedOn: startOfDayUtc(row.receivedAt, await getHouseTimezone()),
+      performedOn: emailDay,
       summary: fallbackSummary(row.subject),
       notes: AUTO_NOTE,
     });
