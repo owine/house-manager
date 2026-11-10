@@ -2821,8 +2821,8 @@ packages:
   ast-v8-to-istanbul@1.0.8:
     resolution: {integrity: sha512-lPdpagk13ANXV+HClJEpCZM7kUsl5XcvgqKzZhaj6Ve1ZFICcY2sGhAN1n1vT0tML6EclT7bfVgTxqL57Gkpow==}
 
-  async-lock@1.4.1:
-    resolution: {integrity: sha512-Az2ZTpuytrtqENulXwO3GGv1Bztugx6TT37NIo7imr/Qo0gsYiGtSdBa2B6fsXhTpVZDNfu1Qn3pk531e3q+nQ==}
+  async-lock@1.5.0:
+    resolution: {integrity: sha512-JgULma1mWaHlyJ67lvicyel5Cq+k55bXafE0gyvJBdHkH0vdE/IGGDF1glNyRInisNS6pZL2oho96S6Hw68kfQ==}
 
   async@3.2.6:
     resolution: {integrity: sha512-htCUDlxyyCLMgaM3xXg0C0LW2xqfuQ6p05pCEIsXuyQ+a1koYKTuBMzRNwmybfLgvJDMd0r1LTn4+E0Ti6C2AA==}
@@ -7471,7 +7471,7 @@ snapshots:
       estree-walker: 3.0.3
       js-tokens: 10.0.0
 
-  async-lock@1.4.1: {}
+  async-lock@1.5.0: {}
 
   async@3.2.6: {}
 
@@ -10039,7 +10039,7 @@ snapshots:
       '@balena/dockerignore': 1.0.2
       '@types/dockerode': 4.0.2
       archiver: 7.0.1(bare-buffer@3.7.1)
-      async-lock: 1.4.1
+      async-lock: 1.5.0
       byline: 5.0.0
       debug: 4.4.3(supports-color@8.1.1)
       docker-compose: 1.5.0
