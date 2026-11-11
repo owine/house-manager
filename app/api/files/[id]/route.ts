@@ -1,7 +1,7 @@
-import { stat } from 'node:fs/promises';
+import { open, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { getAttachment } from '@/lib/attachments/queries';
-import { fileResponseHeaders } from '@/lib/attachments/serve';
+import { fileResponseHeaders, HEAD_BYTES } from '@/lib/attachments/serve';
 import { openReadStream, resolveStoragePath } from '@/lib/attachments/storage';
 import { auth } from '@/lib/auth';
 import { getEnv } from '@/lib/env';
@@ -37,6 +37,17 @@ export async function GET(req: Request, { params }: { params: Params }) {
     return new Response('Not found', { status: 404 });
   }
 
+  // The leading bytes, so serve.ts can check a stored PDF type against the
+  // file itself. Thumbnails are ours (sharp -> webp) and need no check.
+  let head: Uint8Array = new Uint8Array(0);
+  if (!wantThumb) {
+    try {
+      head = await readHead(absPath);
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+  }
+
   const stream = openReadStream(absPath);
   const body = Readable.toWeb(stream) as ReadableStream;
   // Every security-relevant header comes from one audited place. The stored
@@ -46,7 +57,19 @@ export async function GET(req: Request, { params }: { params: Params }) {
     filename: row.filename,
     isThumbnail: wantThumb,
     size,
+    head,
   });
 
   return new Response(body, { status: 200, headers });
+}
+
+async function readHead(absPath: string): Promise<Uint8Array> {
+  const fh = await open(absPath, 'r');
+  try {
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const { bytesRead } = await fh.read(buf, 0, HEAD_BYTES, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close();
+  }
 }

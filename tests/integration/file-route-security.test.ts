@@ -161,6 +161,9 @@ describe('GET /api/files/[id] — rows stored before ingest sniffed anything', (
       '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
     ],
     ['text/javascript', 'sw.js', 'self.addEventListener("fetch", () => {})'],
+    // Lying the other way, on a row from before ingest sniffed: claims PDF,
+    // is HTML. PDFs render without `sandbox`, so the bytes must be checked.
+    ['application/pdf', 'Invoice-4472.pdf', '<html><script>fetch("/settings")</script></html>'],
   ])('serves a stored %s as a sandboxed download', async (mimeType, filename, body) => {
     const row = await seedStoredFile({ mimeType, filename, bytes: Buffer.from(body) });
     const res = await getFile(row.id);

@@ -7,15 +7,18 @@ const FILE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 // No `sandbox` for PDFs: it blanks in-page viewers (Orion's PDF.js, Safari <= 18.3).
 const PDF_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
+const PDF_HEAD = Buffer.from('%PDF-1.4\n');
+
 function headersFor(
   mimeType: string | null,
-  opts: { isThumbnail?: boolean; filename?: string | null } = {},
+  opts: { isThumbnail?: boolean; filename?: string | null; head?: Uint8Array } = {},
 ) {
   return fileResponseHeaders({
     mimeType,
     filename: opts.filename === undefined ? 'file.bin' : opts.filename,
     isThumbnail: opts.isThumbnail ?? false,
     size: 1234,
+    head: opts.head ?? PDF_HEAD,
   });
 }
 
@@ -105,6 +108,21 @@ describe('fileResponseHeaders — CSP', () => {
   it('a PDF gets the same policy without sandbox, so in-page viewers can load it', () => {
     expect(headersFor('application/pdf').get('content-security-policy')).toBe(PDF_CSP);
     expect(headersFor('Application/PDF; x=1').get('content-security-policy')).toBe(PDF_CSP);
+  });
+
+  // The stored type is only a hint (rows ingested before sniffing carry the
+  // sender's claim), so the no-sandbox PDF policy also needs the bytes to be
+  // one. Anything else that claims PDF is a sandboxed download.
+  it.each([
+    ['HTML', Buffer.from('<html><script>fetch("/settings")</script>')],
+    ['a near-miss magic', Buffer.from('%PDX-1.4')],
+    ['a short file', Buffer.from('%PD')],
+    ['an empty file', Buffer.alloc(0)],
+  ])('a stored application/pdf whose bytes are %s is a sandboxed download', (_case, head) => {
+    const h = headersFor('application/pdf', { head });
+    expect(h.get('content-type')).toBe('application/octet-stream');
+    expect(h.get('content-disposition')).toMatch(/^attachment;/);
+    expect(h.get('content-security-policy')).toBe(FILE_CSP);
   });
 
   // The PDF exemption keys off the type we SEND, never the stored claim: a row
