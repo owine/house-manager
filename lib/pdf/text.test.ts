@@ -217,6 +217,27 @@ describe('decodePdfText — parity under maxChars', () => {
   });
 });
 
+describe('decodePdfText — NUL', () => {
+  // Postgres `text` rejects 0x00, and a real email PDF's text layer carried
+  // one. Stripped here, before the budget is counted, so NULs neither reach a
+  // caller nor spend maxChars (or the job's OCR threshold) on nothing.
+  it('drops NULs and does not count them against maxChars', async () => {
+    fakeItems = [
+      [{ str: 'ab\u0000\u0000\u0000\u0000\u0000\u0000cd', hasEOL: false }],
+      [{ str: 'efgh', hasEOL: false }],
+    ];
+    try {
+      pagesDecoded.length = 0;
+      const ours = await decode(makePdf(['x', 'y']), { maxChars: 8 });
+      expect(ours.text).toBe('abcd\nefg');
+      expect(ours.text).not.toContain('\u0000');
+      expect(pagesDecoded).toEqual([1, 2]);
+    } finally {
+      fakeItems = null;
+    }
+  });
+});
+
 describe('decodePdfText — document lifecycle', () => {
   it('destroys the loading task after a successful decode', async () => {
     await decode(makePdf(['x']));
