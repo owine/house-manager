@@ -270,6 +270,23 @@ describe('handleExtractAttachmentText', () => {
     expect(row?.ocrUsed).toBe(false);
   });
 
+  it('text containing NUL is stored without it (Postgres text rejects 0x00)', async () => {
+    // A real email PDF's text layer carried a NUL; the write threw P2039
+    // ("invalid byte sequence for encoding UTF8: 0x00") after the decode had
+    // succeeded, stranding the row at extract_interrupted.
+    const withNul = `Light package\u0000 quote ${'x'.repeat(300)}`;
+    extractPdfTextMock.mockResolvedValue({ text: withNul });
+    const id = 'pdf-text-nul';
+    await seedAttachment(id, 'application/pdf');
+
+    await handleExtractAttachmentText([{ data: { attachmentId: id } }]);
+
+    const row = await ctx.prisma.attachment.findUnique({ where: { id } });
+    expect(row?.extractedText).toBe(withNul.replaceAll('\u0000', ''));
+    expect(row?.extractedError).toBeNull();
+    expect(row?.extractedAt).not.toBeNull();
+  });
+
   it('scanned PDF: falls back to render + OCR when text layer is short', async () => {
     extractPdfTextMock.mockResolvedValue({ text: 'short' });
     const id = 'pdf-scanned';
