@@ -40,12 +40,28 @@ const INLINE_SAFE_MIME: ReadonlySet<string> = new Set([
  * `style-src 'unsafe-inline'` is for the synthetic wrapper page browsers build
  * around a top-level image or PDF.
  *
- * This exact policy is the one Redmine serves attachments with. Chrome and
- * Firefox render PDFs under it (both exempt their built-in viewer from page CSP:
- * Chromium issue 40328564, Mozilla bug 1582115). Safari does from 18.4 (Redmine
- * #40647). Safari <= 18.3 shows such a PDF blank, which is the accepted cost.
+ * This exact policy is the one Redmine serves attachments with.
  */
 const FILE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
+/**
+ * PDFs only: the same policy minus `sandbox`, because `sandbox` breaks any PDF
+ * viewer that runs inside the page. Orion (WebKit) renders PDFs with an in-page
+ * PDF.js. That viewer fetches the PDF's bytes from the document's own origin,
+ * and a sandboxed document has an opaque origin, so the fetch is cross-origin
+ * and fails: the toolbar draws, the page stays blank (verified 2026-11-11).
+ * Safari <= 18.3 blanks the same way. Chrome and Firefox were unaffected; both
+ * exempt their built-in viewer from page CSP (Chromium issue 40328564, Mozilla
+ * bug 1582115).
+ *
+ * What still makes this safe: a response typed `application/pdf` with
+ * `nosniff` only ever reaches a PDF viewer, never the HTML parser, and the type
+ * is set only for rows already on INLINE_SAFE_MIME (magic-byte checked at
+ * upload and at inbound ingest). So the lost `sandbox` defended against a bug
+ * in a browser's own PDF viewer, not against sender HTML. `default-src 'none'`
+ * still applies to anything the document itself loads.
+ */
+const PDF_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
 function normalizeMime(mimeType: string | null): string {
   return (mimeType ?? '').split(';')[0].trim().toLowerCase();
@@ -90,7 +106,7 @@ export function fileResponseHeaders(input: {
     contentDisposition(renderable ? 'inline' : 'attachment', input.filename),
   );
   headers.set('X-Content-Type-Options', 'nosniff');
-  headers.set('Content-Security-Policy', FILE_CSP);
+  headers.set('Content-Security-Policy', renderable === 'application/pdf' ? PDF_CSP : FILE_CSP);
   headers.set('Cache-Control', 'private, max-age=300');
   return headers;
 }

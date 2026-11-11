@@ -21,6 +21,9 @@ import { type IntegrationContext, setupIntegration, teardownIntegration } from '
 const TOKEN = 'test-inbound-token-1234567890ab';
 const HMAC_KEY = 'test-hmac-key-1234567890abcdef';
 const FILE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+// PDFs alone go without `sandbox`: it blanks in-page viewers (lib/attachments/serve.ts).
+const PDF_CSP = "default-src 'none'; style-src 'unsafe-inline'";
+const cspFor = (mimeType: string) => (mimeType === 'application/pdf' ? PDF_CSP : FILE_CSP);
 const FIXTURES = join(__dirname, '..', 'fixtures');
 const PDF = readFileSync(join(FIXTURES, 'sample.pdf'));
 const JPG = readFileSync(join(FIXTURES, 'sample.jpg'));
@@ -166,7 +169,7 @@ describe('GET /api/files/[id] — rows stored before ingest sniffed anything', (
     expect(Buffer.from(await res.arrayBuffer()).toString()).toBe(body);
   });
 
-  it('still serves a real PDF and JPEG inline, sandboxed', async () => {
+  it('still serves a real PDF and JPEG inline (the JPEG sandboxed)', async () => {
     for (const [mimeType, file] of [
       ['application/pdf', 'sample.pdf'],
       ['image/jpeg', 'sample.jpg'],
@@ -178,7 +181,7 @@ describe('GET /api/files/[id] — rows stored before ingest sniffed anything', (
       expect(res.headers.get('content-type')).toBe(mimeType);
       expect(res.headers.get('content-disposition')).toMatch(/^inline;/);
       expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-      expect(res.headers.get('content-security-policy')).toBe(FILE_CSP);
+      expect(res.headers.get('content-security-policy')).toBe(cspFor(mimeType));
       expect(res.headers.get('content-length')).toBe(String(bytes.length));
     }
   });
@@ -270,7 +273,7 @@ describe('inbound email -> stored attachment -> file route', () => {
       expect(file.headers.get('content-type')).toBe(expected);
       expect(file.headers.get('content-disposition')).toMatch(/^inline;/);
       expect(file.headers.get('x-content-type-options')).toBe('nosniff');
-      expect(file.headers.get('content-security-policy')).toBe(FILE_CSP);
+      expect(file.headers.get('content-security-policy')).toBe(cspFor(expected));
     }
   });
 

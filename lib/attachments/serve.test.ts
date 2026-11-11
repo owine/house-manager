@@ -4,6 +4,8 @@ import { fileResponseHeaders } from './serve';
 // Hardcoded on purpose: this string is a security control, so a change to it
 // should have to change a test too.
 const FILE_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+// No `sandbox` for PDFs: it blanks in-page viewers (Orion's PDF.js, Safari <= 18.3).
+const PDF_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
 function headersFor(
   mimeType: string | null,
@@ -69,14 +71,48 @@ describe('fileResponseHeaders — everything else is a download', () => {
 });
 
 describe('fileResponseHeaders — on every response', () => {
-  it.each([['application/pdf'], ['text/html'], [null]])(
-    '%s gets nosniff + the sandbox CSP',
+  it.each([['application/pdf'], ['image/jpeg'], ['text/html'], [null]])(
+    '%s gets nosniff, the cache policy and its length',
     (mime) => {
       const h = headersFor(mime);
       expect(h.get('x-content-type-options')).toBe('nosniff');
-      expect(h.get('content-security-policy')).toBe(FILE_CSP);
       expect(h.get('cache-control')).toBe('private, max-age=300');
       expect(h.get('content-length')).toBe('1234');
+    },
+  );
+});
+
+describe('fileResponseHeaders — CSP', () => {
+  it.each([
+    ['image/jpeg'],
+    ['image/png'],
+    ['image/webp'],
+    ['image/heic'],
+    ['text/html'],
+    ['image/svg+xml'],
+    ['application/octet-stream'],
+    [null],
+  ])('%s gets the sandbox CSP', (mime) => {
+    expect(headersFor(mime).get('content-security-policy')).toBe(FILE_CSP);
+  });
+
+  it('a thumbnail gets the sandbox CSP', () => {
+    expect(
+      headersFor('application/pdf', { isThumbnail: true }).get('content-security-policy'),
+    ).toBe(FILE_CSP);
+  });
+
+  it('a PDF gets the same policy without sandbox, so in-page viewers can load it', () => {
+    expect(headersFor('application/pdf').get('content-security-policy')).toBe(PDF_CSP);
+    expect(headersFor('Application/PDF; x=1').get('content-security-policy')).toBe(PDF_CSP);
+  });
+
+  // The PDF exemption keys off the type we SEND, never the stored claim: a row
+  // that only says "pdf" in a parameter or a near-miss type is still sandboxed.
+  it.each([['application/x-pdf'], ['text/html; type=application/pdf'], ['application/pdf+xml']])(
+    '%s is not treated as a PDF',
+    (mime) => {
+      expect(headersFor(mime).get('content-security-policy')).toBe(FILE_CSP);
     },
   );
 });
