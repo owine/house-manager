@@ -59,7 +59,7 @@ test('uploads a JPEG to an item, sees the thumbnail, deletes it', async ({ page,
 // The only test that sees the headers a BROWSER gets. next.config.ts
 // `headers()` are applied before a route handler runs and WIN on a name clash
 // (Next drops the handler's value), so a global CSP would silently replace
-// the file route's sandbox. Integration tests call handlers directly and
+// the file route's own CSP. Integration tests call handlers directly and
 // can't see that. @critical because nothing else would notice the regression.
 test('pages and files carry their security headers @critical', async ({ page, context }) => {
   await context.clearCookies();
@@ -98,9 +98,10 @@ test('pages and files carry their security headers @critical', async ({ page, co
   expect(fileHeaders['content-type']).toBe('application/pdf');
   expect(fileHeaders['content-disposition']).toMatch(/^inline;/);
   expect(fileHeaders['x-content-type-options']).toBe('nosniff');
-  // The route's own policy, NOT the global frame-ancestors one.
+  // The route's own policy, NOT the global frame-ancestors one. A PDF's has
+  // no `sandbox`, which blanks in-page viewers (lib/attachments/serve.ts).
   expect(fileHeaders['content-security-policy']).toBe(
-    "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "default-src 'none'; style-src 'unsafe-inline'",
   );
   expect(fileHeaders['x-frame-options']).toBeUndefined();
   expect(fileHeaders['x-powered-by']).toBeUndefined();

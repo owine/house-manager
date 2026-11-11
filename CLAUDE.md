@@ -370,7 +370,9 @@ declared `Content-Type`, and can forge `From:`.
   raster/PDF allow-list inline, everything else an `application/octet-stream`
   download, always `nosniff` + a `sandbox` CSP. It reads the stored type at
   *serve* time, which is what covers rows ingested before types were sniffed.
-  Never serve a stored file any other way.
+  The one exception: a PDF whose bytes start with `%PDF-` (checked at serve
+  time, not trusted from the row) drops `sandbox`, because it blanks in-page
+  PDF viewers (Orion, Safari ≤ 18.3). Never serve a stored file any other way.
 - **Ingest trusts neither the declared type nor the name**
   (`lib/incoming-email/normalize-attachment.ts`): magic-byte sniff to an
   allow-listed type or octet-stream; on-disk name always `original.<ext>`.
