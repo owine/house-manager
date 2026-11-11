@@ -235,7 +235,12 @@ async function extractOne(job: ExtractAttachmentTextJob, filesDir: string): Prom
     return;
   }
 
-  const truncated = extractedText.slice(0, MAX_TEXT_LENGTH);
+  // Postgres `text` rejects NUL outright (22021). A PDF's text layer is
+  // already stripped in decodePdfText (so NULs don't spend its char budget);
+  // this backstop covers text/* files and OCR. Without it the write throws
+  // after a successful decode and strands the row at extract_interrupted,
+  // which backfill never retries.
+  const truncated = extractedText.replaceAll('\u0000', '').slice(0, MAX_TEXT_LENGTH);
   await mark(attachmentId, {
     extractedText: truncated || null,
     extractedError,
