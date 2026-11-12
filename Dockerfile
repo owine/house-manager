@@ -113,7 +113,7 @@ FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a
 # `sharp.format.heif.input.fileSuffix`) — re-adding these will not help.
 RUN apk add --no-cache \
   curl=8.23.0-r0 \
-  postgresql18-client=18.6-r0
+  postgresql18-client=18.7-r0
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
