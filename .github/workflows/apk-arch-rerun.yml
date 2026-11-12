@@ -1,0 +1,36 @@
+name: apk arch-lag rerun
+
+# Alpine publishes each architecture separately, so an `alpine packages`
+# Renovate PR built in the gap fails on the late one (here, the arm64 leg of
+# ci.yml's build-image matrix) with `unable to select packages`. This reruns
+# that build's failed jobs once every `apk add` pin in the Dockerfile is on
+# every architecture. All logic lives in the shared reusable workflow; see the
+# owine/renovate-config README, "apk architecture lag".
+#
+# Not a PR check: it runs on a schedule and on dispatch only, so it is
+# deliberately absent from ci-pass and from the ruleset's required checks.
+#
+# `alpine-branch` is the SECOND place the Alpine release line is written. Bump
+# it together with `branch=` in renovate.json's apk registryUrls. A stale value
+# fails safe (pins look missing, nothing is rerun) rather than wrong.
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  rerun:
+    uses: owine/renovate-config/.github/workflows/apk-arch-rerun.yml@main
+    with:
+      workflow: ci.yml # the workflow that builds the image on PRs
+      dockerfile: Dockerfile
+      alpine-branch: v3.24 # same as branch= in the apk registryUrls
+      # arches: x86_64 aarch64  (default; Alpine's names, not Docker's)
+      # components: main community  (default)
+      # dry-run: true           (log only; use it for the first dispatch)
