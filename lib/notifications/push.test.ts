@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock the web-push package. push.ts does `import webpush from 'web-push'`
-// (default import), so the mock must expose a `default` object carrying the
-// two methods we drive. Mirrors lib/embedding/voyage.test.ts's module-mock
-// style.
-vi.mock('web-push', () => ({
-  default: { setVapidDetails: vi.fn(), sendNotification: vi.fn() },
-}));
+// Mock the web-push package. v4 is ESM-only with named exports and no
+// default, and push.ts imports `setVapidDetails` / `sendNotification` by
+// name, so the mock exposes exactly those two. A `default` key here would
+// let a regression back to `import webpush from 'web-push'` pass under the
+// mock while crashing the real worker at boot.
+vi.mock('web-push', () => ({ setVapidDetails: vi.fn(), sendNotification: vi.fn() }));
 
 // Mock env so configureOnce() has stable VAPID details without validating the
 // full env. Mirrors lib/notifications/email.test.ts.
@@ -39,7 +38,7 @@ const PAYLOAD = { title: 'Due soon', body: 'Replace filter', url: '/reminders' }
 
 beforeEach(async () => {
   vi.resetModules();
-  webpush = ((await import('web-push')) as unknown as { default: typeof webpush }).default;
+  webpush = (await import('web-push')) as unknown as typeof webpush;
   ({ sendPush } = await import('./push'));
 });
 

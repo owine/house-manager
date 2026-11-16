@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import { sendNotification, setVapidDetails } from 'web-push';
 import { getEnv } from '@/lib/env';
 import { isPushServiceEndpoint } from './push-endpoint';
 
@@ -7,7 +7,7 @@ let configured = false;
 function configureOnce() {
   if (configured) return;
   const env = getEnv();
-  webpush.setVapidDetails(
+  setVapidDetails(
     env.WEB_PUSH_CONTACT_EMAIL,
     env.WEB_PUSH_VAPID_PUBLIC_KEY,
     env.WEB_PUSH_VAPID_PRIVATE_KEY,
@@ -51,7 +51,7 @@ export async function sendPush(
     });
     try {
       await Promise.race([
-        webpush.sendNotification(
+        sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           JSON.stringify(payload),
           // web-push sets no socket timeout by default, so a peer that accepted
