@@ -95,7 +95,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@biomejs/biome": "2.6.7",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@tailwindcss/postcss": "4.3.5",
     "@testcontainers/postgresql": "12.2.1",
     "@testing-library/dom": "10.4.2",
