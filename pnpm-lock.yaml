@@ -2413,8 +2413,8 @@ packages:
     peerDependencies:
       '@testing-library/dom': '>=7.21.4'
 
-  '@tokenizer/inflate@0.6.0':
-    resolution: {integrity: sha512-+0RDxhBkyT9xMnGdJAwmats9yxRLR8ypJrQgrnLqOu4Gv/aHlnxYgdGVy2QTwvBl6IF/w2Hr+ZNirH+iMUbVZA==}
+  '@tokenizer/inflate@0.6.1':
+    resolution: {integrity: sha512-EuqSyHdOXN61cc5/rsW6uUn1TJZJGZr56jlkUbsLwVJ6uHgvwQyFkYfOCf+zzPFAYjftPk1WeJnEhpLVvzbm1A==}
     engines: {node: '>=18'}
 
   '@tokenizer/token@0.3.0':
@@ -7047,7 +7047,7 @@ snapshots:
     dependencies:
       '@testing-library/dom': 10.4.2
 
-  '@tokenizer/inflate@0.6.0':
+  '@tokenizer/inflate@0.6.1':
     dependencies:
       debug: 4.4.3
       strtok3: 10.8.0
@@ -8025,7 +8025,7 @@ snapshots:
 
   file-type@22.3.0:
     dependencies:
-      '@tokenizer/inflate': 0.6.0
+      '@tokenizer/inflate': 0.6.1
       strtok3: 10.8.0
       token-types: 6.2.0
       uint8array-extras: 1.6.0
