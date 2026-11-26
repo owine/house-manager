@@ -200,7 +200,7 @@ jobs:
     runs-on: ubuntu-26.04
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+        image: pgvector/pgvector:pg19@sha256:89879f41d564f67b0c1462a491d16fcbc6de39ac10db17e7a4bba2138a5e0ba5
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -317,6 +317,23 @@ jobs:
               sleep $((attempt * 10))
             done
           done
+      # pg-dump-restore.test.ts runs the HOST pg_dump/pg_restore, which must be
+      # >= the server major, and the runner image ships PostgreSQL 18. Install
+      # the PGDG client for the server's major. `apt-get update` reads ONLY the
+      # pgdg list: refreshing every source drags in the slow azure Ubuntu
+      # mirror (see the Playwright install note in the e2e job). The bin dir
+      # goes first on PATH because /usr/bin/pg_dump is Debian's pg_wrapper,
+      # which may pick the runner's preinstalled 18 cluster instead.
+      - name: Install PostgreSQL 19 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL --retry 3 -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -o Dir::Etc::sourcelist=sources.list.d/pgdg.list -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+          sudo apt-get install -y --no-install-recommends postgresql-client-19
+          echo /usr/lib/postgresql/19/bin >> "$GITHUB_PATH"
+      - run: pg_dump --version && pg_restore --version
       # See unit job: collect a coverage blob with thresholds overridden to 0;
       # the `coverage` job merges every blob and enforces the real floor. Pair
       # blob with the default reporter so a failure names the failing test in
@@ -340,7 +357,7 @@ jobs:
     timeout-minutes: 20
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+        image: pgvector/pgvector:pg19@sha256:89879f41d564f67b0c1462a491d16fcbc6de39ac10db17e7a4bba2138a5e0ba5
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test
@@ -456,7 +473,7 @@ jobs:
         routes: [empty-state, populated]
     services:
       db:
-        image: pgvector/pgvector:pg18@sha256:38681dc6eaf55308e2a4c6de392d131652dcfac70e1263e35cd9b5ea3fe39782
+        image: pgvector/pgvector:pg19@sha256:89879f41d564f67b0c1462a491d16fcbc6de39ac10db17e7a4bba2138a5e0ba5
         env:
           POSTGRES_USER: housemanager
           POSTGRES_PASSWORD: test

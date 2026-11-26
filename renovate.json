@@ -72,9 +72,9 @@
       "groupName": "meilisearch"
     },
     {
-      "description": "Same lockstep as the `meilisearch` group above, for Postgres. Pinned in four places across three managers: docker-compose.yml, ci.yml service containers, tests/integration/setup.ts and scripts/smoke-image.sh. It must be pgvector/pgvector rather than plain postgres — the squashed migration runs CREATE EXTENSION vector and `migrate deploy` fails without it — so a bump landing in only some of the four means the smoke test or the integration suite runs a different major than production.",
+      "description": "Same lockstep as the `meilisearch` group above, for Postgres. Pinned in four places across three managers: docker-compose.yml, ci.yml service containers, tests/integration/setup.ts and scripts/smoke-image.sh. It must be pgvector/pgvector rather than plain postgres — the squashed migration runs CREATE EXTENSION vector and `migrate deploy` fails without it — so a bump landing in only some of the four means the smoke test or the integration suite runs a different major than production. `postgres` (the official image) is here for the Dockerfile's `pgclient` stage, which supplies pg_dump/pg_restore while Alpine lacks postgresql19-client: the client must stay >= the server major, so it moves in the same PR as the server. Without this rule it would fall into the preset's `dockerfile bases` group and bump on its own; like the `playwright` rule above, it wins only because local packageRules are appended after `extends`.",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["pgvector/pgvector"],
+      "matchPackageNames": ["pgvector/pgvector", "postgres"],
       "groupName": "postgres"
     },
     {
