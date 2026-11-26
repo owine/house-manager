@@ -90,7 +90,12 @@ RUN pnpm prune --prod
 RUN node scripts/prune-worker-tree.mjs
 
 # --- pg client source: pg_dump/pg_restore 19 for the backup job ---
-# TEMPORARY. Alpine has no postgresql19-client: it adds a new PG major only in
+# >>> TEMPORARY WORKAROUND, undo per #734 <<<
+# Undo it when the runtime base's Alpine ships postgresql19-client. You don't
+# have to watch for that: the tripwire RUN in the runtime stage fails the build
+# the moment it does, most likely on the PR that moves the base to Alpine 3.25.
+#
+# Why: Alpine has no postgresql19-client. It adds a new PG major only in
 # the next stable release after GA (17 -> 3.21, 18 -> 3.23), never to a release
 # already out, and PG 19.0 (2026-11-19) postdates 3.24. pg_dump refuses a newer
 # server, and prod runs 19, so the apk postgresql18-client cannot back it up.
@@ -101,9 +106,7 @@ RUN node scripts/prune-worker-tree.mjs
 #
 # The -alpine3.24 suffix MUST match the runtime base's Alpine line: it is the
 # third place that line is written (with renovate.json's apk `branch=` and
-# apk-arch-rerun.yml's `alpine-branch`). When the base crosses to an Alpine
-# release that ships postgresql19-client, delete this stage, the two COPYs and
-# the four library pins, and go back to `apk add postgresql19-client`.
+# apk-arch-rerun.yml's `alpine-branch`). The undo checklist is in #734.
 FROM postgres:19.0-alpine3.24@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f AS pgclient
 
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
@@ -137,9 +140,23 @@ RUN apk add --no-cache \
   libldap=2.6.15-r0 \
   lz4-libs=1.10.0-r1 \
   zstd-libs=1.6.0-r1
+# >>> TEMPORARY WORKAROUND, undo per #734 (see the pgclient stage) <<<
 # musl's default search path includes /usr/local/lib, so libpq needs no ldconfig.
 COPY --from=pgclient /usr/local/bin/pg_dump /usr/local/bin/pg_restore /usr/local/bin/
 COPY --from=pgclient /usr/local/lib/libpq.so.5 /usr/local/lib/
+# Tripwire: fail the build once this image's own Alpine release ships the
+# client for the copied major, so the workaround can't outlive its reason. It
+# reads the major off the copied binary, so it follows a future pgclient tag
+# bump. `apk search -qx` is an exact match that prints the name if the package
+# exists and nothing if not (verified against postgresql18-client, which does,
+# and postgresql19-client, which doesn't). An index fetch failure prints nothing
+# too, so this fails OPEN, never with a false alarm.
+RUN major="$(pg_dump --version | sed -E 's/^[^0-9]*([0-9]+).*/\1/')" \
+  && if [ -n "$(apk --no-cache search -qx "postgresql${major}-client")" ]; then \
+    echo "postgresql${major}-client now ships in this image's Alpine release." >&2; \
+    echo "Undo the temporary pgclient workaround: checklist in issue #734." >&2; \
+    exit 1; \
+  fi
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
