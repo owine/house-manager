@@ -411,7 +411,7 @@ export function sentryOptions(dsn: string) {
     environment: process.env.NODE_ENV,
     // Errors only. No performance tracing.
     tracesSampleRate: 0,
-    // Belt and suspenders with beforeSendTransaction below: tracesSampleRate:
+    // Belt and suspenders with ignoreSpans below: tracesSampleRate:
     // 0 alone does NOT stop a transaction. The HTTP server instrumentation's
     // sampler honours a remote `sentry-trace: <trace>-<span>-1` parent (an
     // inbound request whose sampled flag is already 1) and creates + sends a
@@ -423,11 +423,20 @@ export function sentryOptions(dsn: string) {
     // returning 0 closes this: it takes precedence over tracesSampleRate
     // (@sentry/core 10.75 options.d.ts) for every span, remote-parent or not.
     tracesSampler: (_samplingContext: unknown) => 0,
-    // Backstop in case some future SDK path still forms a transaction despite
-    // tracesSampler: transaction events carry the same request/url shape as
-    // errors but never reach beforeSend, so drop them outright instead of
-    // trying to scrub a shape this module doesn't otherwise handle.
-    beforeSendTransaction: (_event: unknown, _hint: unknown) => null,
+    // Backstop in case some SDK path still forms a sampled span despite
+    // tracesSampler. Spans carry the same request/url shape as errors but never
+    // reach beforeSend, so drop every one outright instead of trying to scrub a
+    // shape this module doesn't otherwise handle.
+    //
+    // This used to be `beforeSendTransaction: () => null`. SDK 11 defaults to
+    // `traceLifecycle: 'stream'`, which sends spans in batches rather than as
+    // transaction events and NEVER calls beforeSendTransaction, so that
+    // backstop was a silent no-op from the 11 upgrade on. beforeSendSpan is no
+    // substitute: it can rewrite a span but not drop one. ignoreSpans drops
+    // under both lifecycles, and /.*/ matches every name, the empty one
+    // included. worker/sentry-spans.test.ts proves it against the real SDK
+    // with tracesSampler removed, which is the only way to see a backstop work.
+    ignoreSpans: [/.*/],
     // Never attach sentry-trace / baggage headers to outgoing requests. The
     // HTTP integration propagates them even at tracesSampleRate 0, and baggage
     // carries the DSN's public key to every API this app calls (Voyage,
