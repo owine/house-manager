@@ -19,7 +19,7 @@ import { inject } from 'vitest';
  * and silently tracks nothing if either moves.
  */
 // renovate: datasource=docker depName=pgvector/pgvector
-const POSTGRES_IMAGE = 'pgvector/pgvector:pg18';
+const POSTGRES_IMAGE = 'pgvector/pgvector:pg19';
 // renovate: datasource=docker depName=getmeili/meilisearch
 const MEILI_IMAGE = 'getmeili/meilisearch:v1.57';
 

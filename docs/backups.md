@@ -199,7 +199,7 @@ Expected output, after the JSON log lines: `{ file: 'housemanager-….dump', siz
 Every dump is checked with `pg_restore --list` before it gets its final name. That reads the archive's header and table of contents, not every data block. To prove a dump restores, rehearse on a throwaway server, never on the live database:
 
 ```bash
-docker run -d --rm --name hm-restore-drill -e POSTGRES_PASSWORD=drill pgvector/pgvector:pg18
+docker run -d --rm --name hm-restore-drill -e POSTGRES_PASSWORD=drill pgvector/pgvector:pg19
 until docker exec hm-restore-drill psql -h 127.0.0.1 -U postgres -c 'select 1' >/dev/null 2>&1; do sleep 1; done
 docker exec -i hm-restore-drill pg_restore --no-owner --no-privileges --exit-on-error --single-transaction -U postgres -d postgres < "$DUMP"
 docker exec hm-restore-drill psql -U postgres -c 'SELECT count(*) FROM items;'
@@ -210,7 +210,7 @@ docker stop hm-restore-drill
 
 ## Postgres major version dependency
 
-The Dockerfile installs `postgresql18-client` to provide `pg_dump` / `pg_restore`. **When you upgrade Postgres major** (18 → 19), bump the Dockerfile package name in lockstep, because `pg_dump` from an older major can't dump from a newer server. The image smoke test runs the backup job against `PG_IMAGE`, so a mismatch fails CI. The integration round-trip test uses the host's `pg_dump`, which must also be ≥ the server major (see `docs/TESTING.md`).
+The image's `pg_dump` / `pg_restore` must be ≥ the server major, because `pg_dump` from an older major refuses a newer server. While Alpine has no `postgresql19-client`, the Dockerfile copies them from the official `postgres:19.x-alpine3.24` image (the `pgclient` stage) instead of installing them with apk. That is a temporary workaround: a build-time tripwire fails the image build once the base image's Alpine release ships the package, and [#734](https://github.com/owine/house-manager/issues/734) has the undo checklist. **When you upgrade Postgres major** (19 → 20), move that stage's tag in lockstep, or switch back to `apk add postgresql<major>-client` once the image's Alpine release ships it. The image smoke test runs the backup job against `PG_IMAGE`, so a mismatch or a missing shared library fails CI. The integration round-trip test uses the host's `pg_dump`, which must also be ≥ the server major (see `docs/TESTING.md`; CI installs it from PGDG).
 
 ## Risks
 

@@ -27,9 +27,9 @@ import { startPostgres, stopContainer } from './setup';
 //
 // pg_dump / pg_restore come from the host, not the container, because that is
 // the code path production runs (execFile on PATH, PGPASSWORD, a TCP URL).
-// They must be >= the server major (18): the ubuntu-26.04 runner image ships
-// PostgreSQL 18.6; on macOS, Homebrew's libpq (keg-only) or postgresql@18
-// provides them. The preflight below fails with that hint instead of a
+// They must be >= the server major (19): the ubuntu-26.04 runner image ships
+// PostgreSQL 18, so CI installs postgresql-client-19 from PGDG (ci.yml); on
+// macOS, Homebrew's libpq (keg-only) or postgresql@19 provides them. The preflight below fails with that hint instead of a
 // pg_dump "server version mismatch".
 
 // Only the fields handlePgDump reads. An unmocked getEnv() passes locally via
@@ -78,7 +78,7 @@ function clientMajor(bin: 'pg_dump' | 'pg_restore'): number {
     out = execFileSync(bin, ['--version'], { encoding: 'utf8' });
   } catch {
     throw new Error(
-      `${bin} is not on PATH. Install a PostgreSQL 18+ client -- on macOS, \`brew install libpq\` and put "$(brew --prefix libpq)/bin" on PATH (libpq is keg-only).`,
+      `${bin} is not on PATH. Install a PostgreSQL 19+ client -- on macOS, \`brew install libpq\` and put "$(brew --prefix libpq)/bin" on PATH (libpq is keg-only).`,
     );
   }
   const m = /\(PostgreSQL\)\s+(\d+)/.exec(out);

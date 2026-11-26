@@ -23,7 +23,7 @@ WORKER="smoke-worker-$$"
 # parses a shell assignment, so without it this pin is tracked by nothing. See
 # the `annotated image pins` customManager in renovate.json.
 # renovate: datasource=docker depName=pgvector/pgvector
-PG_IMAGE="pgvector/pgvector:pg18"
+PG_IMAGE="pgvector/pgvector:pg19"
 
 # Role commands. The image ships no pnpm, and nothing puts node_modules/.bin
 # on PATH, so both roles are invoked by explicit path.

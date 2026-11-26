@@ -89,6 +89,26 @@ RUN pnpm prune --prod
 # source the lint:worker-graph guard checks against, so the two cannot disagree.
 RUN node scripts/prune-worker-tree.mjs
 
+# --- pg client source: pg_dump/pg_restore 19 for the backup job ---
+# >>> TEMPORARY WORKAROUND, undo per #734 <<<
+# Undo it when the runtime base's Alpine ships postgresql19-client. You don't
+# have to watch for that: the tripwire RUN in the runtime stage fails the build
+# the moment it does, most likely on the PR that moves the base to Alpine 3.25.
+#
+# Why: Alpine has no postgresql19-client. It adds a new PG major only in
+# the next stable release after GA (17 -> 3.21, 18 -> 3.23), never to a release
+# already out, and PG 19.0 (2026-11-19) postdates 3.24. pg_dump refuses a newer
+# server, and prod runs 19, so the apk postgresql18-client cannot back it up.
+# The official image's client binaries are built on the same Alpine line and
+# musl as the runtime stage, so they run there once their shared libraries are
+# installed (the apk list below; verified with ldd -- missing ones show up as
+# "symbol not found" relocation errors, not at build time).
+#
+# The -alpine3.24 suffix MUST match the runtime base's Alpine line: it is the
+# third place that line is written (with renovate.json's apk `branch=` and
+# apk-arch-rerun.yml's `alpine-branch`). The undo checklist is in #734.
+FROM postgres:19.0-alpine3.24@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f AS pgclient
+
 # --- runtime stage: minimal, prod-only deps + source files for tsx worker ---
 FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runtime
 # apk pins: Alpine 3.24, extracted natively by Renovate's dockerfile manager
@@ -96,11 +116,14 @@ FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43dd
 # release line lives in renovate.json's `registryUrls` (`branch=v3.24`) and
 # must move with the base image. That URL lists both main and community, which
 # are merged in one lookup, so no per-package index override is needed.
-# postgresql18-client provides pg_dump AND pg_restore for the worker's nightly
-# DB backup job (worker/jobs/pg-dump.ts validates every dump with
-# `pg_restore --list` before giving it its final name). pg_dump must be >= the
-# server major; server is pgvector:pg18, matched. scripts/smoke-image.sh runs
-# the job against PG_IMAGE, so a mismatch fails the image smoke test.
+# pg_dump AND pg_restore for the worker's nightly DB backup job
+# (worker/jobs/pg-dump.ts validates every dump with `pg_restore --list` before
+# giving it its final name) come from the `pgclient` stage above, not apk;
+# krb5-libs, libldap, lz4-libs and zstd-libs are their shared libraries (the
+# base already has libssl3/libcrypto3/zlib). pg_dump must be >= the server
+# major; server is pgvector:pg19, matched. scripts/smoke-image.sh runs the job
+# against PG_IMAGE, so a mismatch or a missing library fails the image smoke
+# test.
 #
 # Deliberately NOT installing vips/vips-heif. sharp does not use system libvips:
 # it ships a prebuilt @img/sharp-libvips-linuxmusl-arm64 and its native binary
@@ -113,7 +136,27 @@ FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43dd
 # `sharp.format.heif.input.fileSuffix`) — re-adding these will not help.
 RUN apk add --no-cache \
   curl=8.23.0-r0 \
-  postgresql18-client=18.7-r0
+  krb5-libs=1.22.3-r0 \
+  libldap=2.6.15-r0 \
+  lz4-libs=1.10.0-r1 \
+  zstd-libs=1.6.0-r1
+# >>> TEMPORARY WORKAROUND, undo per #734 (see the pgclient stage) <<<
+# musl's default search path includes /usr/local/lib, so libpq needs no ldconfig.
+COPY --from=pgclient /usr/local/bin/pg_dump /usr/local/bin/pg_restore /usr/local/bin/
+COPY --from=pgclient /usr/local/lib/libpq.so.5 /usr/local/lib/
+# Tripwire: fail the build once this image's own Alpine release ships the
+# client for the copied major, so the workaround can't outlive its reason. It
+# reads the major off the copied binary, so it follows a future pgclient tag
+# bump. `apk search -qx` is an exact match that prints the name if the package
+# exists and nothing if not (verified against postgresql18-client, which does,
+# and postgresql19-client, which doesn't). An index fetch failure prints nothing
+# too, so this fails OPEN, never with a false alarm.
+RUN major="$(pg_dump --version | sed -E 's/^[^0-9]*([0-9]+).*/\1/')" \
+  && if [ -n "$(apk --no-cache search -qx "postgresql${major}-client")" ]; then \
+    echo "postgresql${major}-client now ships in this image's Alpine release." >&2; \
+    echo "Undo the temporary pgclient workaround: checklist in issue #734." >&2; \
+    exit 1; \
+  fi
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
