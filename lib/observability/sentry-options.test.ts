@@ -557,13 +557,18 @@ describe('sentryOptions', () => {
   // H1: tracesSampleRate: 0 alone does NOT stop a transaction when the
   // request carries a sampled remote `sentry-trace` header — reproduced
   // against the real SDK (probe-tx.cjs). tracesSampler always returning 0
-  // takes precedence over tracesSampleRate for every span; beforeSendTransaction
-  // is the backstop in case a transaction forms anyway. Mutation-checked:
-  // removing either fails this.
-  it('never samples or sends a transaction, regardless of tracesSampleRate', () => {
+  // takes precedence over tracesSampleRate for every span; ignoreSpans is the
+  // backstop in case a span is sampled anyway. Removing either fails this.
+  // Whether the backstop actually DROPS a span is a question for the real SDK,
+  // not for the option's value: worker/sentry-spans.test.ts.
+  it('never samples or sends a span, regardless of tracesSampleRate', () => {
     const o = sentryOptions('https://publickey@glitchtip.example/1');
     expect(o.tracesSampler({})).toBe(0);
-    expect(o.beforeSendTransaction({ type: 'transaction' }, {})).toBeNull();
+    expect(o.ignoreSpans).toEqual([/.*/]);
+    expect(o.ignoreSpans[0].test('')).toBe(true);
+    // Ignored under the default streaming lifecycle (SDK 11), and its mere
+    // presence makes the SDK print a warning at every init.
+    expect(o).not.toHaveProperty('beforeSendTransaction');
   });
 });
 
